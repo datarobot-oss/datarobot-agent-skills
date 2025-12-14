@@ -1,0 +1,44 @@
+{
+  "name": "datarobot-skills",
+  "version": "1.0.0",
+  "description": "DataRobot Skills for AI/ML workflows including model training, deployment, predictions, feature engineering, monitoring, and data preparation",
+  "author": "DataRobot",
+  "skills": [
+    {
+      "name": "dr-model-training",
+      "description": "Comprehensive guidance for training models in DataRobot, including project creation, AutoML configuration, feature engineering, and model selection",
+      "path": "dr-model-training/SKILL.md"
+    },
+    {
+      "name": "dr-model-deployment",
+      "description": "Tools and guidance for deploying DataRobot models, managing deployments, configuring prediction environments, and deployment operations",
+      "path": "dr-model-deployment/SKILL.md"
+    },
+    {
+      "name": "dr-predictions",
+      "description": "Tools and guidance for making predictions with DataRobot models, including real-time predictions, batch scoring, and prediction dataset generation",
+      "path": "dr-predictions/SKILL.md"
+    },
+    {
+      "name": "dr-feature-engineering",
+      "description": "Guidance for feature engineering, feature discovery, feature importance analysis, and understanding DataRobot's automated feature engineering capabilities",
+      "path": "dr-feature-engineering/SKILL.md"
+    },
+    {
+      "name": "dr-model-monitoring",
+      "description": "Tools and guidance for monitoring model performance, tracking data drift, managing model health, and detecting prediction anomalies",
+      "path": "dr-model-monitoring/SKILL.md"
+    },
+    {
+      "name": "dr-data-preparation",
+      "description": "Tools and guidance for data upload, dataset management, data validation, and preparing data for DataRobot projects",
+      "path": "dr-data-preparation/SKILL.md"
+    },
+    {
+      "name": "dr-model-explainability",
+      "description": "Tools and guidance for model explainability, prediction explanations, SHAP values, and model diagnostics",
+      "path": "dr-model-explainability/SKILL.md"
+    }
+  ]
+}
+
