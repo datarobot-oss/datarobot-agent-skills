@@ -12,6 +12,7 @@ Validate DataRobot skills:
 3. The 'name' field in SKILL.md frontmatter must match the folder name
 """
 
+import json
 import sys
 from pathlib import Path
 import frontmatter
@@ -91,11 +92,70 @@ def validate_skills(repo_root: Path) -> bool:
     return True
 
 
+def validate_gemini_extension(repo_root: Path) -> bool:
+    """Validate gemini-extension.json skill names and paths."""
+    errors = []
+    gemini_file = repo_root / "gemini-extension.json"
+
+    if not gemini_file.exists():
+        print("⚠️  gemini-extension.json not found, skipping Gemini validation.")
+        return True
+
+    try:
+        with open(gemini_file, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as e:
+        print(f"❌ Failed to parse gemini-extension.json: {e}")
+        return False
+
+    skills = config.get("skills", [])
+    if not skills:
+        print("⚠️  gemini-extension.json has no skills defined.")
+        return True
+
+    for entry in skills:
+        name = entry.get("name", "")
+        path = entry.get("path", "")
+
+        # Check name starts with 'datarobot-'
+        if not name.startswith("datarobot-"):
+            errors.append(
+                f"ERROR: gemini-extension.json skill name '{name}' does not start with 'datarobot-'"
+            )
+
+        # Check path exists on disk
+        full_path = repo_root / path
+        if not full_path.exists():
+            errors.append(
+                f"ERROR: gemini-extension.json path '{path}' does not exist"
+            )
+
+        # Check name matches folder in path (e.g. 'datarobot-predictions' in 'datarobot-predictions/SKILL.md')
+        if path:
+            folder_from_path = Path(path).parts[0] if Path(path).parts else ""
+            if name != folder_from_path:
+                errors.append(
+                    f"ERROR: gemini-extension.json skill name '{name}' does not match "
+                    f"folder '{folder_from_path}' in path '{path}'"
+                )
+
+    if errors:
+        print("❌ gemini-extension.json validation failed:\n")
+        for error in errors:
+            print(f"  {error}")
+        print()
+        return False
+
+    print(f"✅ gemini-extension.json validated successfully! ({len(skills)} skills checked)")
+    return True
+
+
 def main():
     # Script is in bin/, so go up one level to get repo root
     repo_root = Path(__file__).parent.parent
-    success = validate_skills(repo_root)
-    sys.exit(0 if success else 1)
+    skills_ok = validate_skills(repo_root)
+    gemini_ok = validate_gemini_extension(repo_root)
+    sys.exit(0 if (skills_ok and gemini_ok) else 1)
 
 
 if __name__ == "__main__":
