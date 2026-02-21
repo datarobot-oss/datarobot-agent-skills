@@ -1,0 +1,46 @@
+# Example GitHub Actions destroy workflow for DataRobot Application Templates
+# Copy this to your repository as .github/workflows/destroy.yml
+# This workflow allows manual destruction of review app stacks
+
+name: Pulumi Stack Destroy
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'Stack name to destroy (e.g. github-pr-foobar-42)'
+        required: true
+        type: string
+
+env:
+  PULUMI_STACK_NAME: github-pr-${{ github.event.repository.name }}-${{ github.event.number }}
+  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+jobs:
+  destroy:
+    name: pulumi-destroy-stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+      
+      - name: Install Pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+      
+      - name: Setup Project Dependencies
+        run: |
+          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+      
+      - name: Destroy Pulumi Stack
+        run: |
+          source .venv/bin/activate
+          pulumi stack select ${{ github.event.inputs.stack_name }}
+          pulumi destroy --yes
+          pulumi stack rm --yes ${{ github.event.inputs.stack_name }}

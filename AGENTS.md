@@ -25,6 +25,9 @@ Use this skill when uploading datasets, validating data, or preparing data for D
 ### dr-model-explainability
 Use this skill when analyzing model explainability, getting prediction explanations, SHAP values, or generating model diagnostics.
 
+### datarobot-templates-cicd
+Use this skill when setting up CI/CD pipelines for DataRobot application templates, configuring GitLab or GitHub Actions workflows, managing Pulumi infrastructure, or implementing review deployments and continuous delivery.
+
 ## How to Use
 
 When a user requests a DataRobot-related task:
@@ -46,6 +49,7 @@ Skills provide instructions, workflows, and code examples - the agent writes and
 - **Monitoring models**: Use `dr-model-monitoring`
 - **Data management**: Use `dr-data-preparation`
 - **Model explainability**: Use `dr-model-explainability`
+- **CI/CD for application templates**: Use `datarobot-templates-cicd`
 
 For complex tasks, you may need to use multiple skills in sequence.
 
