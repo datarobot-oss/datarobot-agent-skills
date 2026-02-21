@@ -5,39 +5,39 @@
   "author": "DataRobot",
   "skills": [
     {
-      "name": "dr-model-training",
+      "name": "datarobot-model-training",
       "description": "Comprehensive guidance for training models in DataRobot, including project creation, AutoML configuration, feature engineering, and model selection",
-      "path": "dr-model-training/SKILL.md"
+      "path": "datarobot-model-training/SKILL.md"
     },
     {
-      "name": "dr-model-deployment",
+      "name": "datarobot-model-deployment",
       "description": "Tools and guidance for deploying DataRobot models, managing deployments, configuring prediction environments, and deployment operations",
-      "path": "dr-model-deployment/SKILL.md"
+      "path": "datarobot-model-deployment/SKILL.md"
     },
     {
-      "name": "dr-predictions",
+      "name": "datarobot-predictions",
       "description": "Tools and guidance for making predictions with DataRobot models, including real-time predictions, batch scoring, and prediction dataset generation",
-      "path": "dr-predictions/SKILL.md"
+      "path": "datarobot-predictions/SKILL.md"
     },
     {
-      "name": "dr-feature-engineering",
+      "name": "datarobot-feature-engineering",
       "description": "Guidance for feature engineering, feature discovery, feature importance analysis, and understanding DataRobot's automated feature engineering capabilities",
-      "path": "dr-feature-engineering/SKILL.md"
+      "path": "datarobot-feature-engineering/SKILL.md"
     },
     {
-      "name": "dr-model-monitoring",
+      "name": "datarobot-model-monitoring",
       "description": "Tools and guidance for monitoring model performance, tracking data drift, managing model health, and detecting prediction anomalies",
-      "path": "dr-model-monitoring/SKILL.md"
+      "path": "datarobot-model-monitoring/SKILL.md"
     },
     {
-      "name": "dr-data-preparation",
+      "name": "datarobot-data-preparation",
       "description": "Tools and guidance for data upload, dataset management, data validation, and preparing data for DataRobot projects",
-      "path": "dr-data-preparation/SKILL.md"
+      "path": "datarobot-data-preparation/SKILL.md"
     },
     {
-      "name": "dr-model-explainability",
+      "name": "datarobot-model-explainability",
       "description": "Tools and guidance for model explainability, prediction explanations, SHAP values, and model diagnostics",
-      "path": "dr-model-explainability/SKILL.md"
+      "path": "datarobot-model-explainability/SKILL.md"
     }
   ]
 }

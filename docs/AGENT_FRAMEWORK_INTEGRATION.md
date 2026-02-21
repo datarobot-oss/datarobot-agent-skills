@@ -63,8 +63,6 @@ LangGraph’s API is version-sensitive, so treat this as a **pattern**, not a pi
 
 Key takeaway: LangGraph does **not** auto-load `SKILL.md`. Your router/planner nodes must read them.
 
-For an SDK-verified workflow, see `examples/sdk_smoke_predictions.py`.
-
 ### LangGraph: minimal “router + tool execution” sketch
 
 ```python

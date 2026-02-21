@@ -30,7 +30,7 @@ The agent will automatically install `datarobot` Python package when needed.
 ### Claude Code
 
 ```bash
-/plugin marketplace add datarobot/skills
+/plugin marketplace add datarobot-oss/datarobot-agent-skills
 /plugin install datarobot-predictions@datarobot-skills
 ```
 
@@ -41,7 +41,7 @@ Codex automatically reads `AGENTS.md` - no installation needed.
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/datarobot/skills.git --consent
+gemini extensions install https://github.com/datarobot-oss/datarobot-agent-skills.git --consent
 ```
 
 ## Usage Examples

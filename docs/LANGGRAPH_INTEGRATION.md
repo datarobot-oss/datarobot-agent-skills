@@ -218,8 +218,6 @@ the recommended pattern is:
 2. **Route** to the right skill based on intent
 3. **Execute** the SDK workflow directly (or via helper scripts) in a safe environment
 
-For a verified, runnable SDK workflow example (no LangGraph), see `examples/sdk_smoke_predictions.py`.
-
 ## Best Practices for LangGraph
 
 1. **Load skills at initialization** - Parse all `SKILL.md` files once
