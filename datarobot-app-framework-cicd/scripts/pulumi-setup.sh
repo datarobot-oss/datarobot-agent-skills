@@ -47,7 +47,7 @@ migrate_stacks_if_needed() {
         echo "     - $sname"
     done
     echo ""
-    read -p "Migrate these stacks to the new backend? [y/N]: " MIGRATE_CHOICE
+    read -rp "Migrate these stacks to the new backend? [y/N]: " MIGRATE_CHOICE
 
     if [[ "$MIGRATE_CHOICE" != "y" && "$MIGRATE_CHOICE" != "Y" ]]; then
         echo "⏭️  Skipping stack migration"
@@ -94,7 +94,7 @@ setup_pulumi_cloud() {
     echo ""
     local token_hint=""
     [[ -n "${PULUMI_ACCESS_TOKEN:-}" ]] && token_hint=" [already set, press Enter to keep]"
-    read -sp "Pulumi Access Token${token_hint}: " PULUMI_TOKEN
+    read -rsp "Pulumi Access Token${token_hint}: " PULUMI_TOKEN
     echo ""
     PULUMI_TOKEN="${PULUMI_TOKEN:-${PULUMI_ACCESS_TOKEN:-}}"
 
@@ -112,14 +112,14 @@ setup_azure_backend() {
     local acct_default="${AZURE_STORAGE_ACCOUNT:-}"
     local acct_hint=""
     [[ -n "$acct_default" ]] && acct_hint=" [$acct_default]"
-    read -p "Azure Storage Account${acct_hint}: " AZURE_ACCOUNT
+    read -rp "Azure Storage Account${acct_hint}: " AZURE_ACCOUNT
     AZURE_ACCOUNT="${AZURE_ACCOUNT:-$acct_default}"
 
-    read -p "Azure Container Name: " AZURE_CONTAINER
+    read -rp "Azure Container Name: " AZURE_CONTAINER
 
     local key_hint=""
     [[ -n "${AZURE_STORAGE_KEY:-}" ]] && key_hint=" [already set, press Enter to keep]"
-    read -sp "Azure Storage Key${key_hint}: " AZURE_KEY
+    read -rsp "Azure Storage Key${key_hint}: " AZURE_KEY
     echo ""
     AZURE_KEY="${AZURE_KEY:-${AZURE_STORAGE_KEY:-}}"
 
@@ -143,17 +143,17 @@ setup_s3_backend() {
     echo ""
     echo "☁️  Setting up AWS S3 backend"
     echo "----------------------------"
-    read -p "S3 Bucket Name: " S3_BUCKET
+    read -rp "S3 Bucket Name: " S3_BUCKET
 
     local aws_key_default="${AWS_ACCESS_KEY_ID:-}"
     local aws_key_hint=""
     [[ -n "$aws_key_default" ]] && aws_key_hint=" [$aws_key_default]"
-    read -p "AWS Access Key ID${aws_key_hint}: " AWS_KEY_ID
+    read -rp "AWS Access Key ID${aws_key_hint}: " AWS_KEY_ID
     AWS_KEY_ID="${AWS_KEY_ID:-$aws_key_default}"
 
     local aws_secret_hint=""
     [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]] && aws_secret_hint=" [already set, press Enter to keep]"
-    read -sp "AWS Secret Access Key${aws_secret_hint}: " AWS_SECRET
+    read -rsp "AWS Secret Access Key${aws_secret_hint}: " AWS_SECRET
     echo ""
     AWS_SECRET="${AWS_SECRET:-${AWS_SECRET_ACCESS_KEY:-}}"
 
@@ -192,13 +192,13 @@ create_stack() {
         echo ""
     fi
 
-    read -p "Stack name (e.g., dev, staging, prod): " STACK_NAME
+    read -rp "Stack name (e.g., dev, staging, prod): " STACK_NAME
 
     # If the name already exists in the current backend, offer to just select it
     if echo "$existing_stacks" | grep -qx "$STACK_NAME" 2>/dev/null; then
         echo ""
         echo "✅ Stack '$STACK_NAME' found in the current backend"
-        read -p "Select and use it? [Y/n]: " USE_EXISTING
+        read -rp "Select and use it? [Y/n]: " USE_EXISTING
         if [[ "$USE_EXISTING" != "n" && "$USE_EXISTING" != "N" ]]; then
             pulumi stack select "$STACK_NAME"
             echo "✅ Selected existing stack: $STACK_NAME"
@@ -211,9 +211,9 @@ create_stack() {
     if [[ -f "$stack_config" ]] && ! echo "$existing_stacks" | grep -qx "$STACK_NAME" 2>/dev/null; then
         echo ""
         echo "📄 Found local stack config '$stack_config' but no matching stack in the current backend"
-        read -p "Import an exported stack state file into the current backend? [y/N]: " IMPORT_CHOICE
+        read -rp "Import an exported stack state file into the current backend? [y/N]: " IMPORT_CHOICE
         if [[ "$IMPORT_CHOICE" == "y" || "$IMPORT_CHOICE" == "Y" ]]; then
-            read -p "Path to exported state JSON file: " STATE_FILE
+            read -rp "Path to exported state JSON file: " STATE_FILE
             if [[ -n "$STATE_FILE" && -f "$STATE_FILE" ]]; then
                 pulumi stack select --create "$STACK_NAME"
                 pulumi stack import --file "$STATE_FILE"
@@ -244,7 +244,7 @@ setup_cicd() {
     echo "1) GitHub Actions"
     echo "2) GitLab CI/CD"
     echo "3) Skip"
-    read -p "Selection [1-3]: " CICD_CHOICE
+    read -rp "Selection [1-3]: " CICD_CHOICE
 
     case $CICD_CHOICE in
         1)
@@ -283,7 +283,7 @@ main() {
     echo "2) Azure Blob Storage"
     echo "3) AWS S3"
     echo "4) Skip (already configured)"
-    read -p "Selection [1-4]: " BACKEND_CHOICE
+    read -rp "Selection [1-4]: " BACKEND_CHOICE
 
     case $BACKEND_CHOICE in
         1)

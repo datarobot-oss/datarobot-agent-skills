@@ -32,7 +32,7 @@ echo ""
 # Get project (or use current)
 PROJECT=$(glab repo view --output json 2>/dev/null | jq -r '.path_with_namespace' || echo "")
 if [ -z "$PROJECT" ]; then
-    read -p "Enter project (group/project): " PROJECT
+    read -rp "Enter project (group/project): " PROJECT
 fi
 
 echo "Project: $PROJECT"
@@ -48,7 +48,7 @@ add_variable() {
     echo "📝 Setting up: $var_name"
     echo "   $var_description"
 
-    read -sp "   Enter value: " var_value
+    read -rsp "   Enter value: " var_value
     echo ""
 
     if [ -n "$var_value" ]; then
@@ -72,10 +72,10 @@ add_plain_variable() {
     echo "📝 Setting up variable: $var_name"
     echo "   $var_description"
     if [ -n "$default_value" ]; then
-        read -p "   Enter value [$default_value]: " var_value
+        read -rp "   Enter value [$default_value]: " var_value
         var_value="${var_value:-$default_value}"
     else
-        read -p "   Enter value: " var_value
+        read -rp "   Enter value: " var_value
     fi
 
     if [ -n "$var_value" ]; then

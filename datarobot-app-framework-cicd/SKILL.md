@@ -48,11 +48,11 @@ application-template-root/
 │       ├── encrypt-secrets.sh
 │       ├── decrypt-secrets.sh
 │       ├── pulumi-setup.sh
-│       ├── gitlab-ci.yml
-│       ├── github-deploy.yml
-│       ├── github-cd.yml
-│       ├── github-destroy.yml
-│       └── taskfile-snippets.yaml
+│       ├── gitlab-ci.yml           # ⚠️ TEMPORARY — delete after copying to .gitlab-ci.yml
+│       ├── github-deploy.yml       # ⚠️ TEMPORARY — delete after copying to .github/workflows/deploy.yml
+│       ├── github-cd.yml           # ⚠️ TEMPORARY — delete after copying to .github/workflows/cd.yml
+│       ├── github-destroy.yml      # ⚠️ TEMPORARY — delete after copying to .github/workflows/destroy.yml
+│       └── taskfile-snippets.yaml  # ⚠️ TEMPORARY — delete after copying to infra/Taskfile.yaml
 ├── .env                            # User's secrets (never commit!)
 ├── .env.gpg                        # Encrypted secrets (commit for GitHub)
 ├── .gitlab-ci.yml                  # Copy from infra/scripts/gitlab-ci.yml
@@ -165,10 +165,16 @@ Adjust the table rows, task names, and stack-naming strategy to match what was a
    - GitHub: `cp infra/scripts/github-*.yml .github/workflows/`
 5. Copy tasks from `infra/scripts/taskfile-snippets.yaml` to `infra/Taskfile.yaml`
    Then add an `includes` entry to the root `Taskfile.yml` pointing to `./infra/Taskfile.yaml` — **do NOT paste tasks directly into root Taskfile.yml**
-6. Guide user to run `task infra:setup-github-secrets` or `task infra:setup-gitlab-vars`
-7. If GitHub, guide user to run `task encrypt-secrets` to encrypt `.env` file
-8. **Generate `infra/README.md`** tailored to GitLab + chosen Pulumi backend (see "Generating infra/README.md" above)
-9. Test pipeline with a sample PR/MR
+6. **⚠️ CLEAN UP snippet files** — remove the originals now that they've been copied to their final destinations:
+   ```bash
+   rm infra/scripts/gitlab-ci.yml
+   rm infra/scripts/github-cd.yml infra/scripts/github-deploy.yml infra/scripts/github-destroy.yml
+   rm infra/scripts/taskfile-snippets.yaml
+   ```
+7. Guide user to run `task infra:setup-github-secrets` or `task infra:setup-gitlab-vars`
+8. If GitHub, guide user to run `task encrypt-secrets` to encrypt `.env` file
+9. **Generate `infra/README.md`** tailored to GitLab + chosen Pulumi backend (see "Generating infra/README.md" above)
+10. Test pipeline with a sample PR/MR
 
 ### Example 2: Set up GitHub Actions with encrypted secrets
 
@@ -180,11 +186,17 @@ Adjust the table rows, task names, and stack-naming strategy to match what was a
 3. Copy GitHub workflows: `cp infra/scripts/github-*.yml .github/workflows/`
 4. Copy `infra/scripts/taskfile-snippets.yaml` to `infra/Taskfile.yaml`: `cp infra/scripts/taskfile-snippets.yaml infra/Taskfile.yaml`
    Add an `includes` entry for `./infra/Taskfile.yaml` to the root `Taskfile.yml` — **do NOT paste tasks directly into root Taskfile.yml**
-5. Guide user to encrypt `.env` with `task infra:encrypt-secrets`
-6. Guide user to set up GitHub secrets with `task infra:setup-github-secrets`
-7. Add encrypted `.env.gpg` to repository
-8. **Generate `infra/README.md`** tailored to GitHub Actions + chosen Pulumi backend (see "Generating infra/README.md" above)
-9. Test workflow with a sample pull request
+5. **⚠️ CLEAN UP snippet files** — remove the originals now that they've been copied to their final destinations:
+   ```bash
+   rm infra/scripts/github-cd.yml infra/scripts/github-deploy.yml infra/scripts/github-destroy.yml
+   rm infra/scripts/gitlab-ci.yml
+   rm infra/scripts/taskfile-snippets.yaml
+   ```
+6. Guide user to encrypt `.env` with `task infra:encrypt-secrets`
+7. Guide user to set up GitHub secrets with `task infra:setup-github-secrets`
+8. Add encrypted `.env.gpg` to repository
+9. **Generate `infra/README.md`** tailored to GitHub Actions + chosen Pulumi backend (see "Generating infra/README.md" above)
+10. Test workflow with a sample pull request
 
 ### Example 3: Configure continuous delivery
 

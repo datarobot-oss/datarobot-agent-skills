@@ -1,3 +1,4 @@
+---
 # Example GitHub Actions deployment workflow for DataRobot Application Templates
 # Copy this to your repository as .github/workflows/deploy.yml
 
@@ -54,11 +55,11 @@ jobs:
     name: pulumi-deploy-stack
     runs-on: ubuntu-latest
     needs: test
-    # Same fork guard as the test job above.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Only run when the 'deploy' label is applied, and only for same-repo PRs.
+    if: github.event.label.name == 'deploy' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
-      contents: read        # required for actions/checkout on private repos
-      pull-requests: write  # required for peter-evans/create-or-update-comment
+      contents: read # required for actions/checkout on private repos
+      pull-requests: write # required for peter-evans/create-or-update-comment
     steps:
       - uses: actions/checkout@v4
 

@@ -1,3 +1,4 @@
+---
 version: '3'
 
 tasks:
@@ -21,17 +22,35 @@ tasks:
     cmds:
       - uvx ruff format --check .
 
+  shellcheck:
+    desc: Run shellcheck on all shell scripts
+    cmds:
+      - shellcheck datarobot-app-framework-cicd/scripts/*.sh
+
+  yamlfmt:
+    desc: Format all YAML files with yamlfmt
+    cmds:
+      - yamlfmt .
+
+  yamlfmt:check:
+    desc: Check if YAML files are formatted correctly (CI mode)
+    cmds:
+      - yamlfmt -lint .
+
   lint:
-    desc: Run all linting checks (validate skills + ruff)
+    desc: Run all linting checks (validate skills + ruff + shellcheck + yamlfmt)
     deps:
       - validate
       - ruff:check
       - ruff:format:check
+      - shellcheck
+      - yamlfmt:check
 
   format:
-    desc: Format all Python scripts with ruff
+    desc: Format all Python scripts and YAML files
     cmds:
       - task: ruff:format
+      - task: yamlfmt
 
   default:
     desc: Run validation and linting

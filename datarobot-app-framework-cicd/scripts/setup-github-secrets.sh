@@ -32,7 +32,7 @@ echo ""
 # Get repository (or use current)
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "")
 if [ -z "$REPO" ]; then
-    read -p "Enter repository (owner/repo): " REPO
+    read -rp "Enter repository (owner/repo): " REPO
 fi
 
 echo "Repository: $REPO"
@@ -47,7 +47,7 @@ add_secret() {
     echo "📝 Setting up secret: $secret_name"
     echo "   $secret_description"
 
-    read -sp "   Enter value: " secret_value
+    read -rsp "   Enter value: " secret_value
     echo ""
 
     if [ -n "$secret_value" ]; then
@@ -69,10 +69,10 @@ add_variable() {
     echo "📝 Setting up variable: $var_name"
     echo "   $var_description"
     if [ -n "$default_value" ]; then
-        read -p "   Enter value [$default_value]: " var_value
+        read -rp "   Enter value [$default_value]: " var_value
         var_value="${var_value:-$default_value}"
     else
-        read -p "   Enter value: " var_value
+        read -rp "   Enter value: " var_value
     fi
 
     if [ -n "$var_value" ]; then
@@ -105,13 +105,30 @@ add_variable "PULUMI_STACK_REVIEW_NAME" \
     "Pulumi stack name prefix for PR review apps (PR number appended automatically in the workflow)" \
     "review"
 
+# Create the deploy label (used to gate PR review deployments)
+echo "─── Labels ─────────────────────────────────────────────────────────────"
+LABEL_NAME="deploy"
+LABEL_COLOR="0075ca"
+LABEL_DESC="Trigger a review app deployment for this PR"
+
+if gh label list --repo "$REPO" --json name -q '.[].name' | grep -qx "$LABEL_NAME"; then
+    echo "✅ Label '$LABEL_NAME' already exists"
+else
+    gh label create "$LABEL_NAME" \
+        --color "$LABEL_COLOR" \
+        --description "$LABEL_DESC" \
+        --repo "$REPO"
+    echo "✅ Created label '$LABEL_NAME'"
+fi
 echo ""
-echo "🎉 Secrets and variables setup complete!"
+
+echo "🎉 Secrets, variables, and labels setup complete!"
 echo ""
-echo "View all secrets:  gh secret list --repo $REPO"
+echo "View all secrets:   gh secret list --repo $REPO"
 echo "View all variables: gh variable list --repo $REPO"
+echo "View all labels:    gh label list --repo $REPO"
 echo ""
 echo "Next steps:"
 echo "1. Ensure your .env.gpg is committed to the repository"
 echo "2. Push your .github/workflows to trigger actions"
-echo "3. Test with a pull request"
+echo "3. Add the '$LABEL_NAME' label to a PR to trigger a review deployment"
