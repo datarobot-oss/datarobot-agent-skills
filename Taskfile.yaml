@@ -1,0 +1,58 @@
+---
+version: '3'
+
+tasks:
+  validate:
+    desc: Validate all DataRobot skills (naming, structure, frontmatter)
+    cmds:
+      - uv run bin/validate_skills.py
+
+  ruff:check:
+    desc: Run ruff linter on all Python scripts
+    cmds:
+      - uvx ruff check .
+
+  ruff:format:
+    desc: Run ruff formatter on all Python scripts
+    cmds:
+      - uvx ruff format .
+
+  ruff:format:check:
+    desc: Check if Python scripts are formatted correctly (CI mode)
+    cmds:
+      - uvx ruff format --check .
+
+  shellcheck:
+    desc: Run shellcheck on all shell scripts
+    cmds:
+      - shellcheck datarobot-app-framework-cicd/scripts/*.sh
+
+  yamlfmt:
+    desc: Format all YAML files with yamlfmt
+    cmds:
+      - yamlfmt .
+
+  yamlfmt:check:
+    desc: Check if YAML files are formatted correctly (CI mode)
+    cmds:
+      - yamlfmt -lint .
+
+  lint:
+    desc: Run all linting checks (validate skills + ruff + shellcheck + yamlfmt)
+    deps:
+      - validate
+      - ruff:check
+      - ruff:format:check
+      - shellcheck
+      - yamlfmt:check
+
+  format:
+    desc: Format all Python scripts and YAML files
+    cmds:
+      - task: ruff:format
+      - task: yamlfmt
+
+  default:
+    desc: Run validation and linting
+    cmds:
+      - task: lint

@@ -1,0 +1,61 @@
+---
+# Example GitHub Actions continuous delivery workflow for DataRobot Application Templates
+# Copy this to your repository as .github/workflows/cd.yml
+#
+# Triggers on every push to the default branch and deploys to the persistent CI stack.
+# The stack name is controlled by the PULUMI_STACK_CI_NAME repository variable
+# (set via: gh variable set PULUMI_STACK_CI_NAME --body 'ci').
+
+name: Pulumi CD
+on:
+  push:
+    branches:
+      - main
+
+# Restrict default permissions for all jobs — each job grants only what it needs.
+permissions:
+  contents: read
+
+env:
+  PULUMI_STACK: ${{ vars.PULUMI_STACK_CI_NAME }}
+
+jobs:
+  deploy:
+    name: pulumi-deploy-ci-stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decrypt Secrets
+        run: |
+          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
+          # Load all .env variables into the GitHub Actions environment for subsequent steps
+          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
+        env:
+          # Only this one secret needs to be stored in GitHub repository secrets
+          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Setup Project Dependencies
+        run: |
+          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+
+      - name: Deploy CI Stack
+        run: |
+          source .venv/bin/activate
+          export $(grep -v '^#' .env | xargs)
+          # PULUMI_STACK selects the persistent CI stack; --create initialises it if it doesn't exist yet
+          pulumi stack select --create $PULUMI_STACK
+          pulumi up --yes
+          echo "✅ Deployed CI stack: $PULUMI_STACK"

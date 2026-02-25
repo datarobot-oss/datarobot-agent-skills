@@ -10,9 +10,9 @@ DataRobot Skills work like Hugging Face Skills - they guide your coding agent to
 User → Coding Agent → Skill Instructions → Python Code (using SDK) → DataRobot API
 ```
 
-1. **User installs a skill** (e.g., `dr-predictions`)
+1. **User installs a skill** (e.g., `datarobot-predictions`)
 2. **User asks agent** to do something (e.g., "Generate a prediction dataset template")
-3. **Agent reads skill** (`dr-predictions/SKILL.md`)
+3. **Agent reads skill** (`datarobot-predictions/SKILL.md`)
 4. **Agent writes Python code** using DataRobot SDK based on skill instructions
 5. **Agent executes code** and returns results
 
@@ -30,8 +30,8 @@ The agent will automatically install `datarobot` Python package when needed.
 ### Claude Code
 
 ```bash
-/plugin marketplace add datarobot/skills
-/plugin install dr-predictions@datarobot-skills
+/plugin marketplace add datarobot-oss/datarobot-agent-skills
+/plugin install datarobot-predictions@datarobot-skills
 ```
 
 ### Codex
@@ -41,7 +41,7 @@ Codex automatically reads `AGENTS.md` - no installation needed.
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/datarobot/skills.git --consent
+gemini extensions install https://github.com/datarobot-oss/datarobot-agent-skills.git --consent
 ```
 
 ## Usage Examples
@@ -51,7 +51,7 @@ gemini extensions install https://github.com/datarobot/skills.git --consent
 **User**: "Generate a prediction dataset template for deployment abc123 with 10 rows"
 
 **Agent workflow**:
-1. Reads `dr-predictions/SKILL.md`
+1. Reads `datarobot-predictions/SKILL.md`
 2. Sees workflow example and code patterns
 3. Writes Python code:
    ```python
@@ -71,7 +71,7 @@ gemini extensions install https://github.com/datarobot/skills.git --consent
 **User**: "Create a new project with sales_data.csv, set 'revenue' as target, and start Quick AutoML"
 
 **Agent workflow**:
-1. Reads `dr-model-training/SKILL.md`
+1. Reads `datarobot-model-training/SKILL.md`
 2. Follows the workflow example
 3. Writes Python code:
    ```python
@@ -147,7 +147,7 @@ Or the agent can prompt the user for these values.
 
 **User request**: "I want to predict sales for next week for store_A with temperatures of 75°F each day and no promotions."
 
-**Agent (using dr-predictions skill)**:
+**Agent (using datarobot-predictions skill)**:
 
 1. **Reads skill** → Understands workflow
 2. **Gets deployment features**:

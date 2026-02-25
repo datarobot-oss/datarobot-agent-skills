@@ -1,6 +1,6 @@
 # Agent Framework Integration (LangGraph, PydanticAI, etc.)
 
-This repo’s “skills” are **instruction bundles** (`dr-*/SKILL.md`) plus optional helper scripts (`dr-*/scripts/`).  
+This repo's "skills" are **instruction bundles** (`datarobot-*/SKILL.md`) plus optional helper scripts (`datarobot-*/scripts/`).
 Some agent runtimes (Claude Code, Codex, Gemini CLI) can auto-load these; **most programmatic agent frameworks (LangGraph, PydanticAI, LangChain, etc.) require you to load them yourself**.
 
 ## The core pattern (framework-agnostic)
@@ -19,7 +19,7 @@ from pathlib import Path
 import frontmatter
 
 def load_skill(skill_dir: str) -> dict:
-    """Return {name, description, content} from dr-*/SKILL.md."""
+    """Return {name, description, content} from datarobot-*/SKILL.md."""
     skill_path = Path(skill_dir) / "SKILL.md"
     post = frontmatter.load(skill_path)
     return {
@@ -57,13 +57,11 @@ def run_skill_script(script_path: str, *args: str) -> dict:
 
 LangGraph’s API is version-sensitive, so treat this as a **pattern**, not a pinned snippet.
 
-- **Router node**: chooses a skill (`dr-predictions`, `dr-model-training`, …)
+- **Router node**: chooses a skill (`datarobot-predictions`, `datarobot-model-training`, …)
 - **Planner node**: LLM uses skill guidance to decide steps (often “call helper script”)
 - **Executor node**: runs helper scripts / SDK code
 
 Key takeaway: LangGraph does **not** auto-load `SKILL.md`. Your router/planner nodes must read them.
-
-For an SDK-verified workflow, see `examples/sdk_smoke_predictions.py`.
 
 ### LangGraph: minimal “router + tool execution” sketch
 
@@ -79,8 +77,8 @@ def load_skill_catalog() -> list[dict]:
     Build a lightweight catalog the router LLM can see.
     Only include name/description (not full SKILL.md) to keep routing fast.
     """
-    # Example: load from all dr-*/SKILL.md using frontmatter in load_skill(...)
-    # Return list of: {"name": "...", "description": "...", "dir": "dr-predictions"}
+    # Example: load from all datarobot-*/SKILL.md using frontmatter in load_skill(...)
+    # Return list of: {"name": "...", "description": "...", "dir": "datarobot-predictions"}
     raise NotImplementedError
 
 class State(TypedDict):
@@ -119,19 +117,19 @@ Return ONLY JSON:
     by_name = {s["name"]: s for s in catalog}
     if chosen not in by_name:
         # fallback: default to predictions
-        chosen = "dr-predictions"
+        chosen = "datarobot-predictions"
 
-    skill_dir = by_name.get(chosen, {"dir": "dr-predictions"})["dir"]
+    skill_dir = by_name.get(chosen, {"dir": "datarobot-predictions"})["dir"]
     skill = load_skill(skill_dir)
     state["skill_name"] = skill["name"]
     state["skill_text"] = skill["content"]
     return state
 
 def tool_get_deployment_features(deployment_id: str) -> dict:
-    return run_skill_script("dr-predictions/scripts/get_deployment_features.py", deployment_id)
+    return run_skill_script("datarobot-predictions/scripts/get_deployment_features.py", deployment_id)
 
 def tool_make_prediction(deployment_id: str, data_json: str) -> dict:
-    return run_skill_script("dr-predictions/scripts/make_prediction.py", deployment_id, data_json)
+    return run_skill_script("datarobot-predictions/scripts/make_prediction.py", deployment_id, data_json)
 
 def planner_node(state: State) -> State:
     # Typical pattern: inject SKILL.md into system prompt.
@@ -161,7 +159,7 @@ Define a tool that calls our stable helper scripts, e.g.:
 ```python
 def get_deployment_features(deployment_id: str) -> dict:
     return run_skill_script(
-        "dr-predictions/scripts/get_deployment_features.py",
+        "datarobot-predictions/scripts/get_deployment_features.py",
         deployment_id,
     )
 ```
@@ -173,7 +171,7 @@ Then add that tool to your agent framework’s tool registry.
 ```python
 # NOTE: This is a pattern sketch; adapt to your PydanticAI version.
 
-skill = load_skill("dr-predictions")
+skill = load_skill("datarobot-predictions")
 instructions = f"""
 You are a DataRobot assistant.
 Follow this skill guidance:
@@ -183,19 +181,19 @@ Follow this skill guidance:
 
 # Example tools (wrapping repo scripts)
 def get_deployment_features(deployment_id: str) -> dict:
-    return run_skill_script("dr-predictions/scripts/get_deployment_features.py", deployment_id)
+    return run_skill_script("datarobot-predictions/scripts/get_deployment_features.py", deployment_id)
 
 def generate_template(deployment_id: str, n_rows: int = 10, out_path: str = "template.csv") -> dict:
     # this script prints text; wrapper returns {"output": "..."} unless it prints JSON
     return run_skill_script(
-        "dr-predictions/scripts/generate_prediction_data_template.py",
+        "datarobot-predictions/scripts/generate_prediction_data_template.py",
         deployment_id,
         str(n_rows),
         out_path,
     )
 
 def score_one_row(deployment_id: str, data_json: str) -> dict:
-    return run_skill_script("dr-predictions/scripts/make_prediction.py", deployment_id, data_json)
+    return run_skill_script("datarobot-predictions/scripts/make_prediction.py", deployment_id, data_json)
 
 # Then, register these functions as tools in your PydanticAI Agent
 # and set `instructions`/system prompt to include the SKILL.md content.
@@ -215,13 +213,13 @@ CrewAI is also version-sensitive; conceptually you:
 ```python
 # NOTE: This is a pattern sketch; adapt imports to your CrewAI version.
 
-skill = load_skill("dr-predictions")
+skill = load_skill("datarobot-predictions")
 
 def get_deployment_features(deployment_id: str) -> dict:
-    return run_skill_script("dr-predictions/scripts/get_deployment_features.py", deployment_id)
+    return run_skill_script("datarobot-predictions/scripts/get_deployment_features.py", deployment_id)
 
 def make_prediction(deployment_id: str, data_json: str) -> dict:
-    return run_skill_script("dr-predictions/scripts/make_prediction.py", deployment_id, data_json)
+    return run_skill_script("datarobot-predictions/scripts/make_prediction.py", deployment_id, data_json)
 
 # agent = Agent(
 #   role="DataRobot Prediction Assistant",

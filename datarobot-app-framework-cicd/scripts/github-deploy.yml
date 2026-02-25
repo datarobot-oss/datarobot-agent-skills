@@ -1,0 +1,125 @@
+---
+# Example GitHub Actions deployment workflow for DataRobot Application Templates
+# Copy this to your repository as .github/workflows/deploy.yml
+
+name: Pulumi Deployment
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Restrict default permissions for all jobs — each job grants only what it needs.
+permissions:
+  contents: read
+
+env:
+  PULUMI_STACK: ${{ vars.PULUMI_STACK_REVIEW_NAME }}-${{ github.event.number }}
+
+jobs:
+  # Test and lint job - runs first
+  test:
+    name: test-and-lint
+    runs-on: ubuntu-latest
+    # Skip entirely for fork PRs — secrets are withheld by GitHub for forks anyway,
+    # but this makes the intent explicit and avoids wasting CI minutes.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decrypt Secrets
+        run: |
+          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
+          # Load all .env variables into the GitHub Actions environment for subsequent steps
+          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
+        env:
+          # Only this one secret needs to be stored in GitHub repository secrets
+          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Task
+        run: pip install go-task-bin
+
+      - name: Install Dependencies
+        run: task install
+
+      - name: Lint
+        run: task lint-check
+
+      - name: Test
+        run: task test
+
+  # Deployment job - runs after tests pass
+  deploy:
+    name: pulumi-deploy-stack
+    runs-on: ubuntu-latest
+    needs: test
+    # Same fork guard as the test job above.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read # required for actions/checkout on private repos
+      pull-requests: write # required for peter-evans/create-or-update-comment
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decrypt Secrets
+        run: |
+          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
+          # Load all .env variables into the GitHub Actions environment for subsequent steps
+          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
+        env:
+          # Only this one secret needs to be stored in GitHub repository secrets
+          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Setup Project Dependencies
+        run: |
+          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+
+      - name: Plan Pulumi Update
+        id: plan_pulumi_update
+        run: |
+          source .venv/bin/activate
+          export $(grep -v '^#' .env | xargs)
+          # PULUMI_STACK env var selects the stack; --create initialises it if it doesn't exist yet
+          pulumi stack select --create $PULUMI_STACK
+          pulumi up --yes
+          # Store JSON output once and parse it for all values
+          PULUMI_OUTPUT=$(pulumi stack output --json)
+          APPLICATION_URL=$(echo "$PULUMI_OUTPUT" | jq -r 'to_entries[] | select(.key | startswith("Data Analyst Application")) | .value')
+          DEPLOYMENT_URL=$(echo "$PULUMI_OUTPUT" | jq -r 'to_entries[] | select(.key | startswith("Generative Analyst Deployment")) | .value')
+          APP_ID=$(echo "$PULUMI_OUTPUT" | jq -r '.DATAROBOT_APPLICATION_ID // empty')
+          LLM_ID=$(echo "$PULUMI_OUTPUT" | jq -r '.LLM_DEPLOYMENT_ID // empty')
+          echo "application_url=${APPLICATION_URL}" >> $GITHUB_OUTPUT
+          echo "deployment_url=${DEPLOYMENT_URL}" >> $GITHUB_OUTPUT
+          echo "app_id=${APP_ID}" >> $GITHUB_OUTPUT
+          echo "llm_id=${LLM_ID}" >> $GITHUB_OUTPUT
+          # PULUMI_ACCESS_TOKEN and all other secrets are sourced from .env.gpg above
+
+      - name: Comment PR with App URL
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.number }}
+          body: |
+            # 🚀 Your application is ready!
+            ## Application Info
+            - **Application URL:** [${{ steps.plan_pulumi_update.outputs.application_url }}](${{ steps.plan_pulumi_update.outputs.application_url }})
+            - **Application ID:** `${{ steps.plan_pulumi_update.outputs.app_id }}`
+            ## LLM Deployment
+            - **Deployment URL:** [${{ steps.plan_pulumi_update.outputs.deployment_url }}](${{ steps.plan_pulumi_update.outputs.deployment_url }})
+            - **Deployment ID:** `${{ steps.plan_pulumi_update.outputs.llm_id }}`
+            ### Pulumi Stack
+            - **Stack Name:** `${{ env.PULUMI_STACK }}`

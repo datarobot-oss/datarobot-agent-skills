@@ -46,7 +46,7 @@ def load_skill(skill_path: str) -> dict:
 
 def create_datarobot_agent():
     # Load the predictions skill
-    skill = load_skill('dr-predictions/SKILL.md')
+    skill = load_skill('datarobot-predictions/SKILL.md')
     
     # Create system prompt from skill
     system_prompt = f"""
@@ -81,7 +81,7 @@ class SkillRouter:
     def _load_all_skills(self):
         """Load all available skills."""
         for skill_dir in os.listdir(self.skills_dir):
-            if skill_dir.startswith('dr-'):
+            if skill_dir.startswith('datarobot-'):
                 skill_path = f"{skill_dir}/SKILL.md"
                 if os.path.exists(skill_path):
                     skill = load_skill(skill_path)
@@ -93,11 +93,11 @@ class SkillRouter:
         query_lower = user_query.lower()
         
         if 'predict' in query_lower or 'prediction' in query_lower:
-            return self.skills.get('dr-predictions')
+            return self.skills.get('datarobot-predictions')
         elif 'train' in query_lower or 'model' in query_lower:
-            return self.skills.get('dr-model-training')
+            return self.skills.get('datarobot-model-training')
         elif 'deploy' in query_lower:
-            return self.skills.get('dr-model-deployment')
+            return self.skills.get('datarobot-model-deployment')
         # ... more matching logic
         
         return None
@@ -166,7 +166,7 @@ def get_deployment_features_node(state):
     
     if deployment_id:
         result = execute_skill_script(
-            'dr-predictions/scripts/get_deployment_features.py',
+            'datarobot-predictions/scripts/get_deployment_features.py',
             [deployment_id]
         )
         state['deployment_features'] = result
@@ -214,11 +214,9 @@ def code_generation_node(state):
 Rather than shipping a “known-to-run” LangGraph snippet (LangGraph/LangChain versions change frequently),
 the recommended pattern is:
 
-1. **Load** `dr-*/SKILL.md` as prompt text
+1. **Load** `datarobot-*/SKILL.md` as prompt text
 2. **Route** to the right skill based on intent
 3. **Execute** the SDK workflow directly (or via helper scripts) in a safe environment
-
-For a verified, runnable SDK workflow example (no LangGraph), see `examples/sdk_smoke_predictions.py`.
 
 ## Best Practices for LangGraph
 
@@ -249,11 +247,11 @@ def datarobot_node(state):
     
     # Determine which skill to use
     if 'predict' in query.lower():
-        skill_content = load_skill('dr-predictions')
+        skill_content = load_skill('datarobot-predictions')
     elif 'train' in query.lower():
-        skill_content = load_skill('dr-model-training')
+        skill_content = load_skill('datarobot-model-training')
     else:
-        skill_content = load_skill('dr-predictions')  # default
+        skill_content = load_skill('datarobot-predictions')  # default
     
     # Use skill as system prompt
     system_prompt = f"Use this guidance: {skill_content}"

@@ -2,30 +2,37 @@
 
 This file provides instructions for OpenAI Codex to use DataRobot skills. Codex will automatically load these instructions when working with DataRobot-related tasks.
 
+## Naming Convention
+
+All DataRobot skills follow the naming convention `datarobot-<category>` where `<category>` describes the skill's focus area. This ensures:
+- Clear identification of DataRobot-specific skills
+- Consistent naming across the skill library
+- Easy discovery and organization
+
 ## Available Skills
 
-### dr-model-training
+### datarobot-model-training
 Use this skill when working with model training, project creation, AutoML configuration, or model selection tasks.
 
-### dr-model-deployment
+### datarobot-model-deployment
 Use this skill when deploying models, managing deployments, or configuring prediction environments.
 
-### dr-predictions
+### datarobot-predictions
 Use this skill when making predictions, generating prediction datasets, or validating prediction data.
 
-### dr-feature-engineering
+### datarobot-feature-engineering
 Use this skill when analyzing feature importance, understanding feature engineering, or optimizing feature sets.
 
-### dr-model-monitoring
+### datarobot-model-monitoring
 Use this skill when monitoring model performance, tracking data drift, or managing model health.
 
-### dr-data-preparation
+### datarobot-data-preparation
 Use this skill when uploading datasets, validating data, or preparing data for DataRobot projects.
 
-### dr-model-explainability
+### datarobot-model-explainability
 Use this skill when analyzing model explainability, getting prediction explanations, SHAP values, or generating model diagnostics.
 
-### datarobot-templates-cicd
+### datarobot-app-framework-cicd
 Use this skill when setting up CI/CD pipelines for DataRobot application templates, configuring GitLab or GitHub Actions workflows, managing Pulumi infrastructure, or implementing review deployments and continuous delivery.
 
 ## How to Use
@@ -42,14 +49,14 @@ Skills provide instructions, workflows, and code examples - the agent writes and
 
 ## Skill Selection Guide
 
-- **Training models**: Use `dr-model-training`
-- **Deploying models**: Use `dr-model-deployment`
-- **Making predictions**: Use `dr-predictions`
-- **Feature analysis**: Use `dr-feature-engineering`
-- **Monitoring models**: Use `dr-model-monitoring`
-- **Data management**: Use `dr-data-preparation`
-- **Model explainability**: Use `dr-model-explainability`
-- **CI/CD for application templates**: Use `datarobot-templates-cicd`
+- **Training models**: Use `datarobot-model-training`
+- **Deploying models**: Use `datarobot-model-deployment`
+- **Making predictions**: Use `datarobot-predictions`
+- **Feature analysis**: Use `datarobot-feature-engineering`
+- **Monitoring models**: Use `datarobot-model-monitoring`
+- **Data management**: Use `datarobot-data-preparation`
+- **Model explainability**: Use `datarobot-model-explainability`
+- **CI/CD for application templates**: Use `datarobot-app-framework-cicd`
 
 For complex tasks, you may need to use multiple skills in sequence.
 

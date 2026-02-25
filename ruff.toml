@@ -1,0 +1,14 @@
+# Ruff configuration for DataRobot Agent Skills
+# https://docs.astral.sh/ruff/configuration/
+
+[lint]
+# Ignore F841 (unused variable) as skill scripts are often snippets/examples
+# where variables like `client` are initialized but may not be fully used
+ignore = ["F841"]
+
+[format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Use 4 spaces for indentation
+indent-style = "space"
