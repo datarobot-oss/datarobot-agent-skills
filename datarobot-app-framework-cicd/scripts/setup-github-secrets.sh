@@ -32,7 +32,7 @@ echo ""
 # Get repository (or use current)
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "")
 if [ -z "$REPO" ]; then
-    read -p "Enter repository (owner/repo): " REPO
+    read -rp "Enter repository (owner/repo): " REPO
 fi
 
 echo "Repository: $REPO"
@@ -47,7 +47,7 @@ add_secret() {
     echo "📝 Setting up secret: $secret_name"
     echo "   $secret_description"
 
-    read -sp "   Enter value: " secret_value
+    read -rsp "   Enter value: " secret_value
     echo ""
 
     if [ -n "$secret_value" ]; then
@@ -69,10 +69,10 @@ add_variable() {
     echo "📝 Setting up variable: $var_name"
     echo "   $var_description"
     if [ -n "$default_value" ]; then
-        read -p "   Enter value [$default_value]: " var_value
+        read -rp "   Enter value [$default_value]: " var_value
         var_value="${var_value:-$default_value}"
     else
-        read -p "   Enter value: " var_value
+        read -rp "   Enter value: " var_value
     fi
 
     if [ -n "$var_value" ]; then

@@ -1,3 +1,4 @@
+---
 # Example GitHub Actions continuous delivery workflow for DataRobot Application Templates
 # Copy this to your repository as .github/workflows/cd.yml
 #
