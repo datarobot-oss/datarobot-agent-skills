@@ -126,9 +126,7 @@ def validate_gemini_extension(repo_root: Path) -> bool:
         # Check path exists on disk
         full_path = repo_root / path
         if not full_path.exists():
-            errors.append(
-                f"ERROR: gemini-extension.json path '{path}' does not exist"
-            )
+            errors.append(f"ERROR: gemini-extension.json path '{path}' does not exist")
 
         # Check name matches folder in path (e.g. 'datarobot-predictions' in 'datarobot-predictions/SKILL.md')
         if path:
@@ -146,7 +144,9 @@ def validate_gemini_extension(repo_root: Path) -> bool:
         print()
         return False
 
-    print(f"✅ gemini-extension.json validated successfully! ({len(skills)} skills checked)")
+    print(
+        f"✅ gemini-extension.json validated successfully! ({len(skills)} skills checked)"
+    )
     return True
 
 

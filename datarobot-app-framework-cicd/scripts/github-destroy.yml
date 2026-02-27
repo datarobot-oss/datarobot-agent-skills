@@ -1,0 +1,58 @@
+---
+# Example GitHub Actions destroy workflow for DataRobot Application Templates
+# Copy this to your repository as .github/workflows/destroy.yml
+# This workflow allows manual destruction of review app stacks
+
+name: Pulumi Stack Destroy
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'Stack name to destroy (e.g. github-pr-foobar-42)'
+        required: true
+        type: string
+
+jobs:
+  destroy:
+    name: pulumi-destroy-stack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Bind the user-supplied input to PULUMI_STACK so it is never interpolated
+      # directly into the shell script (prevents script injection attacks).
+      PULUMI_STACK: ${{ github.event.inputs.stack_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decrypt Secrets
+        run: |
+          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
+          # Load all .env variables into the GitHub Actions environment for subsequent steps
+          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
+        env:
+          # Only this one secret needs to be stored in GitHub repository secrets
+          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Pulumi
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Setup Project Dependencies
+        run: |
+          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+
+      - name: Destroy Pulumi Stack
+        run: |
+          source .venv/bin/activate
+          # PULUMI_STACK env var identifies the stack for all commands
+          pulumi destroy --yes
+          pulumi stack rm --yes
