@@ -1,11 +1,26 @@
 ---
-# Example GitHub Actions deployment workflow for DataRobot Application Templates
+# GitHub Actions review app deployment workflow for DataRobot Application Templates
 # Copy this to your repository as .github/workflows/deploy.yml
+#
+# Triggered when the 'deploy' label is applied to a PR. Creates a per-PR ephemeral
+# Pulumi stack, runs the full deployment, and posts the stack outputs as a PR comment.
+# The stack name prefix is controlled by the PULUMI_STACK_REVIEW_NAME repository variable
+# (set via: gh variable set PULUMI_STACK_REVIEW_NAME --body 'review').
+#
+# To destroy the review stack when you're done, trigger destroy.yml with the stack name.
 
-name: Pulumi Deployment
+name: Deploy review app
+
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [labeled]
+
+# Serialise deployments per PR. cancel-in-progress: false so that adding an
+# unrelated label (e.g. 'bug') while a deploy is running doesn't cancel it —
+# the new run will simply skip all jobs because the 'deploy' if-condition won't match.
+concurrency:
+  group: review-${{ github.event.number }}
+  cancel-in-progress: false
 
 # Restrict default permissions for all jobs — each job grants only what it needs.
 permissions:
@@ -15,111 +30,101 @@ env:
   PULUMI_STACK: ${{ vars.PULUMI_STACK_REVIEW_NAME }}-${{ github.event.number }}
 
 jobs:
-  # Test and lint job - runs first
-  test:
-    name: test-and-lint
+  # Run linters before spending time on a cloud deployment.
+  lint:
+    name: lint
     runs-on: ubuntu-latest
-    # Skip entirely for fork PRs — secrets are withheld by GitHub for forks anyway,
-    # but this makes the intent explicit and avoids wasting CI minutes.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Only run when the 'deploy' label is applied, and only for same-repo PRs (not forks).
+    if: github.event.label.name == 'deploy' && github.event.pull_request.head.repo.full_name == github.repository
+    defaults:
+      run:
+        working-directory: infra
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Decrypt Secrets
-        run: |
-          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
-          # Load all .env variables into the GitHub Actions environment for subsequent steps
-          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
-        env:
-          # Only this one secret needs to be stored in GitHub repository secrets
-          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
-
-      - uses: actions/setup-python@v5
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: 3.12
+          working-directory: infra
+          python-version: "3.12"
 
-      - name: Install Task
-        run: pip install go-task-bin
+      - name: Install Taskfile
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: task install
 
-      - name: Lint
+      - name: Run linters
         run: task lint-check
 
-      - name: Test
-        run: task test
-
-  # Deployment job - runs after tests pass
+  # Deploy the review stack once lint passes.
   deploy:
-    name: pulumi-deploy-stack
+    name: pulumi-deploy-review-stack
     runs-on: ubuntu-latest
-    needs: test
-    # Only run when the 'deploy' label is applied, and only for same-repo PRs.
-    if: github.event.label.name == 'deploy' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: lint
     permissions:
-      contents: read # required for actions/checkout on private repos
-      pull-requests: write # required for peter-evans/create-or-update-comment
+      contents: read
+      pull-requests: write # required to post the deployment comment
+    defaults:
+      run:
+        working-directory: infra
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Decrypt Secrets
-        run: |
-          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
-          # Load all .env variables into the GitHub Actions environment for subsequent steps
-          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
-        env:
-          # Only this one secret needs to be stored in GitHub repository secrets
-          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
-
-      - uses: actions/setup-python@v5
+      - name: Decrypt secrets
+        uses: ./.github/actions/decrypt-secrets
         with:
-          python-version: 3.12
+          passphrase: ${{ secrets.CICD_SECRET_PASSPHRASE }}
 
-      - name: Install Pulumi
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          working-directory: infra
+          python-version: "3.12"
+
+      - name: Install Taskfile
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: task install
+
+      - name: Verify secrets
+        run: task verify-secrets
+
+      - name: Deploy review stack
+        id: deploy
         run: |
-          curl -fsSL https://get.pulumi.com | sh
-          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+          task select -- --create "$PULUMI_STACK"
+          task up-yes
+          # Capture all stack outputs as JSON for the PR comment
+          STACK_OUTPUTS=$(task pulumi -- stack output --json)
+          # Use a heredoc delimiter to safely handle multi-line JSON in GITHUB_OUTPUT
+          echo "stack_outputs<<PULUMI_OUTPUT_EOF" >> "$GITHUB_OUTPUT"
+          echo "$STACK_OUTPUTS" >> "$GITHUB_OUTPUT"
+          echo "PULUMI_OUTPUT_EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Project Dependencies
-        run: |
-          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv venv .venv
-          source .venv/bin/activate
-          uv pip install -r requirements.txt
-
-      - name: Plan Pulumi Update
-        id: plan_pulumi_update
-        run: |
-          source .venv/bin/activate
-          export $(grep -v '^#' .env | xargs)
-          # PULUMI_STACK env var selects the stack; --create initialises it if it doesn't exist yet
-          pulumi stack select --create $PULUMI_STACK
-          pulumi up --yes
-          # Store JSON output once and parse it for all values
-          PULUMI_OUTPUT=$(pulumi stack output --json)
-          APPLICATION_URL=$(echo "$PULUMI_OUTPUT" | jq -r 'to_entries[] | select(.key | startswith("Data Analyst Application")) | .value')
-          DEPLOYMENT_URL=$(echo "$PULUMI_OUTPUT" | jq -r 'to_entries[] | select(.key | startswith("Generative Analyst Deployment")) | .value')
-          APP_ID=$(echo "$PULUMI_OUTPUT" | jq -r '.DATAROBOT_APPLICATION_ID // empty')
-          LLM_ID=$(echo "$PULUMI_OUTPUT" | jq -r '.LLM_DEPLOYMENT_ID // empty')
-          echo "application_url=${APPLICATION_URL}" >> $GITHUB_OUTPUT
-          echo "deployment_url=${DEPLOYMENT_URL}" >> $GITHUB_OUTPUT
-          echo "app_id=${APP_ID}" >> $GITHUB_OUTPUT
-          echo "llm_id=${LLM_ID}" >> $GITHUB_OUTPUT
-          # PULUMI_ACCESS_TOKEN and all other secrets are sourced from .env.gpg above
-
-      - name: Comment PR with App URL
+      - name: Comment PR with deployment details
         uses: peter-evans/create-or-update-comment@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.number }}
           body: |
-            # 🚀 Your application is ready!
-            ## Application Info
-            - **Application URL:** [${{ steps.plan_pulumi_update.outputs.application_url }}](${{ steps.plan_pulumi_update.outputs.application_url }})
-            - **Application ID:** `${{ steps.plan_pulumi_update.outputs.app_id }}`
-            ## LLM Deployment
-            - **Deployment URL:** [${{ steps.plan_pulumi_update.outputs.deployment_url }}](${{ steps.plan_pulumi_update.outputs.deployment_url }})
-            - **Deployment ID:** `${{ steps.plan_pulumi_update.outputs.llm_id }}`
-            ### Pulumi Stack
-            - **Stack Name:** `${{ env.PULUMI_STACK }}`
+            ## 🚀 Review app deployed
+
+            **Stack:** `${{ env.PULUMI_STACK }}`
+
+            <details>
+            <summary>Stack outputs</summary>
+
+            ```json
+            ${{ steps.deploy.outputs.stack_outputs }}
+            ```
+
+            </details>
+
+            > To destroy this stack run the [Destroy workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/destroy.yml) with stack name `${{ env.PULUMI_STACK }}`.
