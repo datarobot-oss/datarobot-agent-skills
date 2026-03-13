@@ -65,3 +65,20 @@ dr task deploy
 ```bash
 dr task infra:down
 ```
+
+## Resources
+
+**Documentation:**
+- App Framework Docs: [Confluence Space](https://confluence.corp.datarobot.com/display/AF)
+- DataRobot CLI: https://docs.datarobot.com/en/docs/more-info/app-framework/cli.html
+- Agent Templates: https://github.com/datarobot-community/datarobot-agent-templates
+
+**Component Repos:**
+- Base: https://github.com/datarobot/af-component-base
+- LLM: https://github.com/datarobot-community/af-component-llm
+- Agent: https://github.com/datarobot-community/af-component-agent
+- Discover more: Search `af-component` in datarobot/datarobot-community orgs
+
+**Community:**
+- Slack: #applications
+- Diffington (auto-updates): Request in #applications
