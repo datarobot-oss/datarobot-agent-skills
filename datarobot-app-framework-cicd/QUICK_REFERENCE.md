@@ -11,8 +11,8 @@ brew install gh  # macOS
 # Authenticate
 gh auth login
 
-# Run setup script
-./infra/scripts/setup-github-secrets.sh
+# Run setup script (sets secrets, variables, and the 'deploy' label)
+./infra/scripts/setup-github-cicd.sh
 ```
 
 ### Manual Commands
@@ -71,21 +71,25 @@ glab variable delete VAR_NAME
 ### Encrypt .env for GitHub
 ```bash
 # Automated
-./infra/scripts/encrypt-secrets.sh
+./infra/scripts/secrets.sh encrypt
+# or via task:
+task infra:encrypt-secrets
 
 # Manual
 gpg --symmetric --cipher-algo AES256 .env
 git add .env.gpg
-git commit -m "Add encrypted secrets"
+git commit -m "chore: add encrypted secrets"
 ```
 
 ### Decrypt .env Locally
 ```bash
 # Automated
-./infra/scripts/decrypt-secrets.sh
+./infra/scripts/secrets.sh decrypt
+# or via task:
+task infra:decrypt-secrets
 
 # Manual
-gpg --quiet --batch --yes --decrypt --output .env .env.gpg
+gpg --quiet --decrypt --output .env .env.gpg
 ```
 
 ## Pulumi Setup
@@ -144,17 +148,15 @@ rm <stackname>-backup.json
 task infra:encrypt-secrets
 task infra:decrypt-secrets
 task infra:verify-secrets
+task infra:setup-github-cicd
 
 # Pulumi
-task infra:pulumi-login-cloud
+task infra:pulumi-setup
 task infra:pulumi-login-azure
-task infra:pulumi-deploy
-task infra:pulumi-destroy
-task infra:pulumi-output
-
-# Testing
-task infra:ci-test-local
-task infra:ci-simulate-deploy
+task infra:select -- --create dev
+task infra:up-yes
+task infra:down-yes
+task infra:pulumi -- stack output --json
 ```
 
 ## Quick Start Workflow
@@ -166,8 +168,8 @@ brew install gh
 
 # 2. Setup
 gh auth login
-./infra/scripts/encrypt-secrets.sh     # encrypts .env → .env.gpg
-./infra/scripts/setup-github-secrets.sh  # sets only CICD_SECRET_PASSPHRASE
+./infra/scripts/secrets.sh encrypt      # encrypts .env → .env.gpg
+./infra/scripts/setup-github-cicd.sh    # sets secret, variables, and 'deploy' label
 git add .env.gpg .github/
 
 # 3. Push and test

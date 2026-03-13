@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Add secrets to GitHub repository using GitHub CLI
+# Configure GitHub repository for CI/CD: secrets, Actions variables, and labels.
 # Requires: gh CLI (https://cli.github.com/)
 
 set -euo pipefail
 
-echo "🔐 GitHub Secrets Setup"
-echo "======================="
+echo "🔐 GitHub CI/CD Setup"
+echo "====================="
 echo ""
 
 # Check if gh is installed

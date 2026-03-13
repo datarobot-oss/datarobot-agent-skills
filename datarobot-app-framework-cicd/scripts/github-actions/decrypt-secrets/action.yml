@@ -1,0 +1,30 @@
+---
+name: Decrypt secrets
+description: >
+  Decrypt .env.gpg with GPG, mask every value so it is redacted from all subsequent log output, then export the variables
+  into GITHUB_ENV.
+inputs:
+  passphrase:
+    description: GPG passphrase for decrypting .env.gpg (CICD_SECRET_PASSPHRASE)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Decrypt and mask secrets
+      shell: bash
+      # Always run from the repo root regardless of the calling job's
+      # default working-directory so .env.gpg is found at the right path.
+      working-directory: ${{ github.workspace }}
+      run: |
+        gpg --quiet --batch --yes --decrypt --passphrase="$PASSPHRASE" --output .env .env.gpg
+        # Mask every secret value so they are redacted from all subsequent log output
+        while IFS= read -r line; do
+          [[ "$line" =~ ^[[:space:]]*# || -z "$line" ]] && continue
+          value="${line#*=}"
+          [[ -n "$value" ]] && echo "::add-mask::$value"
+        done < .env
+        # Load all .env variables into the GitHub Actions environment for subsequent steps
+        grep -v '^#' .env | grep -v '^$' >> "$GITHUB_ENV"
+      env:
+        PASSPHRASE: ${{ inputs.passphrase }}

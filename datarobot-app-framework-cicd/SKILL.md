@@ -43,11 +43,13 @@ application-template-root/
 │   ├── Taskfile.yaml               # ⚠️ CI/CD tasks go HERE — copy from infra/scripts/taskfile-snippets.yaml
 │   └── scripts/                    # Copy entire scripts/ directory here
 │       ├── README.md               # Copy from scripts/infra-README.md
-│       ├── setup-github-secrets.sh
+│       ├── secrets.sh
+│       ├── setup-github-cicd.sh
 │       ├── setup-gitlab-variables.sh
-│       ├── encrypt-secrets.sh
-│       ├── decrypt-secrets.sh
 │       ├── pulumi-setup.sh
+│       ├── github-actions/         # composite action — copy to .github/actions/
+│       │   └── decrypt-secrets/
+│       │       └── action.yml
 │       ├── gitlab-ci.yml           # ⚠️ TEMPORARY — delete after copying to .gitlab-ci.yml
 │       ├── github-deploy.yml       # ⚠️ TEMPORARY — delete after copying to .github/workflows/deploy.yml
 │       ├── github-cd.yml           # ⚠️ TEMPORARY — delete after copying to .github/workflows/cd.yml
@@ -57,6 +59,9 @@ application-template-root/
 ├── .env.gpg                        # Encrypted secrets (commit for GitHub)
 ├── .gitlab-ci.yml                  # Copy from infra/scripts/gitlab-ci.yml
 ├── .github/
+│   ├── actions/
+│   │   └── decrypt-secrets/        # Copy from infra/scripts/github-actions/decrypt-secrets/
+│   │       └── action.yml
 │   └── workflows/
 │       ├── deploy.yml              # Copy from infra/scripts/github-deploy.yml (PR review deploys)
 │       ├── cd.yml                  # Copy from infra/scripts/github-cd.yml (push-to-main CD)
@@ -162,7 +167,8 @@ Adjust the table rows, task names, and stack-naming strategy to match what was a
 3. Make scripts executable: `chmod +x infra/scripts/*.sh`
 4. Copy CI/CD configs to standard locations:
    - GitLab: `cp infra/scripts/gitlab-ci.yml .gitlab-ci.yml`
-   - GitHub: `cp infra/scripts/github-*.yml .github/workflows/`
+   - GitHub workflows: `cp infra/scripts/github-*.yml .github/workflows/`
+   - GitHub composite action: `mkdir -p .github/actions/decrypt-secrets && cp infra/scripts/github-actions/decrypt-secrets/action.yml .github/actions/decrypt-secrets/`
 5. Copy tasks from `infra/scripts/taskfile-snippets.yaml` to `infra/Taskfile.yaml`
    Then add an `includes` entry to the root `Taskfile.yml` pointing to `./infra/Taskfile.yaml` — **do NOT paste tasks directly into root Taskfile.yml**
 6. **⚠️ CLEAN UP snippet files** — remove the originals now that they've been copied to their final destinations:
@@ -171,7 +177,7 @@ Adjust the table rows, task names, and stack-naming strategy to match what was a
    rm infra/scripts/github-cd.yml infra/scripts/github-deploy.yml infra/scripts/github-destroy.yml
    rm infra/scripts/taskfile-snippets.yaml
    ```
-7. Guide user to run `task infra:setup-github-secrets` or `task infra:setup-gitlab-vars`
+7. Guide user to run `task infra:setup-github-cicd` or `task infra:setup-gitlab-vars`
 8. If GitHub, guide user to run `task encrypt-secrets` to encrypt `.env` file
 9. **Generate `infra/README.md`** tailored to GitLab + chosen Pulumi backend (see "Generating infra/README.md" above)
 10. Test pipeline with a sample PR/MR
@@ -184,7 +190,8 @@ Adjust the table rows, task names, and stack-naming strategy to match what was a
 1. Create `infra/scripts/` directory: `mkdir -p infra && cp -R <skill-path>/scripts infra/scripts`
 2. Make scripts executable: `chmod +x infra/scripts/*.sh`
 3. Copy GitHub workflows: `cp infra/scripts/github-*.yml .github/workflows/`
-4. Copy `infra/scripts/taskfile-snippets.yaml` to `infra/Taskfile.yaml`: `cp infra/scripts/taskfile-snippets.yaml infra/Taskfile.yaml`
+4. Copy composite action: `mkdir -p .github/actions/decrypt-secrets && cp infra/scripts/github-actions/decrypt-secrets/action.yml .github/actions/decrypt-secrets/`
+5. Copy `infra/scripts/taskfile-snippets.yaml` to `infra/Taskfile.yaml`: `cp infra/scripts/taskfile-snippets.yaml infra/Taskfile.yaml`
    Add an `includes` entry for `./infra/Taskfile.yaml` to the root `Taskfile.yml` — **do NOT paste tasks directly into root Taskfile.yml**
 5. **⚠️ CLEAN UP snippet files** — remove the originals now that they've been copied to their final destinations:
    ```bash
@@ -193,7 +200,7 @@ Adjust the table rows, task names, and stack-naming strategy to match what was a
    rm infra/scripts/taskfile-snippets.yaml
    ```
 6. Guide user to encrypt `.env` with `task infra:encrypt-secrets`
-7. Guide user to set up GitHub secrets with `task infra:setup-github-secrets`
+7. Guide user to set up GitHub secrets with `task infra:setup-github-cicd`
 8. Add encrypted `.env.gpg` to repository
 9. **Generate `infra/README.md`** tailored to GitHub Actions + chosen Pulumi backend (see "Generating infra/README.md" above)
 10. Test workflow with a sample pull request
@@ -532,13 +539,15 @@ project-root/
 | Script | Purpose |
 |--------|--------|
 | `gitlab-ci.yml` | Complete GitLab CI/CD pipeline — copy to `.gitlab-ci.yml` |
+| `github-cd.yml` | GitHub Actions CD workflow — copy to `.github/workflows/cd.yml` |
 | `github-deploy.yml` | GitHub Actions deploy workflow — copy to `.github/workflows/deploy.yml` |
 | `github-destroy.yml` | GitHub Actions destroy workflow — copy to `.github/workflows/destroy.yml` |
+| `github-actions/decrypt-secrets/action.yml` | Composite action — copy to `.github/actions/decrypt-secrets/action.yml` |
 | `pulumi-setup.sh` | Interactive Pulumi backend setup + CI/CD variable configuration |
-| `setup-github-secrets.sh` | Interactive GitHub secrets + variables setup via `gh` CLI |
+| `setup-github-cicd.sh` | Interactive GitHub secrets, variables, and labels setup via `gh` CLI |
 | `setup-gitlab-variables.sh` | Interactive GitLab CI/CD variables setup via `glab` CLI |
-| `encrypt-secrets.sh` | GPG-encrypt `.env` → `.env.gpg` for CI |
-| `decrypt-secrets.sh` | Decrypt `.env.gpg` → `.env` for local development |
+| `secrets.sh encrypt` | GPG-encrypt `.env` → `.env.gpg` for committing |
+| `secrets.sh decrypt` | Decrypt `.env.gpg` → `.env` for local development |
 | `taskfile-snippets.yaml` | Task definitions — copy to `infra/Taskfile.yaml` |
 
 The typical first-time setup sequence:
@@ -551,12 +560,16 @@ chmod +x infra/scripts/*.sh
 cp infra/scripts/taskfile-snippets.yaml infra/Taskfile.yaml
 # Add includes entry to root Taskfile.yml — see Implementation Pattern above
 
-# 2. Configure Pulumi backend and CI/CD variables (interactive)
+# 2. Copy composite action to its final destination
+mkdir -p .github/actions/decrypt-secrets
+cp infra/scripts/github-actions/decrypt-secrets/action.yml .github/actions/decrypt-secrets/
+
+# 3. Configure Pulumi backend and CI/CD variables (interactive)
 ./infra/scripts/pulumi-setup.sh
 
-# 3. Encrypt credentials and push
+# 4. Encrypt credentials and push
 task infra:encrypt-secrets
-git add .env.gpg infra/ && git commit -m "Add CI/CD infrastructure"
+git add .env.gpg infra/ .github/ && git commit -m "Add CI/CD infrastructure"
 ```
 
 ## Troubleshooting

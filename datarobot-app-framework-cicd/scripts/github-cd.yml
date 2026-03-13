@@ -1,16 +1,22 @@
 ---
-# Example GitHub Actions continuous delivery workflow for DataRobot Application Templates
+# GitHub Actions continuous delivery workflow for DataRobot Application Templates
 # Copy this to your repository as .github/workflows/cd.yml
 #
 # Triggers on every push to the default branch and deploys to the persistent CI stack.
 # The stack name is controlled by the PULUMI_STACK_CI_NAME repository variable
 # (set via: gh variable set PULUMI_STACK_CI_NAME --body 'ci').
 
-name: Pulumi CD
+name: CD
+
 on:
   push:
     branches:
       - main
+
+# Serialise deployments to main — never run two deploys concurrently.
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
 
 # Restrict default permissions for all jobs — each job grants only what it needs.
 permissions:
@@ -23,39 +29,36 @@ jobs:
   deploy:
     name: pulumi-deploy-ci-stack
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Decrypt Secrets
-        run: |
-          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
-          # Load all .env variables into the GitHub Actions environment for subsequent steps
-          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
-        env:
-          # Only this one secret needs to be stored in GitHub repository secrets
-          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
-
-      - uses: actions/setup-python@v5
+      - name: Decrypt secrets
+        uses: ./.github/actions/decrypt-secrets
         with:
-          python-version: 3.12
+          passphrase: ${{ secrets.CICD_SECRET_PASSPHRASE }}
 
-      - name: Install Pulumi
-        run: |
-          curl -fsSL https://get.pulumi.com | sh
-          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          working-directory: infra
+          python-version: "3.12"
 
-      - name: Setup Project Dependencies
-        run: |
-          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv venv .venv
-          source .venv/bin/activate
-          uv pip install -r requirements.txt
+      - name: Install Taskfile
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy CI Stack
+      - name: Install dependencies
+        run: task install
+
+      - name: Verify secrets
+        run: task verify-secrets
+
+      - name: Deploy CI stack
         run: |
-          source .venv/bin/activate
-          export $(grep -v '^#' .env | xargs)
-          # PULUMI_STACK selects the persistent CI stack; --create initialises it if it doesn't exist yet
-          pulumi stack select --create $PULUMI_STACK
-          pulumi up --yes
-          echo "✅ Deployed CI stack: $PULUMI_STACK"
+          task select -- --create "$PULUMI_STACK"
+          task up-yes
