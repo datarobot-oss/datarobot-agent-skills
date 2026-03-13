@@ -1,0 +1,119 @@
+---
+# Example GitLab CI/CD configuration for DataRobot Application Templates
+# Copy this to your repository root as .gitlab-ci.yml
+
+image: cimg/python:3.11-node
+
+variables:
+  DATAROBOT_ENDPOINT: https://app.datarobot.com/api/v2
+  FRONTEND_TYPE: react
+  # ── Pulumi stack names ─────────────────────────────────────────────────────
+  # Set PULUMI_STACK_CI_NAME and PULUMI_STACK_REVIEW_NAME as plain CI/CD
+  # variables in GitLab (Settings → CI/CD → Variables) to override these
+  # defaults.  Project variables always take precedence over the values below.
+  PULUMI_STACK_REVIEW_NAME: review-mr-$CI_MERGE_REQUEST_IID
+  PULUMI_STACK_CI_NAME: ci
+  # ── Secrets ────────────────────────────────────────────────────────────────
+  # Only one secret needs to be set in GitLab CI/CD settings:
+  # CICD_SECRET_PASSPHRASE: "$CICD_SECRET_PASSPHRASE"  (GPG passphrase to decrypt .env.gpg)
+  # ⚠️  CICD_SECRET_PASSPHRASE MUST be set as a "Protected variable" in GitLab so it is
+  #     never exposed to pipelines triggered from forks.
+  # All other secrets (DATAROBOT_API_TOKEN, PULUMI_ACCESS_TOKEN, LLM keys, etc.)
+  # are stored in .env.gpg and sourced automatically in before_script.
+
+before_script:
+  # Decrypt .env.gpg and source all secrets — only CICD_SECRET_PASSPHRASE must be set in GitLab CI/CD settings
+  - gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
+  - export $(grep -v '^#' .env | grep -v '^$' | xargs)
+  - pip install go-task-bin
+  - task install
+  - source .venv/bin/activate
+
+stages:
+  - check
+  - review
+  - deploy
+  - cleanup
+
+# Linting stage - runs on every merge request from the same project (not forks)
+lint:
+  stage: check
+  script:
+    - task lint-check
+  rules:
+    - if: $CI_MERGE_REQUEST_ID && $CI_PROJECT_ID == $CI_MERGE_REQUEST_SOURCE_PROJECT_ID
+
+# Testing stage - runs on every merge request from the same project (not forks)
+test:
+  stage: check
+  script:
+    - task test
+  rules:
+    - if: $CI_MERGE_REQUEST_ID && $CI_PROJECT_ID == $CI_MERGE_REQUEST_SOURCE_PROJECT_ID
+
+# Review app deployment - manual trigger for MR validation (same-project MRs only)
+review_app:
+  stage: review
+  variables:
+    PULUMI_STACK: $PULUMI_STACK_REVIEW_NAME
+  script:
+    # Install Pulumi
+    - curl -fsSL https://get.pulumi.com | sh
+    - export PATH="~/.pulumi/bin:$PATH"
+    # Login to Pulumi backend (DIY backend example using Azure Blob)
+    - pulumi login --cloud-url "azblob://dr-ai-apps-pulumi"
+    # Create the stack if it doesn't exist (PULUMI_STACK selects it for all subsequent commands)
+    - pulumi stack select --create $PULUMI_STACK
+    # Deploy the stack
+    - pulumi up --yes
+    - echo "Deploying review app for $PULUMI_STACK"
+    # Get stack outputs and format for GitLab comment
+    - STACK_OUTPUT="<br><br>$(pulumi stack output --shell)"
+    - STACK_OUTPUT="${STACK_OUTPUT//$'\n'/<br>}"
+    # Post comment to merge request with deployment info
+    - |
+      curl --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
+         --data "body=Review Deployment: $STACK_OUTPUT" \
+         "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes"
+  rules:
+    - if: $CI_MERGE_REQUEST_ID && $CI_PROJECT_ID == $CI_MERGE_REQUEST_SOURCE_PROJECT_ID
+      when: manual
+
+# Cleanup review app - manual trigger to destroy resources
+destroy_review_app:
+  stage: cleanup
+  variables:
+    PULUMI_STACK: $PULUMI_STACK_REVIEW_NAME
+  script:
+    - curl -fsSL https://get.pulumi.com | sh
+    - export PATH="~/.pulumi/bin:$PATH"
+    - pulumi login --cloud-url "azblob://dr-ai-apps-pulumi"
+    # Destroy the stack (PULUMI_STACK identifies which stack to target)
+    - pulumi destroy --yes
+    # Remove the stack from Pulumi backend
+    - pulumi stack rm --yes
+    - echo "Destroyed $PULUMI_STACK stack"
+  rules:
+    - if: $CI_MERGE_REQUEST_ID && $CI_PROJECT_ID == $CI_MERGE_REQUEST_SOURCE_PROJECT_ID
+      when: manual
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  needs:
+    - job: review_app
+      optional: true
+
+# Continuous delivery - automatic deployment on merge to default branch
+deploy_ci:
+  stage: deploy
+  variables:
+    PULUMI_STACK: $PULUMI_STACK_CI_NAME
+  script:
+    - curl -fsSL https://get.pulumi.com | sh
+    - export PATH="~/.pulumi/bin:$PATH"
+    - pulumi login --cloud-url "azblob://dr-ai-apps-pulumi"
+    # PULUMI_STACK selects the stack — no explicit stack select needed
+    - pulumi up --yes
+    - echo "Deployed $PULUMI_STACK stack"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
