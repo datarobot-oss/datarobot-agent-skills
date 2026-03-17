@@ -23,20 +23,19 @@ def validate_skills(repo_root: Path) -> bool:
     errors = []
     skills_found = 0
 
-    # Find all directories that could be skill folders
-    for item in repo_root.iterdir():
-        if not item.is_dir():
-            continue
+    # Skills are now in the skills/ directory
+    skills_dir = repo_root / "skills"
+    if not skills_dir.exists():
+        errors.append("ERROR: skills/ directory not found")
+        print("❌ Skill validation failed:\n")
+        for error in errors:
+            print(f"  {error}")
+        print()
+        return False
 
-        # Skip common non-skill directories
-        if item.name in {
-            ".git",
-            ".github",
-            "docs",
-            "__pycache__",
-            ".pytest_cache",
-            "bin",
-        }:
+    # Find all directories that could be skill folders
+    for item in skills_dir.iterdir():
+        if not item.is_dir():
             continue
 
         # Check if this looks like a skill folder (has SKILL.md)
@@ -128,9 +127,11 @@ def validate_gemini_extension(repo_root: Path) -> bool:
         if not full_path.exists():
             errors.append(f"ERROR: gemini-extension.json path '{path}' does not exist")
 
-        # Check name matches folder in path (e.g. 'datarobot-predictions' in 'datarobot-predictions/SKILL.md')
+        # Check name matches folder in path (e.g. 'datarobot-predictions' in 'skills/datarobot-predictions/SKILL.md')
         if path:
-            folder_from_path = Path(path).parts[0] if Path(path).parts else ""
+            parts = Path(path).parts
+            # Handle both old format (datarobot-X/SKILL.md) and new format (skills/datarobot-X/SKILL.md)
+            folder_from_path = parts[1] if len(parts) > 1 and parts[0] == "skills" else (parts[0] if parts else "")
             if name != folder_from_path:
                 errors.append(
                     f"ERROR: gemini-extension.json skill name '{name}' does not match "
