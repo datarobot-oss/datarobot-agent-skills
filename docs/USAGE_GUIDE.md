@@ -71,7 +71,7 @@ gemini extensions install https://github.com/datarobot-oss/datarobot-agent-skill
 **User**: "Create a new project with sales_data.csv, set 'revenue' as target, and start Quick AutoML"
 
 **Agent workflow**:
-1. Reads `datarobot-model-training/SKILL.md`
+1. Reads `skills/datarobot-model-training/SKILL.md`
 2. Follows the workflow example
 3. Writes Python code:
    ```python

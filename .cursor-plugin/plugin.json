@@ -8,13 +8,5 @@
   },
   "license": "Apache-2.0",
   "keywords": ["datarobot", "machine-learning", "mlops", "automl"],
-  "skills": [
-    "datarobot-data-preparation",
-    "datarobot-feature-engineering",
-    "datarobot-model-deployment",
-    "datarobot-model-explainability",
-    "datarobot-model-monitoring",
-    "datarobot-model-training",
-    "datarobot-predictions"
-  ]
+  "skills_directory": "skills"
 }

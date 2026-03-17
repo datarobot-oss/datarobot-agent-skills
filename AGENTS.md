@@ -39,7 +39,7 @@ Use this skill when setting up CI/CD pipelines for DataRobot application templat
 
 When a user requests a DataRobot-related task:
 
-1. **Identify the appropriate skill(s)** and load the corresponding `SKILL.md` file
+1. **Identify the appropriate skill(s)** and load the corresponding `SKILL.md` file from the `skills/` directory
 2. **Follow the skill's guidance** to use the DataRobot Python SDK directly
 3. **Install the SDK** if needed: `pip install datarobot`
 4. **Use the code examples** provided in each skill to write Python code
