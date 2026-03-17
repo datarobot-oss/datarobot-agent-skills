@@ -154,13 +154,15 @@ This repository contains skills for common DataRobot workflows. You can also con
 
 | Skill Folder | Description | Documentation |
 |-------------|-------------|--------------|
-| `datarobot-model-training/` | Instructions and utilities for training models, managing projects, and running AutoML experiments. | [SKILL.md](datarobot-model-training/SKILL.md) |
-| `datarobot-model-deployment/` | Tools for deploying models, managing deployments, and configuring prediction environments. | [SKILL.md](datarobot-model-deployment/SKILL.md) |
-| `datarobot-predictions/` | Guidance for making predictions, batch scoring, real-time predictions, and generating prediction datasets. | [SKILL.md](datarobot-predictions/SKILL.md) |
-| `datarobot-feature-engineering/` | Instructions for feature engineering, feature discovery, and feature importance analysis. | [SKILL.md](datarobot-feature-engineering/SKILL.md) |
-| `datarobot-model-monitoring/` | Tools for monitoring model performance, tracking data drift, and managing model health. | [SKILL.md](datarobot-model-monitoring/SKILL.md) |
-| `datarobot-model-explainability/` | Tools for model explainability, prediction explanations, SHAP values, and model diagnostics. | [SKILL.md](datarobot-model-explainability/SKILL.md) |
-| `datarobot-data-preparation/` | Utilities for data upload, dataset management, and data validation. | [SKILL.md](datarobot-data-preparation/SKILL.md) |
+| `skills/datarobot-model-training/` | Instructions and utilities for training models, managing projects, and running AutoML experiments. | [SKILL.md](skills/datarobot-model-training/SKILL.md) |
+| `skills/datarobot-model-deployment/` | Tools for deploying models, managing deployments, and configuring prediction environments. | [SKILL.md](skills/datarobot-model-deployment/SKILL.md) |
+| `skills/datarobot-predictions/` | Guidance for making predictions, batch scoring, real-time predictions, and generating prediction datasets. | [SKILL.md](skills/datarobot-predictions/SKILL.md) |
+| `skills/datarobot-feature-engineering/` | Instructions for feature engineering, feature discovery, and feature importance analysis. | [SKILL.md](skills/datarobot-feature-engineering/SKILL.md) |
+| `skills/datarobot-model-monitoring/` | Tools for monitoring model performance, tracking data drift, and managing model health. | [SKILL.md](skills/datarobot-model-monitoring/SKILL.md) |
+| `skills/datarobot-model-explainability/` | Tools for model explainability, prediction explanations, SHAP values, and model diagnostics. | [SKILL.md](skills/datarobot-model-explainability/SKILL.md) |
+| `skills/datarobot-data-preparation/` | Utilities for data upload, dataset management, and data validation. | [SKILL.md](skills/datarobot-data-preparation/SKILL.md) |
+| `skills/datarobot-app-framework-agent/` | Build and deploy multi-agent systems (CrewAI, LangGraph, LlamaIndex) to DataRobot. | [SKILL.md](skills/datarobot-app-framework-agent/SKILL.md) |
+| `skills/datarobot-app-framework-cicd/` | Set up CI/CD pipelines for DataRobot application templates with GitLab and GitHub Actions. | [SKILL.md](skills/datarobot-app-framework-cicd/SKILL.md) |
 
 ## Using skills in your coding agent
 
@@ -265,7 +267,7 @@ Skills guide your coding agent to use the **DataRobot Python SDK** directly. The
 2. Use the SDK based on skill instructions and examples
 3. Write and execute Python code to interact with DataRobot
 
-**Example**: When you ask "Generate a prediction dataset template", the agent reads `datarobot-predictions/SKILL.md`, then writes Python code using `datarobot` SDK to get deployment features and generate the template.
+**Example**: When you ask "Generate a prediction dataset template", the agent reads `skills/datarobot-predictions/SKILL.md`, then writes Python code using `datarobot` SDK to get deployment features and generate the template.
 
 ### Optional: MCP Server Support
 

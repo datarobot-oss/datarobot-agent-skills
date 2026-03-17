@@ -25,7 +25,7 @@ tasks:
   shellcheck:
     desc: Run shellcheck on all shell scripts
     cmds:
-      - shellcheck datarobot-app-framework-cicd/scripts/*.sh
+      - shellcheck skills/datarobot-app-framework-cicd/scripts/*.sh
 
   yamlfmt:
     desc: Format all YAML files with yamlfmt

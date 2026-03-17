@@ -131,7 +131,11 @@ def validate_gemini_extension(repo_root: Path) -> bool:
         if path:
             parts = Path(path).parts
             # Handle both old format (datarobot-X/SKILL.md) and new format (skills/datarobot-X/SKILL.md)
-            folder_from_path = parts[1] if len(parts) > 1 and parts[0] == "skills" else (parts[0] if parts else "")
+            folder_from_path = (
+                parts[1]
+                if len(parts) > 1 and parts[0] == "skills"
+                else (parts[0] if parts else "")
+            )
             if name != folder_from_path:
                 errors.append(
                     f"ERROR: gemini-extension.json skill name '{name}' does not match "
