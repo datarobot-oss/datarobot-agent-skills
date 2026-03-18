@@ -42,9 +42,6 @@ runs:
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
-        # Write each variable using the heredoc format so the runner's secret
-        # masking cannot corrupt KEY=VALUE lines in GITHUB_ENV.
-        # Using || [[ -n "$line" ]] handles files without a trailing newline.
         while IFS= read -r line || [[ -n "$line" ]]; do
           line="${line%$'\r'}"  # strip CRLF if .env has Windows line endings
           [[ "$line" =~ ^[[:space:]]*# || -z "$line" ]] && continue
@@ -54,5 +51,5 @@ runs:
           # Strip surrounding single or double quotes
           value="${value#\'}" ; value="${value%\'}"
           value="${value#\"}" ; value="${value%\"}"
-          printf '%s<<%s\n%s\n%s\n' "$key" "_DELIM_${key}_" "$value" "_DELIM_${key}_" >> "$GITHUB_ENV"
+          echo "${key}=${value}" >> "$GITHUB_ENV"
         done < .env
