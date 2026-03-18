@@ -12,7 +12,7 @@ brew install gh  # macOS
 gh auth login
 
 # Run setup script
-./infra/scripts/setup-github-secrets.sh
+./infra/scripts/setup-github-cicd.sh
 ```
 
 ### Manual Commands
@@ -71,7 +71,7 @@ glab variable delete VAR_NAME
 ### Encrypt .env for GitHub
 ```bash
 # Automated
-./infra/scripts/encrypt-secrets.sh
+./infra/scripts/secrets.sh encrypt
 
 # Manual
 gpg --symmetric --cipher-algo AES256 .env
@@ -82,7 +82,7 @@ git commit -m "Add encrypted secrets"
 ### Decrypt .env Locally
 ```bash
 # Automated
-./infra/scripts/decrypt-secrets.sh
+./infra/scripts/secrets.sh decrypt
 
 # Manual
 gpg --quiet --batch --yes --decrypt --output .env .env.gpg
@@ -141,20 +141,16 @@ rm <stackname>-backup.json
 > ⚠️ Tasks are namespaced under `infra:` (included from `infra/Taskfile.yaml`)
 ```bash
 # Secrets
-task infra:encrypt-secrets
-task infra:decrypt-secrets
-task infra:verify-secrets
+task infra:encrypt-secrets          # secrets.sh encrypt
+task infra:decrypt-secrets          # secrets.sh decrypt
+task infra:verify-secrets           # check required vars are in .env
+task infra:setup-github-cicd        # interactive GitHub setup
 
-# Pulumi
-task infra:pulumi-login-cloud
-task infra:pulumi-login-azure
-task infra:pulumi-deploy
-task infra:pulumi-destroy
-task infra:pulumi-output
-
-# Testing
-task infra:ci-test-local
-task infra:ci-simulate-deploy
+# Pulumi (all via uv run pulumi)
+task infra:select -- --create dev   # create/select a stack
+task infra:up-yes                   # deploy non-interactively
+task infra:down-yes                 # destroy non-interactively
+task infra:pulumi -- stack output   # arbitrary pulumi command
 ```
 
 ## Quick Start Workflow
@@ -166,8 +162,8 @@ brew install gh
 
 # 2. Setup
 gh auth login
-./infra/scripts/encrypt-secrets.sh     # encrypts .env → .env.gpg
-./infra/scripts/setup-github-secrets.sh  # sets only CICD_SECRET_PASSPHRASE
+./infra/scripts/secrets.sh encrypt       # encrypts .env → .env.gpg
+./infra/scripts/setup-github-cicd.sh    # sets CICD_SECRET_PASSPHRASE + variables + labels
 git add .env.gpg .github/
 
 # 3. Push and test

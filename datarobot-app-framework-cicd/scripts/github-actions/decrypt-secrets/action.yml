@@ -1,0 +1,58 @@
+---
+name: Decrypt secrets
+description: >
+  Decrypt .env.gpg with GPG, mask every value so it is redacted from all subsequent log output, then export the variables
+  into GITHUB_ENV.
+inputs:
+  passphrase:
+    description: GPG passphrase for decrypting .env.gpg (CICD_SECRET_PASSPHRASE)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Decrypt secrets
+      shell: bash
+      # Always run from the repo root regardless of the calling job's
+      # default working-directory so .env.gpg is found at the right path.
+      working-directory: ${{ github.workspace }}
+      run: |
+        gpg --quiet --batch --yes --decrypt --passphrase="$PASSPHRASE" --output .env .env.gpg
+      env:
+        PASSPHRASE: ${{ inputs.passphrase }}
+
+    - name: Mask secret values
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        # Emit ::add-mask:: for every value — must be a separate step so the
+        # masks are active before we write anything to GITHUB_ENV.
+        # Using || [[ -n "$line" ]] handles files without a trailing newline.
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          line="${line%$'\r'}"  # strip CRLF if .env has Windows line endings
+          [[ "$line" =~ ^[[:space:]]*# || -z "$line" ]] && continue
+          value="${line#*=}"
+          # Strip surrounding single or double quotes
+          value="${value#\'}" ; value="${value%\'}"
+          value="${value#\"}" ; value="${value%\"}"
+          [[ -n "$value" ]] && echo "::add-mask::$value"
+        done < .env
+
+    - name: Export secrets to environment
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        # Write each variable using the heredoc format so the runner's secret
+        # masking cannot corrupt KEY=VALUE lines in GITHUB_ENV.
+        # Using || [[ -n "$line" ]] handles files without a trailing newline.
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          line="${line%$'\r'}"  # strip CRLF if .env has Windows line endings
+          [[ "$line" =~ ^[[:space:]]*# || -z "$line" ]] && continue
+          [[ "$line" != *=* ]] && continue
+          key="${line%%=*}"
+          value="${line#*=}"
+          # Strip surrounding single or double quotes
+          value="${value#\'}" ; value="${value%\'}"
+          value="${value#\"}" ; value="${value%\"}"
+          printf '%s<<%s\n%s\n%s\n' "$key" "_DELIM_${key}_" "$value" "_DELIM_${key}_" >> "$GITHUB_ENV"
+        done < .env

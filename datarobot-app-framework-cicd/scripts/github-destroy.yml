@@ -1,16 +1,23 @@
 ---
-# Example GitHub Actions destroy workflow for DataRobot Application Templates
+# GitHub Actions stack destroy workflow for DataRobot Application Templates
 # Copy this to your repository as .github/workflows/destroy.yml
-# This workflow allows manual destruction of review app stacks
+#
+# Manually triggered to tear down a named Pulumi stack (e.g. a review app).
+# Run via: Actions → "Destroy stack" → enter the stack name.
 
-name: Pulumi Stack Destroy
+name: Destroy stack
+
 on:
   workflow_dispatch:
     inputs:
       stack_name:
-        description: 'Stack name to destroy (e.g. github-pr-foobar-42)'
+        description: Stack name to destroy (e.g. review-42)
         required: true
         type: string
+
+# Restrict default permissions for all jobs — each job grants only what it needs.
+permissions:
+  contents: read
 
 jobs:
   destroy:
@@ -18,41 +25,56 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # required for OIDC authentication to Azure
     env:
       # Bind the user-supplied input to PULUMI_STACK so it is never interpolated
       # directly into the shell script (prevents script injection attacks).
-      PULUMI_STACK: ${{ github.event.inputs.stack_name }}
+      PULUMI_STACK: ${{ inputs.stack_name }}
+    defaults:
+      run:
+        working-directory: infra
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Decrypt Secrets
-        run: |
-          gpg --quiet --batch --yes --decrypt --passphrase="$CICD_SECRET_PASSPHRASE" --output .env .env.gpg
-          # Load all .env variables into the GitHub Actions environment for subsequent steps
-          grep -v '^#' .env | grep -v '^$' >> $GITHUB_ENV
-        env:
-          # Only this one secret needs to be stored in GitHub repository secrets
-          CICD_SECRET_PASSPHRASE: ${{ secrets.CICD_SECRET_PASSPHRASE }}
-
-      - uses: actions/setup-python@v5
+      - name: Decrypt secrets
+        uses: ./.github/actions/decrypt-secrets
         with:
-          python-version: 3.12
+          passphrase: ${{ secrets.CICD_SECRET_PASSPHRASE }}
 
-      - name: Install Pulumi
-        run: |
-          curl -fsSL https://get.pulumi.com | sh
-          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+      # If using Azure Blob as the Pulumi state backend, derive the backend URL
+      # from the container name stored in .env (exported by the decrypt step above).
+      # Remove this step if using Pulumi Cloud or another backend.
+      - name: Set Pulumi backend URL
+        run: echo "PULUMI_BACKEND_URL=azblob://$PULUMI_AZURE_CONTAINER" >> "$GITHUB_ENV"
+        if: ${{ env.PULUMI_AZURE_CONTAINER != '' }}
 
-      - name: Setup Project Dependencies
-        run: |
-          command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv venv .venv
-          source .venv/bin/activate
-          uv pip install -r requirements.txt
+      # Authenticate to Azure using OIDC (no credentials stored in GitHub).
+      # Remove this step if not deploying Azure resources.
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        if: ${{ vars.AZURE_CLIENT_ID != '' }}
 
-      - name: Destroy Pulumi Stack
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          working-directory: infra
+          python-version: "3.12"
+
+      - name: Install Taskfile
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: task install
+
+      - name: Destroy stack
         run: |
-          source .venv/bin/activate
-          # PULUMI_STACK env var identifies the stack for all commands
-          pulumi destroy --yes
-          pulumi stack rm --yes
+          task select -- "$PULUMI_STACK"
+          task down-yes
+          task pulumi -- stack rm --yes

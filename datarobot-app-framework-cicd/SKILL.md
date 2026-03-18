@@ -1,6 +1,6 @@
 ---
 name: datarobot-app-framework-cicd
-description: Guidance for setting up CI/CD pipelines for DataRobot application templates using GitLab, GitHub Actions, and Pulumi for infrastructure as code.
+description: Set up CI/CD for DataRobot application templates with GitHub Actions or GitLab CI/CD and Pulumi infrastructure as code. Use when configuring automated deployments, PR review apps, GPG-encrypted secrets, or Pulumi state backends (Cloud, Azure Blob, S3) for DataRobot apps.
 ---
 
 # DataRobot Application Templates CI/CD Skill
@@ -43,23 +43,28 @@ application-template-root/
 │   ├── Taskfile.yaml               # ⚠️ CI/CD tasks go HERE — copy from infra/scripts/taskfile-snippets.yaml
 │   └── scripts/                    # Copy entire scripts/ directory here
 │       ├── README.md               # Copy from scripts/infra-README.md
-│       ├── setup-github-secrets.sh
+│       ├── secrets.sh              # encrypt/decrypt .env (subcommands: encrypt, decrypt)
+│       ├── setup-github-cicd.sh    # GitHub secrets, variables, and labels
 │       ├── setup-gitlab-variables.sh
-│       ├── encrypt-secrets.sh
-│       ├── decrypt-secrets.sh
 │       ├── pulumi-setup.sh
 │       ├── gitlab-ci.yml
-│       ├── github-deploy.yml
 │       ├── github-cd.yml
+│       ├── github-deploy.yml
 │       ├── github-destroy.yml
+│       ├── github-actions/         # composite actions — copy to .github/actions/
+│       │   └── decrypt-secrets/
+│       │       └── action.yml      # GPG decrypt + mask + export (3 separate steps)
 │       └── taskfile-snippets.yaml
 ├── .env                            # User's secrets (never commit!)
 ├── .env.gpg                        # Encrypted secrets (commit for GitHub)
 ├── .gitlab-ci.yml                  # Copy from infra/scripts/gitlab-ci.yml
 ├── .github/
+│   ├── actions/
+│   │   └── decrypt-secrets/        # Copy from infra/scripts/github-actions/decrypt-secrets/
+│   │       └── action.yml
 │   └── workflows/
-│       ├── deploy.yml              # Copy from infra/scripts/github-deploy.yml (PR review deploys)
 │       ├── cd.yml                  # Copy from infra/scripts/github-cd.yml (push-to-main CD)
+│       ├── deploy.yml              # Copy from infra/scripts/github-deploy.yml (PR review deploys)
 │       └── destroy.yml             # Copy from infra/scripts/github-destroy.yml
 └── Taskfile.yml                    # Root Taskfile — ADD ONLY one `includes` entry (see below). DO NOT add tasks here.
 ```
@@ -289,18 +294,25 @@ Key pipeline jobs:
 
 ## GitHub Actions Configuration
 
-The complete workflow files live in `scripts/`:
-
-- `scripts/github-deploy.yml` → copy to `.github/workflows/deploy.yml`
-- `scripts/github-destroy.yml` → copy to `.github/workflows/destroy.yml`
+Copy workflow files and the composite action:
 
 ```bash
-mkdir -p .github/workflows
+mkdir -p .github/workflows .github/actions
+cp infra/scripts/github-cd.yml .github/workflows/cd.yml
 cp infra/scripts/github-deploy.yml .github/workflows/deploy.yml
 cp infra/scripts/github-destroy.yml .github/workflows/destroy.yml
+cp -R infra/scripts/github-actions/decrypt-secrets .github/actions/decrypt-secrets
 ```
 
-The deploy workflow triggers on pull requests and derives `PULUMI_STACK_NAME` from the `PULUMI_STACK_REVIEW_NAME` Actions variable and the PR number. Set `PULUMI_STACK_REVIEW_NAME` and `PULUMI_STACK_CI_NAME` as repository **variables** (Settings → Secrets and variables → Actions → **Variables** tab), not secrets.
+Set `PULUMI_STACK_REVIEW_NAME` and `PULUMI_STACK_CI_NAME` as repository **variables** (Settings → Secrets and variables → Actions → **Variables** tab), not secrets. The deploy workflow derives the stack name from `PULUMI_STACK_REVIEW_NAME` and the PR number.
+
+**Key patterns in the provided workflows** (understand these before adapting):
+
+- **Composite action** (`decrypt-secrets`): GPG decrypt, secret masking (`::add-mask::`), and `GITHUB_ENV` export are **three separate steps** — `::add-mask::` only applies to *subsequent* steps, so masking and export in the same step causes the runner to redact values before writing them (`Invalid format '***'` error).
+- **Concurrency**: `cancel-in-progress: false` on deploy jobs — adding any label cancels a running deploy with `true`; instead let new runs skip via `if` conditions.
+- **Destroy**: always run `pulumi stack select` before `pulumi destroy` — Pulumi has no implicit stack context in CI.
+- **Azure OIDC**: use `azure/login@v2` with `id-token: write` permission rather than storing `ARM_*` credentials. Requires a federated credential configured on the Azure app registration.
+- **Azure Blob backend**: set `PULUMI_BACKEND_URL=azblob://<container>` from env — do not assume Pulumi Cloud is the backend.
 
 ## Pulumi State Management
 
@@ -428,20 +440,22 @@ All credentials (DataRobot API token, Pulumi access token, LLM keys, cloud stora
 
 ### GitHub
 
-Run `scripts/setup-github-secrets.sh` for interactive setup — it sets `CICD_SECRET_PASSPHRASE` as a repository secret and `PULUMI_STACK_CI_NAME` / `PULUMI_STACK_REVIEW_NAME` as repository variables.
+Run `scripts/setup-github-cicd.sh` for interactive setup — it sets `CICD_SECRET_PASSPHRASE` as a repository secret, `PULUMI_STACK_CI_NAME` / `PULUMI_STACK_REVIEW_NAME` as repository variables, and creates the `deploy` label.
+
+For Azure OIDC, also set `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` as repository **variables**.
 
 To encrypt `.env` for CI:
 
 ```bash
 task infra:encrypt-secrets
-# or: ./infra/scripts/encrypt-secrets.sh
+# or: ./infra/scripts/secrets.sh encrypt
 ```
 
 Add the resulting `.env.gpg` to git. For local decryption:
 
 ```bash
 task infra:decrypt-secrets
-# or: ./infra/scripts/decrypt-secrets.sh
+# or: ./infra/scripts/secrets.sh decrypt
 ```
 
 ### GitLab
@@ -497,19 +511,22 @@ project-root/
 ├── infra/
 │   ├── Taskfile.yaml       # ⚠️ CI/CD tasks go HERE — copy from infra/scripts/taskfile-snippets.yaml
 │   └── scripts/
-│       ├── setup-github-secrets.sh
+│       ├── secrets.sh
+│       ├── setup-github-cicd.sh
 │       ├── setup-gitlab-variables.sh
-│       ├── encrypt-secrets.sh
-│       ├── decrypt-secrets.sh
 │       ├── pulumi-setup.sh
 │       ├── gitlab-ci.yml
+│       ├── github-cd.yml
 │       ├── github-deploy.yml
 │       ├── github-destroy.yml
+│       ├── github-actions/decrypt-secrets/action.yml
 │       ├── taskfile-snippets.yaml
 │       └── README.md
 ├── .gitlab-ci.yml          # Copied from infra/scripts/
 ├── .github/
+│   ├── actions/decrypt-secrets/  # Copied from infra/scripts/github-actions/decrypt-secrets/
 │   └── workflows/
+│       ├── cd.yml           # Copied from infra/scripts/
 │       ├── deploy.yml       # Copied from infra/scripts/
 │       └── destroy.yml      # Copied from infra/scripts/
 └── Taskfile.yml            # Root Taskfile — ADD ONLY an includes entry for infra/Taskfile.yaml. DO NOT add tasks here.
@@ -520,13 +537,14 @@ project-root/
 | Script | Purpose |
 |--------|--------|
 | `gitlab-ci.yml` | Complete GitLab CI/CD pipeline — copy to `.gitlab-ci.yml` |
+| `github-cd.yml` | GitHub Actions CD workflow — copy to `.github/workflows/cd.yml` |
 | `github-deploy.yml` | GitHub Actions deploy workflow — copy to `.github/workflows/deploy.yml` |
 | `github-destroy.yml` | GitHub Actions destroy workflow — copy to `.github/workflows/destroy.yml` |
+| `github-actions/decrypt-secrets/action.yml` | Composite action: GPG decrypt + mask + export — copy to `.github/actions/decrypt-secrets/` |
 | `pulumi-setup.sh` | Interactive Pulumi backend setup + CI/CD variable configuration |
-| `setup-github-secrets.sh` | Interactive GitHub secrets + variables setup via `gh` CLI |
+| `secrets.sh` | GPG encrypt/decrypt `.env` ↔ `.env.gpg` (`secrets.sh encrypt` / `secrets.sh decrypt`) |
+| `setup-github-cicd.sh` | Interactive GitHub secrets, variables, and labels setup via `gh` CLI |
 | `setup-gitlab-variables.sh` | Interactive GitLab CI/CD variables setup via `glab` CLI |
-| `encrypt-secrets.sh` | GPG-encrypt `.env` → `.env.gpg` for CI |
-| `decrypt-secrets.sh` | Decrypt `.env.gpg` → `.env` for local development |
 | `taskfile-snippets.yaml` | Task definitions — copy to `infra/Taskfile.yaml` |
 
 The typical first-time setup sequence:
@@ -539,12 +557,16 @@ chmod +x infra/scripts/*.sh
 cp infra/scripts/taskfile-snippets.yaml infra/Taskfile.yaml
 # Add includes entry to root Taskfile.yml — see Implementation Pattern above
 
-# 2. Configure Pulumi backend and CI/CD variables (interactive)
+# 2. For GitHub: also copy the composite action
+mkdir -p .github/actions
+cp -R infra/scripts/github-actions/decrypt-secrets .github/actions/decrypt-secrets
+
+# 3. Configure Pulumi backend and CI/CD variables (interactive)
 ./infra/scripts/pulumi-setup.sh
 
-# 3. Encrypt credentials and push
+# 4. Encrypt credentials and push
 task infra:encrypt-secrets
-git add .env.gpg infra/ && git commit -m "Add CI/CD infrastructure"
+git add .env.gpg infra/ .github/ && git commit -m "Add CI/CD infrastructure"
 ```
 
 ## Troubleshooting
