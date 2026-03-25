@@ -1,10 +1,10 @@
-# DataRobot Skills
+# DataRobot skills
 
-DataRobot Skills are Agent Context Protocol (ACP) definitions for AI/ML tasks like model training, deployment, predictions, feature engineering, and model monitoring. They are interoperable with all major coding agent tools like OpenAI Codex, Anthropic's Claude Code, Google DeepMind's Gemini CLI, Cursor, and VS Code Copilot.
+DataRobot Skills are Agent Context Protocol (ACP) definitions for AI/ML tasks such as model training, deployment, predictions, feature engineering, and model monitoring. They work with major coding agents, including OpenAI Codex, Anthropic Claude Code, Google Gemini CLI, Cursor, and VS Code Copilot.
 
-## Quick Start
+## Quick start
 
-Install skills to **all** your AI agents with one command using the [universal skills installer](https://github.com/skillcreatorai/Ai-Agent-Skills):
+Install skills for **all** your AI agents with one command by using the [universal skills installer](https://github.com/skillcreatorai/Ai-Agent-Skills):
 
 ```bash
 # Install this entire skill library to all agents at once
@@ -20,87 +20,99 @@ npx ai-agent-skills install datarobot-oss/datarobot-agent-skills --agent claude
 
 **Supported agents:** Claude Code, Cursor, Codex, Amp, VS Code Copilot (GitHub Copilot), Gemini CLI, Goose, Letta, Kilo Code, and OpenCode.
 
-By default, the installer copies skills to all supported agents simultaneously. No configuration needed!
+By default, the installer copies skills to all supported agents at the same time. No configuration is required.
 
 For agent-specific installation methods, see the [Installation](#installation) section below.
 
-## How do Skills work?
+## What are skills?
 
-In practice, skills are self-contained folders that package instructions, scripts, and resources together for an AI agent to use on a specific use case. Each folder includes a `SKILL.md` file with YAML frontmatter (name and description) followed by the guidance your coding agent follows while the skill is active.
+Skills are self-contained folders that package instructions, scripts, and resources for a specific use case. Each folder includes a `SKILL.md` file with YAML frontmatter (`name` and `description`), followed by the guidance your coding agent uses while the skill is active.
 
-> **Note**: 'Skills' is actually an Anthropic term used within Claude AI and Claude Code and not adopted by other agent tools, but we love it! OpenAI Codex uses an `AGENTS.md` file to define the instructions for your coding agent. Google Gemini uses 'extensions' to define the instructions for your coding agent in a `gemini-extension.json` file. This repo is compatible with all of them, and more!
+> [!NOTE]
+> "Skills" is an Anthropic term used in Claude AI and Claude Code, but the concept applies more broadly. OpenAI Codex uses `AGENTS.md` to define agent instructions, and Gemini uses `gemini-extension.json` for extensions. This repository is compatible with all of them, and more.
 
-## Naming Convention
+## Naming convention
 
-All DataRobot skills follow the naming convention `datarobot-<category>` where `<category>` describes the skill's focus area. This ensures:
+All DataRobot skills follow the naming convention `datarobot-<category>`, where `<category>` describes the skill's focus area. This provides:
+
 - Clear identification of DataRobot-specific skills
 - Consistent naming across the skill library
 - Easy discovery and organization
 
 ## Installation
 
-DataRobot skills are compatible with Claude Code, Codex, Gemini CLI, Cursor, and VS Code Copilot. Integrations with Windsurf and Continue are on the way.
+DataRobot skills are compatible with Claude Code, Codex, Gemini CLI, Cursor, and VS Code Copilot. Support for Windsurf and Continue is planned.
 
 ### Claude Code
 
 Register the repository as a plugin marketplace:
-```
+
+```bash
 /plugin marketplace add datarobot-oss/datarobot-agent-skills
 ```
 
 To install a skill, run:
-```
+
+```bash
 /plugin install <skill-folder>@datarobot-skills
 ```
 
 For example:
-```
+
+```bash
 /plugin install datarobot-model-training@datarobot-skills
 ```
 
 ### Codex
 
-Codex will identify the skills via the `AGENTS.md` file. You can verify the instructions are loaded with:
-```
+Codex identifies the skills through the `AGENTS.md` file. You can verify that the instructions are loaded by running:
+
+```bash
 codex --ask-for-approval never "Summarize the current instructions."
 ```
 
-For more details, see the Codex AGENTS guide.
+For more details, see the Codex `AGENTS.md` documentation. <!-- Hyperlink?? -->
 
 ### Gemini CLI
 
-This repo includes `gemini-extension.json` to integrate with the Gemini CLI.
+This repository includes `gemini-extension.json` for Gemini CLI integration.
 
 Install locally:
+
 ```bash
 gemini extensions install . --consent
 ```
 
-or use the GitHub URL:
+Or install from the GitHub URL:
+
 ```bash
 gemini extensions install https://github.com/datarobot-oss/datarobot-agent-skills.git --consent
 ```
 
-See Gemini CLI extensions docs for more help.
+See the Gemini CLI extensions documentation for more information. <!-- Hyperlink?? -->
 
 ### Cursor
 
-Cursor can automatically detect and use skills from this repository. There are two main approaches:
+Cursor can automatically detect and use skills from this repository in two main ways:
 
-**Option 1: Use AGENTS.md (Recommended)**
+**Option 1: Use `AGENTS.md`**
 
-Cursor will automatically read the `AGENTS.md` file when you open this repository as your workspace. The skills are available immediately without additional configuration.
+>[!NOTE]
+> This option is the recommended approach.
 
-To verify skills are loaded:
-1. Open Cursor in this repository directory
-2. Open the AI chat panel (Cmd/Ctrl + L)
+When you open this repository as your workspace, Cursor automatically reads the `AGENTS.md` file. The skills are available immediately without additional configuration.
+
+To verify that the skills are loaded:
+
+1. Open Cursor in this repository.
+2. Open the AI chat panel (`Cmd/Ctrl + L`).
 3. Ask: "What DataRobot skills are available?"
 
-**Option 2: Use .cursorrules**
+**Option 2: Use `.cursorrules`** <!-- Why offer this if the above is recommended? -->
 
-You can also reference specific skills in your `.cursorrules` file to ensure they're always loaded:
+You can also reference specific skills in your `.cursorrules` file to make sure they are always loaded:
 
-```
+```text
 # .cursorrules
 You have access to DataRobot skills in this repository.
 
@@ -117,6 +129,7 @@ When asked to use a DataRobot skill, read the corresponding SKILL.md file for de
 ```
 
 **Using skills in Cursor:**
+
 - "Use the datarobot-predictions skill to generate a template for deployment abc123"
 - "Follow the datarobot-model-training skill to create a new project"
 - "Check the datarobot-model-monitoring skill to analyze data drift"
@@ -127,33 +140,36 @@ VS Code with GitHub Copilot can automatically detect and use skills from this re
 
 **Setup:**
 
-1. Open this repository in VS Code
-2. Ensure you have the GitHub Copilot extension installed and activated
-3. Skills are automatically available through the `AGENTS.md` file
+1. Open this repository in VS Code.
+2. Ensure that the GitHub Copilot extension is installed and activated.
+3. Skills are automatically available through the `AGENTS.md` file.
 
-**Verifying skills are loaded:**
+**Verify that the skills are loaded:**
 
-Open Copilot Chat (Cmd/Ctrl + I) and ask:
+Open Copilot Chat (`Cmd/Ctrl + I`) and ask:
+
 - "What DataRobot skills are available?"
 - "List the available skills in this repository"
 
 **Using skills in VS Code Copilot:**
 
 In Copilot Chat, reference skills naturally:
+
 - "Use the datarobot-predictions skill to generate a template for deployment abc123"
 - "Following the datarobot-model-training skill, create a new project for customer churn prediction"
 - "Check the datarobot-model-monitoring skill and help me analyze data drift"
 
-**Pro tip:** You can also use the `@workspace` agent in Copilot Chat to ensure it has full context of the repository and available skills.
+>[!TIP]
+> You can also use the `@workspace` agent in Copilot Chat to give it full context about the repository and available skills.
 
 ## Skills
 
-This repository contains skills for common DataRobot workflows. You can also contribute your own skills to the repository.
+This repository contains skills for common DataRobot workflows. You can also contribute your own skills.
 
 ### Available skills
 
 | Skill Folder | Description | Documentation |
-|-------------|-------------|--------------|
+| ------------ | ----------- | ------------- |
 | `skills/datarobot-model-training/` | Instructions and utilities for training models, managing projects, and running AutoML experiments. | [SKILL.md](skills/datarobot-model-training/SKILL.md) |
 | `skills/datarobot-model-deployment/` | Tools for deploying models, managing deployments, and configuring prediction environments. | [SKILL.md](skills/datarobot-model-deployment/SKILL.md) |
 | `skills/datarobot-predictions/` | Guidance for making predictions, batch scoring, real-time predictions, and generating prediction datasets. | [SKILL.md](skills/datarobot-predictions/SKILL.md) |
@@ -165,29 +181,30 @@ This repository contains skills for common DataRobot workflows. You can also con
 
 ## Using skills in your coding agent
 
-Once a skill is installed, mention it directly while giving your coding agent instructions:
+Once a skill is installed, mention it directly in your instructions to the coding agent:
 
 - "Use the DataRobot model training skill to create a new project and start AutoML training."
 - "Use the DataRobot predictions skill to generate a prediction dataset template for deployment abc123."
 - "Use the DataRobot feature engineering skill to analyze feature importance for my model."
 - "Use the DataRobot model monitoring skill to check data drift for deployment xyz789."
 
-Your coding agent automatically loads the corresponding `SKILL.md` instructions and helper scripts while it completes the task.
+Your coding agent automatically loads the corresponding `SKILL.md` instructions and any helper scripts it needs while completing the task.
 
-### Helper Scripts
+### Helper scripts
 
-Some skills include executable helper scripts that Claude can run directly:
+Some skills include helper scripts that an agent can run directly:
 
 - **datarobot-predictions**: `get_deployment_features.py`, `generate_prediction_data_template.py`, `validate_prediction_data.py`, `make_prediction.py`
 - **datarobot-model-training**: `create_project.py`, `start_training.py`, `list_models.py`
 - **datarobot-data-preparation**: `upload_dataset.py`
 
-These scripts are located in each skill's `scripts/` directory and can be executed directly or used as reference when writing code.
+These scripts are located in each skill's `scripts/` directory and can be executed directly or used as references when writing code.
 
 ## Contribute or customize a skill
 
-1. Copy one of the existing skill folders (for example, `datarobot-model-training/`) and rename it.
+1. Copy one of the existing skill folders (for example, `skills/datarobot-model-training/`) and rename it.
 2. Update the new folder's `SKILL.md` frontmatter:
+
    ```yaml
    ---
    name: datarobot-my-skill-name
@@ -197,22 +214,23 @@ These scripts are located in each skill's `scripts/` directory and can be execut
    # Skill Title
    Guidance + examples + guardrails
    ```
-3. **Important**: Follow the naming convention `datarobot-<category>` for all skill names and folder names.
+
+3. **Important:** Follow the naming convention `datarobot-<category>` for all skill names and folder names.
 4. Add or edit supporting scripts, templates, and documents referenced by your instructions.
 5. Reinstall or reload the skill bundle in your coding agent so the updated folder is available.
 
-## Development & Validation
+## Development & validation
 
-This repository includes automated validation and linting tools to ensure consistency and quality across all skills.
+This repository includes automated validation and linting tools to help maintain consistency and quality across all skills.
 
 ### Prerequisites
 
 - [Task](https://taskfile.dev/) - Task runner (install: `brew install go-task` or `sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d`)
 - [uv](https://docs.astral.sh/uv/) - Fast Python package installer (install: `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
-### Available Tasks
+### Available tasks
 
-Run `task --list` to see all available tasks:
+Run `task --list` to see the available tasks:
 
 ```bash
 # Validate all skills (naming convention, structure, frontmatter)
@@ -231,16 +249,17 @@ task lint
 task
 ```
 
-### Validation Rules
+### Validation rules
 
-The `bin/validate_skills.py` script enforces:
+The `bin/validate_skills.py` script enforces the following rules:
 
-1. **Naming Convention**: All skill folders must start with `datarobot-`
-2. **Structure**: Each skill must have a `SKILL.md` file
-3. **Frontmatter**: The `name` field in SKILL.md must match the folder name
+1. **Naming convention:** All skill folders must start with `datarobot-`.
+2. **Structure:** Each skill must include a `SKILL.md` file.
+3. **Frontmatter:** The `name` field in `SKILL.md` must match the folder name.
 
 Example:
-```
+
+```text
 datarobot-my-skill/
   └── SKILL.md
       ---
@@ -249,48 +268,47 @@ datarobot-my-skill/
       ---
 ```
 
-### Continuous Integration
+### Continuous integration
 
 This repository uses GitHub Actions for automated checks:
 
-- **[Validate Skills](.github/workflows/validate-skills.yml)** - Validates skill naming and structure on every push/PR
-- **[Trivy Security Scan](.github/workflows/trivy-scan.yml)** - Scans for secrets and security issues daily and on every push/PR
+- **[Validate Skills](.github/workflows/validate-skills.yml)** - Validates skill naming and structure on every push and pull request.
+- **[Trivy Security Scan](.github/workflows/trivy-scan.yml)** - Scans for secrets and security issues daily and on every push and pull request.
 
 All checks must pass before merging pull requests.
 
-## How Skills Work
+## How skills work with DataRobot
 
 Skills guide your coding agent to use the **DataRobot Python SDK** directly. The agent will:
 
-1. Install the `datarobot` Python package if needed
-2. Use the SDK based on skill instructions and examples
-3. Write and execute Python code to interact with DataRobot
+1. Install the `datarobot` Python package if needed.
+2. Use the SDK based on skill instructions and examples.
+3. Write and execute Python code to interact with DataRobot.
 
-**Example**: When you ask "Generate a prediction dataset template", the agent reads `skills/datarobot-predictions/SKILL.md`, then writes Python code using `datarobot` SDK to get deployment features and generate the template.
+For example, when you ask, "Generate a prediction dataset template," the agent reads `skills/datarobot-predictions/SKILL.md`, then writes Python code with the `datarobot` SDK to retrieve deployment features and generate the template.
 
-### Optional: MCP Server Support
+### Optional: MCP server support
 
-If you have a DataRobot MCP server running, agents can also use MCP tools as an alternative to direct SDK usage. See the [MCP Server Template](https://github.com/datarobot-community/datarobot-mcp-template) for more information.
+If you have a DataRobot MCP server running, agents can also use MCP tools instead of calling the SDK directly. See the [MCP Server Template](https://github.com/datarobot-community/datarobot-mcp-template) for more information.
 
-## Prerequisites
+## Runtime prerequisites
 
 To use DataRobot skills, you need:
 
-- **DataRobot account** with API access
-- **DataRobot API token** and endpoint
-- **Python environment** where your coding agent can install packages
+- **A DataRobot account** with API access
+- **A DataRobot API token** and endpoint
+- **A Python environment** where your coding agent can install packages
 
 The agent will automatically install the `datarobot` Python package when needed.
 
-## Additional Documentation
+## Additional documentation
 
-- [Usage Guide](docs/USAGE_GUIDE.md) - Complete guide on how to use DataRobot skills
+- [Usage Guide](docs/USAGE_GUIDE.md) - A complete guide to using DataRobot skills
 - [LangGraph Integration](docs/LANGGRAPH_INTEGRATION.md) - How to use skills with LangGraph agents
 - [Agent Framework Integration](docs/AGENT_FRAMEWORK_INTEGRATION.md) - Patterns for LangGraph, PydanticAI, and other programmatic agent frameworks
 
 ## Additional references
 
-- Browse the latest instructions, scripts, and templates directly at [datarobot-oss/datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills).
-- Review [DataRobot documentation](https://docs.datarobot.com/) for the specific libraries or workflows you reference inside each skill.
-- Check out the [DataRobot Python SDK Documentation](https://datarobot-public-api-client.readthedocs-hosted.com/) for API reference
-
+- Browse the latest instructions, scripts, and templates at [datarobot-oss/datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills).
+- Review the [DataRobot documentation](https://docs.datarobot.com/) for the libraries and workflows referenced in each skill.
+- See the [DataRobot Python SDK documentation](https://datarobot-public-api-client.readthedocs-hosted.com/) for API reference.
