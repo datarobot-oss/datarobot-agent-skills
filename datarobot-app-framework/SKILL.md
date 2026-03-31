@@ -1,37 +1,50 @@
 ---
-name: datarobot-app-framework-agent
-description: Build and deploy agent applications (CrewAI, LangGraph, LlamaIndex) to DataRobot using the App Framework component system.
+name: datarobot-app-framework
+description: Build and deploy applications on DataRobot using the App Framework component system — FastAPI apps, LLM integrations, and agentic workflows (CrewAI, LangGraph, LlamaIndex).
 ---
 
-# DataRobot App Framework: Agent
+# DataRobot App Framework
 
-Build and deploy agent applications (CrewAI, LangGraph, LlamaIndex) to DataRobot.
+Build and deploy applications on DataRobot using composable `af-component-*` building blocks.
 
 ## Trigger Conditions
 
 Use this skill when the user:
-- Wants to build or deploy an agent on DataRobot
+- Wants to build or deploy any application on DataRobot using the App Framework
 - Wants to create an agentic workflow (CrewAI, LangGraph, LlamaIndex)
-- Wants to set up an App Framework recipe with an LLM or agent component
-- Mentions `dr component add`, `af-component`, or `copier copy` in an AF context
-- Wants to wire a FastAPI backend to an agent deployment
-- Wants to add tools to a DataRobot agent
+- Wants a FastAPI backend or React frontend deployed to DataRobot
+- Wants to integrate an LLM into a DataRobot app or notebook
+- Wants to set up an App Framework recipe with any component
+- Mentions `dr component add`, `af-component`, `copier copy`, or `recipe-` in an AF context
+- Wants to wire components together (FastAPI ↔ Agent, LLM ↔ Agent, etc.)
+- Wants to add tools, auth, or chat history to a DataRobot app
+
+## Pick Your Scenario
+
+| What you want to build | Scenario |
+|---|---|
+| Agent API + playground UI (no custom frontend) | **Default — see below** |
+| Agent + React chat UI | `scenarios/agent-with-ui.md` |
+| Agent + custom tools | `scenarios/agent-with-tools.md` |
+| Simple FastAPI app / custom web UI | `scenarios/fastapi-app.md` |
+| LLM integration in a notebook | `scenarios/llm-notebook.md` |
 
 ## Component Map
 
 | Component | Role | Tier |
 |---|---|---|
-| af-component-base | Foundation — always first | 1 |
-| af-component-llm | LLM connectivity | 1 |
-| af-component-agent | Agent orchestration: CrewAI / LangGraph / LlamaIndex | 1 |
-| af-component-fastapi-backend-chat | Chat backend | 2 |
-| af-component-react | React frontend | 2 |
-| af-component-tool | Custom agent tool | 3 |
-| af-component-global-tool | Shared tool across agents | 3 |
+| af-component-base | Foundation — always first | core |
+| af-component-fastapi-backend | Simple FastAPI app | core |
+| af-component-llm | LLM connectivity | core |
+| af-component-agent | Agent orchestration: CrewAI / LangGraph / LlamaIndex | agent |
+| af-component-fastapi-backend-chat | Chat backend (for agent + UI) | agent+UI |
+| af-component-react | React frontend | agent+UI |
+| af-component-tool | Custom agent tool | tools |
+| af-component-global-tool | Shared tool across agents | tools |
 | af-component-fastapi-backend-oauth | Auth plugin | optional |
 | af-component-fastapi-backend-persistence-sqlite | Chat history / memory | optional |
 
-For Tier 2 (agent + chat UI) or Tier 3 (agent + custom tools), load the relevant file from `scenarios/`.
+For extended scenarios, load the relevant file from `scenarios/`.
 
 ## Prerequisites
 
