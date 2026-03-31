@@ -83,7 +83,7 @@ Codex identifies the skills through the `AGENTS.md` file. You can verify that th
 codex --ask-for-approval never "Summarize the current instructions."
 ```
 
-For more details, see the Codex `AGENTS.md` documentation. <!-- Hyperlink?? -->
+For more details, see the [Codex `AGENTS.md`](https://developers.openai.com/codex/guides/agents-md) documentation.
 
 </details>
 
