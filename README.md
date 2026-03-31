@@ -103,7 +103,7 @@ Or install from the GitHub URL:
 gemini extensions install https://github.com/datarobot-oss/datarobot-agent-skills.git --consent
 ```
 
-See the Gemini CLI extensions documentation for more information. <!-- Hyperlink?? -->
+See the [Gemini CLI extensions](https://geminicli.com/docs/extensions/) documentation for more information.
 
 </details>
 
@@ -113,8 +113,7 @@ Cursor can automatically detect and use skills from this repository in two main 
 
 **Option 1: Use `AGENTS.md`**
 
->[!NOTE]
-> This option is the recommended approach.
+> NOTE: This option is the recommended approach.
 
 When you open this repository as your workspace, Cursor automatically reads the `AGENTS.md` file. The skills are available immediately without additional configuration.
 
@@ -124,7 +123,7 @@ To verify that the skills are loaded:
 2. Open the AI chat panel (`Cmd/Ctrl + L`).
 3. Ask: "What DataRobot skills are available?"
 
-**Option 2: Use `.cursorrules`** <!-- Why offer this if the above is recommended? -->
+**Option 2: Use `.cursorrules`**
 
 You can also reference specific skills in your `.cursorrules` file to make sure they are always loaded:
 
