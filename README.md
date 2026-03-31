@@ -53,7 +53,7 @@ Skills are self-contained folders that package instructions, scripts, and resour
 DataRobot skills are compatible with Claude Code, Codex, Gemini CLI, Cursor, and VS Code Copilot. Support for Windsurf and Continue is planned.
 Click on the section that corresponds to your coding agent to see the installation instructions.
 
-- <details><summary><strong>Claude Code</strong></summary>
+<details><summary><strong>Claude Code</strong></summary>
 
 Register the repository as a plugin marketplace:
 
@@ -75,8 +75,7 @@ For example:
 
 </details>
 
-- <details>
-<summary><strong>Codex</strong></summary>
+<details><summary><strong>Codex</strong></summary>
 
 Codex identifies the skills through the `AGENTS.md` file. You can verify that the instructions are loaded by running:
 
@@ -88,8 +87,7 @@ For more details, see the Codex `AGENTS.md` documentation. <!-- Hyperlink?? -->
 
 </details>
 
-- <details>
-<summary><strong>Gemini CLI</strong></summary>
+<details><summary><strong>Gemini CLI</strong></summary>
 
 This repository includes `gemini-extension.json` for Gemini CLI integration.
 
@@ -109,7 +107,7 @@ See the Gemini CLI extensions documentation for more information. <!-- Hyperlink
 
 </details>
 
-- <details><summary><strong>Cursor</strong></summary>
+<details><summary><strong>Cursor</strong></summary>
 
 Cursor can automatically detect and use skills from this repository in two main ways:
 
