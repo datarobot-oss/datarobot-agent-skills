@@ -152,8 +152,7 @@ When asked to use a DataRobot skill, read the corresponding SKILL.md file for de
 
 </details>
 
-- <details>
-<summary><strong>VS Code Copilot (GitHub Copilot)</strong></summary>
+<details><summary><strong>VS Code Copilot (GitHub Copilot)</strong></summary>
 
 VS Code with GitHub Copilot can automatically detect and use skills from this repository through the `AGENTS.md` file.
 
