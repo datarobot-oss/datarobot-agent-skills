@@ -48,11 +48,13 @@ Skills are self-contained folders that package instructions, scripts, and resour
 > [!NOTE]
 > All DataRobot skills follow the naming convention `datarobot-<category>`, where `<category>` describes the skill's focus area. This provides clear identification of DataRobot-specific skills, consistent naming across the skill library, and easy discovery and organization.
 
-## Installation
+## Installation to your coding agent
 
 DataRobot skills are compatible with Claude Code, Codex, Gemini CLI, Cursor, and VS Code Copilot. Support for Windsurf and Continue is planned.
+Click on the section that corresponds to your coding agent to see the installation instructions.
 
-### Claude Code
+- <details>
+<summary><strong>Claude Code</strong></summary>
 
 Register the repository as a plugin marketplace:
 
@@ -71,8 +73,10 @@ For example:
 ```bash
 /plugin install datarobot-model-training@datarobot-skills
 ```
+</details>
 
-### Codex
+- <details>
+<summary><strong>Codex</strong></summary>
 
 Codex identifies the skills through the `AGENTS.md` file. You can verify that the instructions are loaded by running:
 
@@ -82,7 +86,10 @@ codex --ask-for-approval never "Summarize the current instructions."
 
 For more details, see the Codex `AGENTS.md` documentation. <!-- Hyperlink?? -->
 
-### Gemini CLI
+</details>
+
+- <details>
+<summary><strong>Gemini CLI</strong></summary>
 
 This repository includes `gemini-extension.json` for Gemini CLI integration.
 
@@ -100,7 +107,10 @@ gemini extensions install https://github.com/datarobot-oss/datarobot-agent-skill
 
 See the Gemini CLI extensions documentation for more information. <!-- Hyperlink?? -->
 
-### Cursor
+</details>
+
+- <details>
+<summary><strong>Cursor</strong></summary>
 
 Cursor can automatically detect and use skills from this repository in two main ways:
 
@@ -143,7 +153,10 @@ When asked to use a DataRobot skill, read the corresponding SKILL.md file for de
 - "Follow the datarobot-model-training skill to create a new project"
 - "Check the datarobot-model-monitoring skill to analyze data drift"
 
-### VS Code Copilot (GitHub Copilot)
+</details>
+
+- <details>
+<summary><strong>VS Code Copilot (GitHub Copilot)</strong></summary>
 
 VS Code with GitHub Copilot can automatically detect and use skills from this repository through the `AGENTS.md` file.
 
@@ -170,6 +183,8 @@ In Copilot Chat, reference skills naturally:
 
 >[!TIP]
 > You can also use the `@workspace` agent in Copilot Chat to give it full context about the repository and available skills.
+
+</details>
 
 ## Skills
 
