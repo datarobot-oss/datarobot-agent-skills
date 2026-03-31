@@ -12,7 +12,7 @@ DataRobot Skills are Agent Context Protocol (ACP) definitions for AI/ML tasks su
 ## Quick start
 
 > [!NOTE]
-> Supported agents for DataRobot skills include: Claude Code, Cursor, Codex, Amp, VS Code Copilot (GitHub Copilot), Gemini CLI, Goose, Letta, Kilo Code, and OpenCode.
+> Supported agents for DataRobot skills include: [Claude Code](https://www.anthropic.com/claude-code/), [Cursor](https://cursor.com), [Codex](https://developers.openai.com/codex/), [Amp](https://ampcode.com/), [VS Code Copilot (GitHub Copilot)](https://github.com/features/copilot), [Gemini CLI](https://geminicli.com/), [Goose](https://block.github.io/goose/), [Letta](https://www.letta.com/), [Kilo Code](https://kilocode.ai/), and [OpenCode](https://opencode.ai/).
 
 Install all DataRobot skills or just specific skillsfor **all** your AI agents with one command by using the [universal skills installer](https://github.com/skillcreatorai/Ai-Agent-Skills).
 
