@@ -4,7 +4,7 @@
 
 Agentic skills are modular, task-specific capability packages that help an AI agent move from general reasoning to reliable execution. Each skill bundles instructions, examples, and supporting resources so that the agent can load only what it needs for the current task, reducing context overload and improving tool use within a given workflow.
 
-DataRobot skills are Agent Context Protocol (ACP) definitions for AI/ML tasks such as model training, deployment, predictions, feature engineering, and model monitoring. They work with major coding agents, including OpenAI Codex, Anthropic Claude Code, Google Gemini CLI, Cursor, and VS Code Copilot.
+DataRobot skills are Agent Context Protocol (ACP) definitions for enterprise AI and agent workflows, including building, deploying, and governing agents, as well as AI/ML tasks such as model training, deployment, predictions, feature engineering, and monitoring. They work with major coding agents, including OpenAI Codex, Anthropic Claude Code, Google Gemini CLI, Cursor, and VS Code Copilot.
 
 > [!NOTE]
 > "Skills" is an Anthropic term used in Claude AI and Claude Code, but the concept applies more broadly. OpenAI Codex uses `AGENTS.md` to define agent instructions, and Gemini uses `gemini-extension.json` for extensions. This repository is compatible with all of them, and more.
