@@ -16,7 +16,3 @@ e2e = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-[[tool.uv.index]]
-name = "dr-artifactory"
-url = "https://artifactory.devinfra.drdev.io/artifactory/api/pypi/python-all/simple"
-explicit = false
