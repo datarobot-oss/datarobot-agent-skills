@@ -35,6 +35,7 @@ Thumbs.db
 *.json
 !gemini-extension.json
 !.cursor-plugin/plugin.json
+!tests/e2e/skill_hashes.json
 
 # Environment variables
 .env
