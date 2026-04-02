@@ -44,12 +44,16 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Configure git for private package access
+      - name: Configure git credentials for private package access
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          git config --global url."https://x-access-token:${GH_PAT}@github.com/".insteadOf "https://github.com/"
-          git config --global url."https://x-access-token:${GH_PAT}@github.com/".insteadOf "git@github.com:"
+          if [ -z "${GH_PAT}" ]; then
+            echo "::error::GH_PAT secret is not set — cannot clone datarobot/datarobot-agent-tester"
+            exit 1
+          fi
+          echo "machine github.com login x-access-token password ${GH_PAT}" >> ~/.netrc
+          chmod 600 ~/.netrc
 
       - name: Install e2e dependencies
         run: uv sync --group e2e
