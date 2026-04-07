@@ -48,7 +48,7 @@ def handle_request(user_message: str) -> str:
 
         # Tool call
         with tracer.start_as_current_span("tool-call") as tool_span:
-            tool_span.set_attribute("tool.name", "search_database")
+            tool_span.set_attribute("tool_name", "search_database")
             tool_span.set_attribute("tool.parameters", '{"query": "..."}')
             result = search_database(query)
 
@@ -101,19 +101,22 @@ def handle_request(user_message: str) -> str:
         raise
 ```
 
-## Span Attributes for GenAI
+## Span Attributes for DataRobot Tracing
 
-Use these standard attributes for best DataRobot integration:
+Use these attributes for data to appear in DataRobot's tracing table:
 
-| Attribute | Description | Example |
-|-----------|-------------|---------|
-| `gen_ai.prompt` | User input / prompt text | `"Analyze policy XYZ"` |
-| `gen_ai.completion` | Model output / response | `"Policy matched..."` |
-| `gen_ai.request.model` | Model used | `"gpt-4o"` |
-| `gen_ai.usage.prompt_tokens` | Input token count | `150` |
-| `gen_ai.usage.completion_tokens` | Output token count | `320` |
-| `tool.name` | Tool/function name | `"search_database"` |
-| `tool.parameters` | Tool call parameters (JSON string) | `'{"query": "..."}'` |
+| Attribute | Description | DataRobot Column | Rule |
+|-----------|-------------|------------------|------|
+| `gen_ai.prompt` | User input / prompt text | Prompt | First span wins |
+| `gen_ai.completion` | Model output / response | Completion | Last span wins |
+| `tool_name` | Tool/function name | Tools | All unique values listed |
+| `datarobot.moderation.cost` | Cost of this operation | Cost | Summed across trace |
+| `gen_ai.request.model` | Model used | — | Informational |
+| `gen_ai.usage.prompt_tokens` | Input token count | — | Informational |
+| `gen_ai.usage.completion_tokens` | Output token count | — | Informational |
+| `tool.parameters` | Tool call parameters (JSON) | — | Informational |
+
+**Important:** Use `tool_name` (underscore), not `tool.name` (dot). DataRobot's tracing UI specifically looks for `tool_name`.
 
 ## Auto-Instrumenting Common SDKs
 

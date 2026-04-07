@@ -59,9 +59,12 @@ Follow these steps in order. Present the plan to the user and wait for approval 
 ### Step 2: Check Prerequisites
 
 1. Check if `DATAROBOT_API_TOKEN` env var is set. If not, ask the user to provide it.
-2. Check if `DATAROBOT_ENDPOINT` env var is set. If not, ask the user (default: `https://app.datarobot.com`).
-3. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
-4. Check if OTel packages are already in the project's dependencies.
+2. Check if `DATAROBOT_ENDPOINT` env var is set. If not, ask the user (default: `https://app.datarobot.com/api/v2`).
+3. Derive `DATAROBOT_OTEL_ENDPOINT` automatically: if `DATAROBOT_ENDPOINT` ends with `/api/v2`, strip it and append `/otel` (e.g., `https://app.datarobot.com/api/v2` → `https://app.datarobot.com/otel`).
+4. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
+5. Check if OTel packages are already in the project's dependencies.
+
+**Security note:** Never echo API tokens or `.env` file contents into chat transcripts or logs. Use environment variables or CI secrets for credential management. If credentials are accidentally exposed, rotate them immediately.
 
 ### Step 3: Present Plan
 
@@ -73,7 +76,7 @@ Tell the user what you detected and present the changes you will make:
 - Existing files to modify (agent entrypoint, dependency file)
 - Shell deployment to create in DataRobot
 
-**Wait for user approval before executing.**
+**Wait for user approval before executing.** If the user has already given explicit consent to implement or deploy, that counts as approval — no need to re-ask.
 
 ### Step 4: Execute
 
@@ -96,7 +99,14 @@ Tell the user what you detected and present the changes you will make:
      --description "OTel telemetry sink for <framework> agent"
    ```
 
-6. **Report results**: Show the deployment ID and env vars needed at runtime.
+   The script automatically enables **prediction row storage** and **automatic association ID generation** on the deployment.
+
+6. **Report results**: Show the deployment ID and a copy-paste env var block for the user's runtime:
+   ```bash
+   export DATAROBOT_API_TOKEN="<token>"
+   export DATAROBOT_ENTITY_ID="deployment-<id>"
+   export DATAROBOT_OTEL_ENDPOINT="<otel_endpoint>"
+   ```
 
 ### Step 5: Verify & Provide Runtime Instructions
 
@@ -177,8 +187,18 @@ def _build_dr_headers():
 
 
 def _get_endpoint():
-    """Get DataRobot OTel endpoint from env var."""
-    return os.environ.get("DATAROBOT_OTEL_ENDPOINT", "")
+    """Get DataRobot OTel endpoint, auto-deriving from DATAROBOT_ENDPOINT if needed."""
+    endpoint = os.environ.get("DATAROBOT_OTEL_ENDPOINT", "")
+    if endpoint:
+        return endpoint.rstrip("/")
+    # Auto-derive from DATAROBOT_ENDPOINT (e.g. https://app.datarobot.com/api/v2 → .../otel)
+    api_endpoint = os.environ.get("DATAROBOT_ENDPOINT", "")
+    if api_endpoint:
+        base = api_endpoint.rstrip("/")
+        if base.endswith("/api/v2"):
+            base = base[: -len("/api/v2")]
+        return f"{base}/otel"
+    return ""
 
 
 def configure_otel():
@@ -211,9 +231,11 @@ def configure_otel():
     logger_provider = LoggerProvider(resource=resource)
     set_logger_provider(logger_provider)
     logger_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
-    logging.getLogger().addHandler(
-        LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-    )
+    handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
+    # Custom formatter ensures OTLP log bodies are never empty
+    # (some libraries emit records with empty getMessage())
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(handler)
 
     # --- Metrics ---
     preferred_temporality = {
@@ -239,9 +261,22 @@ Some frameworks override the global TracerProvider at startup (notably Google AD
 
 Existing OTel setups (e.g., exporters to Jaeger, Datadog, Google Cloud Trace) are preserved when possible — DataRobot is added alongside, not replacing. However, note that OTel has a single global provider per signal. Whoever calls `set_tracer_provider()` last wins. The additive pattern above avoids calling `set_tracer_provider()` when a provider already exists, instead adding a processor to the existing one.
 
-## Common Span Attributes for GenAI
+## DataRobot Tracing Table — Span Attribute Mapping
 
-When generating manual span instrumentation (generic Python or augmenting auto-instrumented frameworks), use these standard attributes for best DataRobot integration:
+DataRobot's tracing UI (Data Exploration > Traces) maps specific span attributes to table columns. Using the correct attribute names is critical for data to appear in the dashboard.
+
+### Column Mapping
+
+| Tracing Table Column | Span Attribute | Aggregation Rule |
+|---------------------|----------------|------------------|
+| **Prompt** | `gen_ai.prompt` | First span with this attribute wins |
+| **Completion** | `gen_ai.completion` | Last span with this attribute wins |
+| **Tools** | `tool_name` | Lists all unique values across all spans in the trace |
+| **Cost** | `datarobot.moderation.cost` | Summed across all spans in the trace |
+
+**Important:** DataRobot looks for `tool_name` (underscore), NOT `tool.name` (dot). Some frameworks (e.g., LangGraph) do not set `tool_name` by default — you must add it manually as a span attribute inside each tool call.
+
+### All Recognized Span Attributes
 
 | Attribute | Description | Example |
 |-----------|-------------|---------|
@@ -250,8 +285,9 @@ When generating manual span instrumentation (generic Python or augmenting auto-i
 | `gen_ai.request.model` | Model used for the call | `"gpt-4o"` |
 | `gen_ai.usage.prompt_tokens` | Input token count | `150` |
 | `gen_ai.usage.completion_tokens` | Output token count | `320` |
-| `tool.name` | Name of tool/function called | `"search_database"` |
+| `tool_name` | Name of tool/function called (required for Tools column) | `"search_database"` |
 | `tool.parameters` | Tool call parameters (JSON string) | `'{"query": "..."}'` |
+| `datarobot.moderation.cost` | Cost of this span (summed for trace total) | `0.0023` |
 
 ## Helper Scripts
 

@@ -43,6 +43,21 @@ The auto-instrumentor captures:
 - Retriever operations (for RAG)
 - Agent reasoning steps (for LangGraph)
 
+**Important: `tool_name` attribute for DataRobot.** LangGraph does NOT set the `tool_name` span attribute by default. DataRobot's tracing table requires `tool_name` (underscore) to populate the Tools column. Add it manually inside your tools:
+
+```python
+from opentelemetry import trace
+
+@tool
+def search_database(query: str) -> str:
+    """Search the database."""
+    span = trace.get_current_span()
+    span.set_attribute("tool_name", "search_database")
+    # ... tool logic ...
+```
+
+Without this, tool spans will appear in the trace hierarchy but the Tools column in DataRobot will be empty.
+
 ### 3. Optional: Add OpenAI/Anthropic SDK instrumentors
 
 If the agent uses OpenAI or Anthropic SDKs directly (in addition to LangChain), add their instrumentors too:
