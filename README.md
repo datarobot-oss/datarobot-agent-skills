@@ -137,6 +137,7 @@ Available skills (in datarobot-* folders):
 - datarobot-model-monitoring: Model performance monitoring
 - datarobot-model-explainability: Model explainability and diagnostics
 - datarobot-data-preparation: Data upload and validation
+- datarobot-external-agent-monitoring: External agent OTel instrumentation for DataRobot monitoring
 
 When asked to use a DataRobot skill, read the corresponding SKILL.md file for detailed guidance.
 ```
@@ -195,6 +196,7 @@ This repository contains skills for common DataRobot workflows. You can also con
 | `skills/datarobot-model-explainability/` | Tools for model explainability, prediction explanations, SHAP values, and model diagnostics. | [SKILL.md](skills/datarobot-model-explainability/SKILL.md) |
 | `skills/datarobot-data-preparation/` | Utilities for data upload, dataset management, and data validation. | [SKILL.md](skills/datarobot-data-preparation/SKILL.md) |
 | `skills/datarobot-app-framework-cicd/` | Set up CI/CD pipelines for DataRobot application templates with GitLab and GitHub Actions. | [SKILL.md](skills/datarobot-app-framework-cicd/SKILL.md) |
+| `skills/datarobot-external-agent-monitoring/` | Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring and observability. Supports Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, and generic Python agents. | [SKILL.md](skills/datarobot-external-agent-monitoring/SKILL.md) |
 
 ## Using skills in your coding agent
 
@@ -204,6 +206,7 @@ Once a skill is installed, mention it directly in your instructions to the codin
 - "Use the DataRobot predictions skill to generate a prediction dataset template for deployment abc123."
 - "Use the DataRobot feature engineering skill to analyze feature importance for my model."
 - "Use the DataRobot model monitoring skill to check data drift for deployment xyz789."
+- "Use the DataRobot external agent monitoring skill to instrument my agent for DataRobot monitoring."
 
 Your coding agent automatically loads the corresponding `SKILL.md` instructions and any helper scripts it needs while completing the task.
 
@@ -214,6 +217,7 @@ Some skills include helper scripts that an agent can run directly:
 - **datarobot-predictions**: `get_deployment_features.py`, `generate_prediction_data_template.py`, `validate_prediction_data.py`, `make_prediction.py`
 - **datarobot-model-training**: `create_project.py`, `start_training.py`, `list_models.py`
 - **datarobot-data-preparation**: `upload_dataset.py`
+- **datarobot-external-agent-monitoring**: `create_shell_deployment.py`, `verify_otel_connection.py`
 
 These scripts are located in each skill's `scripts/` directory and can be executed directly or used as references when writing code.
 

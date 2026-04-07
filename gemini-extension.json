@@ -43,6 +43,11 @@
       "name": "datarobot-app-framework-cicd",
       "description": "Tools and guidance for setting up CI/CD pipelines for DataRobot application templates, including GitLab and GitHub Actions workflows",
       "path": "skills/datarobot-app-framework-cicd/SKILL.md"
+    },
+    {
+      "name": "datarobot-external-agent-monitoring",
+      "description": "Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance",
+      "path": "skills/datarobot-external-agent-monitoring/SKILL.md"
     }
   ]
 }

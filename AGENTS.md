@@ -35,6 +35,9 @@ Use this skill when analyzing model explainability, getting prediction explanati
 ### datarobot-app-framework-cicd
 Use this skill when setting up CI/CD pipelines for DataRobot application templates, configuring GitLab or GitHub Actions workflows, managing Pulumi infrastructure, or implementing review deployments and continuous delivery.
 
+### datarobot-external-agent-monitoring
+Use this skill when instrumenting external AI agents for DataRobot monitoring. Supports Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, and generic Python agents. Creates shell deployments and configures OpenTelemetry to send traces, logs, and metrics to DataRobot.
+
 ## How to Use
 
 When a user requests a DataRobot-related task:
@@ -57,6 +60,7 @@ Skills provide instructions, workflows, and code examples - the agent writes and
 - **Data management**: Use `datarobot-data-preparation`
 - **Model explainability**: Use `datarobot-model-explainability`
 - **CI/CD for application templates**: Use `datarobot-app-framework-cicd`
+- **External agent monitoring**: Use `datarobot-external-agent-monitoring`
 
 For complex tasks, you may need to use multiple skills in sequence.
 
