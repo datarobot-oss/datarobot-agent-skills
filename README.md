@@ -1,4 +1,30 @@
-# DataRobot skills
+<p align="center">
+  <a href="https://github.com/datarobot-oss/datarobot-agent-skills">
+    <img src="https://af.datarobot.com/img/datarobot_logo.avif" width="600px" alt="DataRobot Logo"/>
+  </a>
+</p>
+<p align="center">
+    <span style="font-size: 1.5em; font-weight: bold; display: block;">DataRobot Agent Skills</span>
+</p>
+
+<p align="center">
+  <a href="https://datarobot.com">Homepage</a>
+  ·
+  <a href="https://docs.datarobot.com">Documentation</a>
+  ·
+  <a href="https://docs.datarobot.com/en/docs/get-started/troubleshooting/general-help.html">Support</a>
+</p>
+
+  <a href="https://join.slack.com/t/datarobot-community/shared_invite/zt-3uzfp8k50-SUdMqeux25ok9_5wr4okrg">
+    <img src="https://img.shields.io/badge/%23skills-a?label=Slack&labelColor=30373D&color=81FBA6" alt="Slack #skills">
+  </a>
+</p>
+
+Agentic skills for DataRobot enterprise AI and agent workflows.
+
+
+```bash
+npx ai-agent-skills install datarobot-oss/datarobot-agent-skills
 
 ## Overview
 
