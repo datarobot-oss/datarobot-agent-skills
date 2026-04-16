@@ -22,13 +22,9 @@
 
 Agentic skills for DataRobot enterprise AI and agent workflows.
 
-## Installing skills
-
-Install all skills from this repository into your AI agent using [`ai-agent-skills`](https://github.com/skillcreatorai/Ai-Agent-Skills):
 
 ```bash
 npx ai-agent-skills install datarobot-oss/datarobot-agent-skills
-```
 
 ## Overview
 
