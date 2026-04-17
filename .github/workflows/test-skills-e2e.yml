@@ -1,0 +1,90 @@
+---
+name: Test Skills E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - skills/**
+      - tests/e2e/**
+      - pyproject.toml
+      - .github/workflows/test-skills-e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - skills/**
+      - tests/e2e/**
+      - pyproject.toml
+      - .github/workflows/test-skills-e2e.yml
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: Re-evaluate every skill (ignore hash cache)
+        required: false
+        default: "0"
+        type: choice
+        options:
+          - "0"
+          - "1"
+
+jobs:
+  e2e:
+    name: Skill quality evaluation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Configure git credentials for private package access
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "${GH_PAT}" ]; then
+            echo "::error::GH_PAT secret is not set — cannot clone datarobot/datarobot-agent-tester"
+            exit 1
+          fi
+          echo "machine github.com login x-access-token password ${GH_PAT}" >> ~/.netrc
+          chmod 600 ~/.netrc
+
+      - name: Install e2e dependencies
+        run: uv sync --group e2e
+
+      - name: Restore skill hash cache
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/e2e/skill_hashes.json
+          key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            skill-hashes-${{ github.ref_name }}-
+            skill-hashes-main-
+
+      - name: Run skill quality tests
+        env:
+          DATAROBOT_ENDPOINT: ${{ secrets.DATAROBOT_ENDPOINT }}
+          DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
+          SKILLS_E2E_FORCE_ALL: ${{ github.event.inputs.force_all || '0' }}
+        run: uv run --group e2e pytest tests/e2e/ -v --tb=short
+
+      - name: Save skill hash cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: tests/e2e/skill_hashes.json
+          key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}
+
+      - name: Commit updated hashes (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/e2e/skill_hashes.json
+          git diff --cached --quiet || (git pull --rebase && git commit -m "chore: update skill e2e hash cache [skip ci]" && git push)

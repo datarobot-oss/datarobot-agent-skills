@@ -52,6 +52,16 @@ tasks:
       - task: ruff:format
       - task: yamlfmt
 
+  test:e2e:
+    desc: Run skill quality e2e tests (LLM judge, hash-cached)
+    cmds:
+      - uv run --group e2e pytest tests/e2e/ -v --tb=short
+
+  test:e2e:force:
+    desc: Re-evaluate every skill regardless of hash cache
+    cmds:
+      - SKILLS_E2E_FORCE_ALL=1 uv run --group e2e pytest tests/e2e/ -v --tb=short
+
   default:
     desc: Run validation and linting
     cmds:

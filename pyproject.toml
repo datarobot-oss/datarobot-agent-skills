@@ -1,0 +1,18 @@
+[project]
+name = "datarobot-agent-skills"
+version = "0.0.1"
+description = "DataRobot agent skills"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+e2e = [
+    "datarobot-agent-tester @ git+https://github.com/datarobot/datarobot-agent-tester@main",
+    "python-dotenv>=1.0",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
