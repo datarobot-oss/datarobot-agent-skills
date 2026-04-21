@@ -44,7 +44,7 @@ tasks:
         REQUIRED_VARS="DATAROBOT_API_TOKEN DATAROBOT_ENDPOINT"
         MISSING=""
         for var in $REQUIRED_VARS; do
-          if ! grep -q "^${var}=" .env 2>/dev/null; then
+          if ! grep -q "^${var}=" ../.env 2>/dev/null; then
             MISSING="$MISSING $var"
           fi
         done
