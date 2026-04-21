@@ -13,170 +13,174 @@
 # Tasks are then run as: task infra:encrypt-secrets, task infra:setup-github-secrets, etc.
 # Scripts referenced here are in infra/scripts/ and .env is assumed to be in project root (../../.env)
 
-# =============================================================================
-# Secrets Management Tasks
-# =============================================================================
+version: '3'
 
-encrypt-secrets:
-  desc: 🔒 Encrypt .env file for GitHub Actions
-  dir: scripts
-  cmds:
-    - ./encrypt-secrets.sh
-  preconditions:
-    - test -f ../../.env
+tasks:
 
-decrypt-secrets:
-  desc: 🔓 Decrypt .env.gpg file for local use
-  dir: scripts
-  cmds:
-    - ./decrypt-secrets.sh
-  preconditions:
-    - test -f ../../.env.gpg
+  # ===========================================================================
+  # Secrets Management Tasks
+  # ===========================================================================
 
-verify-secrets:
-  desc: 🔍 Verify .env file has required variables
-  cmds:
-    - |
-      REQUIRED_VARS="DATAROBOT_API_TOKEN DATAROBOT_ENDPOINT"
-      MISSING=""
-      for var in $REQUIRED_VARS; do
-        if ! grep -q "^${var}=" .env 2>/dev/null; then
-          MISSING="$MISSING $var"
+  encrypt-secrets:
+    desc: 🔒 Encrypt .env file for GitHub Actions
+    dir: scripts
+    cmds:
+      - ./encrypt-secrets.sh
+    preconditions:
+      - test -f ../../.env
+
+  decrypt-secrets:
+    desc: 🔓 Decrypt .env.gpg file for local use
+    dir: scripts
+    cmds:
+      - ./decrypt-secrets.sh
+    preconditions:
+      - test -f ../../.env.gpg
+
+  verify-secrets:
+    desc: 🔍 Verify .env file has required variables
+    cmds:
+      - |
+        REQUIRED_VARS="DATAROBOT_API_TOKEN DATAROBOT_ENDPOINT"
+        MISSING=""
+        for var in $REQUIRED_VARS; do
+          if ! grep -q "^${var}=" .env 2>/dev/null; then
+            MISSING="$MISSING $var"
+          fi
+        done
+        if [ -n "$MISSING" ]; then
+          echo "❌ Missing required variables:$MISSING"
+          exit 1
         fi
-      done
-      if [ -n "$MISSING" ]; then
-        echo "❌ Missing required variables:$MISSING"
-        exit 1
-      fi
-      echo "✅ All required variables present"
+        echo "✅ All required variables present"
 
-setup-github-secrets:
-  desc: 🔐 Setup GitHub secrets interactively
-  dir: scripts
-  cmds:
-    - ./setup-github-secrets.sh
+  setup-github-secrets:
+    desc: 🔐 Setup GitHub secrets interactively
+    dir: scripts
+    cmds:
+      - ./setup-github-secrets.sh
 
-setup-gitlab-vars:
-  desc: 🔐 Setup GitLab variables interactively
-  dir: scripts
-  cmds:
-    - ./setup-gitlab-variables.sh
+  setup-gitlab-vars:
+    desc: 🔐 Setup GitLab variables interactively
+    dir: scripts
+    cmds:
+      - ./setup-gitlab-variables.sh
 
-# =============================================================================
-# CI/CD Deployment Tasks
-# =============================================================================
+  # ===========================================================================
+  # CI/CD Deployment Tasks
+  # ===========================================================================
 
-pulumi-login-cloud:
-  desc: 🌐 Login to Pulumi Cloud
-  cmds:
-    - pulumi login
-  preconditions:
-    - sh: command -v pulumi
-      msg: "Pulumi not installed. Run: curl -fsSL https://get.pulumi.com | sh"
+  pulumi-login-cloud:
+    desc: 🌐 Login to Pulumi Cloud
+    cmds:
+      - pulumi login
+    preconditions:
+      - sh: command -v pulumi
+        msg: "Pulumi not installed. Run: curl -fsSL https://get.pulumi.com | sh"
 
-pulumi-login-azure:
-  desc: ☁️  Login to Azure Blob backend
-  cmds:
-    - pulumi login azblob://{{.CONTAINER}}
-  vars:
-    CONTAINER: '{{.CONTAINER | default "pulumi-state"}}'
-  preconditions:
-    - sh: command -v pulumi
-      msg: "Pulumi not installed"
-    - sh: test -n "$AZURE_STORAGE_ACCOUNT"
-      msg: "AZURE_STORAGE_ACCOUNT not set"
-    - sh: test -n "$AZURE_STORAGE_KEY"
-      msg: "AZURE_STORAGE_KEY not set"
+  pulumi-login-azure:
+    desc: ☁️  Login to Azure Blob backend
+    cmds:
+      - pulumi login azblob://{{.CONTAINER}}
+    vars:
+      CONTAINER: '{{.CONTAINER | default "pulumi-state"}}'
+    preconditions:
+      - sh: command -v pulumi
+        msg: "Pulumi not installed"
+      - sh: test -n "$AZURE_STORAGE_ACCOUNT"
+        msg: "AZURE_STORAGE_ACCOUNT not set"
+      - sh: test -n "$AZURE_STORAGE_KEY"
+        msg: "AZURE_STORAGE_KEY not set"
 
-pulumi-login-s3:
-  desc: ☁️  Login to S3 backend
-  cmds:
-    - pulumi login s3://{{.BUCKET}}
-  vars:
-    BUCKET: '{{.BUCKET | default "pulumi-state"}}'
-  preconditions:
-    - sh: command -v pulumi
-      msg: "Pulumi not installed"
-    - sh: test -n "$AWS_ACCESS_KEY_ID"
-      msg: "AWS_ACCESS_KEY_ID not set"
+  pulumi-login-s3:
+    desc: ☁️  Login to S3 backend
+    cmds:
+      - pulumi login s3://{{.BUCKET}}
+    vars:
+      BUCKET: '{{.BUCKET | default "pulumi-state"}}'
+    preconditions:
+      - sh: command -v pulumi
+        msg: "Pulumi not installed"
+      - sh: test -n "$AWS_ACCESS_KEY_ID"
+        msg: "AWS_ACCESS_KEY_ID not set"
 
-pulumi-stack-create:
-  desc: 📚 Create new Pulumi stack
-  cmds:
-    - pulumi stack select --create {{.STACK}}
-  vars:
-    STACK: '{{.STACK | default "dev"}}'
-  preconditions:
-    - sh: command -v pulumi
-      msg: "Pulumi not installed"
+  pulumi-stack-create:
+    desc: 📚 Create new Pulumi stack
+    cmds:
+      - pulumi stack select --create {{.STACK}}
+    vars:
+      STACK: '{{.STACK | default "dev"}}'
+    preconditions:
+      - sh: command -v pulumi
+        msg: "Pulumi not installed"
 
-pulumi-deploy:
-  desc: 🚀 Deploy with Pulumi
-  cmds:
-    - source .venv/bin/activate && pulumi up {{.FLAGS}}
-  vars:
-    FLAGS: '{{.FLAGS | default "--yes"}}'
-  preconditions:
-    - test -d .venv
-    - sh: command -v pulumi
-      msg: "Pulumi not installed"
+  pulumi-deploy:
+    desc: 🚀 Deploy with Pulumi
+    cmds:
+      - source .venv/bin/activate && pulumi up {{.FLAGS}}
+    vars:
+      FLAGS: '{{.FLAGS | default "--yes"}}'
+    preconditions:
+      - test -d .venv
+      - sh: command -v pulumi
+        msg: "Pulumi not installed"
 
-pulumi-destroy:
-  desc: 🗑️  Destroy Pulumi stack
-  cmds:
-    - source .venv/bin/activate && pulumi destroy {{.FLAGS}}
-  vars:
-    FLAGS: '{{.FLAGS | default "--yes"}}'
-  preconditions:
-    - test -d .venv
-    - sh: command -v pulumi
-      msg: "Pulumi not installed"
+  pulumi-destroy:
+    desc: 🗑️  Destroy Pulumi stack
+    cmds:
+      - source .venv/bin/activate && pulumi destroy {{.FLAGS}}
+    vars:
+      FLAGS: '{{.FLAGS | default "--yes"}}'
+    preconditions:
+      - test -d .venv
+      - sh: command -v pulumi
+        msg: "Pulumi not installed"
 
-pulumi-output:
-  desc: 📋 Show Pulumi stack outputs
-  cmds:
-    - pulumi stack output {{.FORMAT}}
-  vars:
-    FORMAT: '{{.FORMAT | default "--json"}}'
+  pulumi-output:
+    desc: 📋 Show Pulumi stack outputs
+    cmds:
+      - pulumi stack output {{.FORMAT}}
+    vars:
+      FORMAT: '{{.FORMAT | default "--json"}}'
 
-# =============================================================================
-# CI/CD Workflow Testing
-# =============================================================================
+  # ===========================================================================
+  # CI/CD Workflow Testing
+  # ===========================================================================
 
-ci-test-local:
-  desc: 🧪 Test CI pipeline locally
-  cmds:
-    - task: lint-check
-    - task: test
-    - echo "✅ CI checks passed"
+  ci-test-local:
+    desc: 🧪 Test CI pipeline locally
+    cmds:
+      - task: lint-check
+      - task: test
+      - echo "✅ CI checks passed"
 
-ci-simulate-deploy:
-  desc: 🎭 Simulate GitHub Actions deployment locally
-  cmds:
-    - task: decrypt-secrets
-    - task: install
-    - task: ci-test-local
-    - task: pulumi-deploy
-    - echo "✅ Deployment simulation complete"
+  ci-simulate-deploy:
+    desc: 🎭 Simulate GitHub Actions deployment locally
+    cmds:
+      - task: decrypt-secrets
+      - task: install
+      - task: ci-test-local
+      - task: pulumi-deploy
+      - echo "✅ Deployment simulation complete"
 
 # =============================================================================
 # Usage Examples
 # =============================================================================
 #
 # Secrets management:
-#   task encrypt-secrets              # Encrypt .env for GitHub
-#   task decrypt-secrets              # Decrypt for local use
-#   task verify-secrets               # Check required vars
+#   task infra:encrypt-secrets              # Encrypt .env for GitHub
+#   task infra:decrypt-secrets              # Decrypt for local use
+#   task infra:verify-secrets               # Check required vars
 #
 # Pulumi operations:
-#   task pulumi-login-cloud           # Login to Pulumi Cloud
-#   task pulumi-login-azure           # Login to Azure backend
-#   task pulumi-stack-create STACK=dev        # Create new stack
-#   task pulumi-deploy                # Deploy current stack
-#   task pulumi-deploy FLAGS="--preview-only" # Preview changes
-#   task pulumi-destroy               # Destroy current stack
-#   task pulumi-output                # Show outputs
+#   task infra:pulumi-login-cloud           # Login to Pulumi Cloud
+#   task infra:pulumi-login-azure           # Login to Azure backend
+#   task infra:pulumi-stack-create STACK=dev        # Create new stack
+#   task infra:pulumi-deploy                # Deploy current stack
+#   task infra:pulumi-deploy FLAGS="--preview-only" # Preview changes
+#   task infra:pulumi-destroy               # Destroy current stack
+#   task infra:pulumi-output                # Show outputs
 #
 # Testing CI/CD:
-#   task ci-test-local                # Run all CI checks
-#   task ci-simulate-deploy           # Simulate full deployment
+#   task infra:ci-test-local                # Run all CI checks
+#   task infra:ci-simulate-deploy           # Simulate full deployment
