@@ -1,0 +1,37 @@
+---
+# Continuous delivery: deploy to the persistent CI stack on every push to main.
+#
+# Required GitHub Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   DATAROBOT_API_TOKEN  — DataRobot service account API key
+#   PULUMI_ACCESS_TOKEN  — from https://app.pulumi.com/account/tokens
+#
+# Optional GitHub Variable (defaults to "ci" if not set):
+#   PULUMI_STACK_CI_NAME — stack name for the CI environment (e.g. "ci", "prod")
+#
+# Pulumi Cloud uses PULUMI_ACCESS_TOKEN automatically — no explicit login step needed.
+
+name: Deploy (CD)
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Deploy
+        working-directory: infra
+        env:
+          DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          uv sync --all-extras
+          uv run pulumi stack select --create ${{ vars.PULUMI_STACK_CI_NAME || 'ci' }}
+          uv run pulumi up --yes
