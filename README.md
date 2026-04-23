@@ -52,7 +52,7 @@ npx ai-agent-skills install datarobot-oss/datarobot-agent-skills
 **For a specific skill:**
 
 ```bash
-npx ai-agent-skills install datarobot-oss/datarobot-agent-skills/datarobot-predictions
+npx ai-agent-skills install datarobot-oss/datarobot-agent-skills/skills/datarobot-predictions
 ```
 
 **For a specific agent:**
