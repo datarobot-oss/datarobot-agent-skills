@@ -205,7 +205,9 @@ See these live implementations:
 
 ## Contributing
 
-This skill is part of the DataRobot Agent Skills repository. Contributions welcome!
+This is the **canonical upstream source** for this skill at [datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills/tree/main/skills/datarobot-app-framework-cicd). Downstream repositories (such as [af-component-base](https://github.com/datarobot-community/af-component-base)) bundle a local copy, when this skill is updated, those copies should be synced.
+
+Contributions welcome via pull request.
 
 ## License
 

@@ -11,7 +11,7 @@ variables:
   # Set PULUMI_STACK_CI_NAME and PULUMI_STACK_REVIEW_NAME as plain CI/CD
   # variables in GitLab (Settings → CI/CD → Variables) to override these
   # defaults.  Project variables always take precedence over the values below.
-  PULUMI_STACK_REVIEW_NAME: review-mr-$CI_MERGE_REQUEST_IID
+  PULUMI_STACK_REVIEW_NAME: review-mr
   PULUMI_STACK_CI_NAME: ci
   # ── Secrets ────────────────────────────────────────────────────────────────
   # Only one secret needs to be set in GitLab CI/CD settings:
@@ -55,11 +55,11 @@ test:
 review_app:
   stage: review
   variables:
-    PULUMI_STACK: $PULUMI_STACK_REVIEW_NAME
+    PULUMI_STACK: ${PULUMI_STACK_REVIEW_NAME}-${CI_MERGE_REQUEST_IID}
   script:
     # Install Pulumi
     - curl -fsSL https://get.pulumi.com | sh
-    - export PATH="~/.pulumi/bin:$PATH"
+    - export PATH="$HOME/.pulumi/bin:$PATH"
     # Login to Pulumi backend (DIY backend example using Azure Blob)
     - pulumi login --cloud-url "azblob://dr-ai-apps-pulumi"
     # Create the stack if it doesn't exist (PULUMI_STACK selects it for all subsequent commands)
@@ -83,10 +83,10 @@ review_app:
 destroy_review_app:
   stage: cleanup
   variables:
-    PULUMI_STACK: $PULUMI_STACK_REVIEW_NAME
+    PULUMI_STACK: ${PULUMI_STACK_REVIEW_NAME}-${CI_MERGE_REQUEST_IID}
   script:
     - curl -fsSL https://get.pulumi.com | sh
-    - export PATH="~/.pulumi/bin:$PATH"
+    - export PATH="$HOME/.pulumi/bin:$PATH"
     - pulumi login --cloud-url "azblob://dr-ai-apps-pulumi"
     # Destroy the stack (PULUMI_STACK identifies which stack to target)
     - pulumi destroy --yes
@@ -109,9 +109,10 @@ deploy_ci:
     PULUMI_STACK: $PULUMI_STACK_CI_NAME
   script:
     - curl -fsSL https://get.pulumi.com | sh
-    - export PATH="~/.pulumi/bin:$PATH"
+    - export PATH="$HOME/.pulumi/bin:$PATH"
     - pulumi login --cloud-url "azblob://dr-ai-apps-pulumi"
-    # PULUMI_STACK selects the stack — no explicit stack select needed
+    # Select stack, creating it if it doesn't exist yet
+    - pulumi stack select --create $PULUMI_STACK
     - pulumi up --yes
     - echo "Deployed $PULUMI_STACK stack"
   rules:

@@ -1,0 +1,41 @@
+---
+# PR preview deployment: manually triggered so you control when a PR stack is created.
+# Go to: Actions → Deploy (PR Preview) → Run workflow → select your PR branch → enter stack name.
+#
+# Tip: use the PR number as the stack name (e.g. "pr-42") so it's easy to track and clean up.
+#
+# Required GitHub Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   DATAROBOT_API_TOKEN  — DataRobot service account API key
+#   PULUMI_ACCESS_TOKEN  — from https://app.pulumi.com/account/tokens
+
+name: Deploy (PR Preview)
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: "Stack name for this PR preview (e.g. 'pr-42')"
+        required: true
+        default: "pr-preview"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Deploy PR Preview Stack
+        working-directory: infra
+        env:
+          DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          PULUMI_STACK: ${{ github.event.inputs.stack_name }}
+        run: |
+          uv sync --all-extras
+          uv run pulumi stack select --create $PULUMI_STACK
+          uv run pulumi up --yes

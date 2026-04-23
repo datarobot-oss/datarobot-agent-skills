@@ -1,6 +1,7 @@
 ---
 name: datarobot-app-framework-cicd
 description: Guidance for setting up CI/CD pipelines for DataRobot application templates using GitLab, GitHub Actions, and Pulumi for infrastructure as code.
+context-tokens: "~6 000 (SKILL.md) + ~2 000 (scripts/*) + ~400 per examples/* file"
 ---
 
 # DataRobot Application Templates CI/CD Skill
@@ -9,15 +10,96 @@ This skill provides comprehensive guidance for setting up production-grade CI/CD
 
 ## Quick Start
 
-**Most common use case**: Set up CI/CD for an application template
+**Default behavior:** When a user asks to "set up CI/CD" without specifying a platform or backend, always use the [Simple Path](#simple-path-pulumi-cloud--github-secrets) below — three workflow files, two GitHub Secrets, done. Do not create `infra/scripts/`, do not add CI/CD tasks to `infra/Taskfile.yaml`, do not involve GPG encryption unless the user explicitly asks for it.
 
-1. **Choose platform**: GitLab CI/CD or GitHub Actions
-2. **Configure secrets**: Set up DataRobot API tokens, LLM keys, and Pulumi credentials
-3. **Add pipeline config**: Create `.gitlab-ci.yml` or `.github/workflows/*.yml`
-4. **Set up Pulumi**: Configure state backend for infrastructure tracking
-5. **Enable review apps**: Add manual deployment jobs for PR/MR validation
+Only deviate from the simple path when the user specifies:
+- A specific Pulumi state backend (Azure Blob, S3, GCS) → use `scripts/` and see [Implementation Pattern](#implementation-pattern)
+- GitLab CI/CD → see [GitLab CI/CD Configuration](#gitlab-cicd-configuration)
+- Many secrets to manage → consider GPG approach in `scripts/`
 
-**Example**: "Set up GitHub Actions CI/CD for my Talk to My Data Agent application template with review deployments and continuous delivery"
+## Simple Path: Pulumi Cloud + GitHub Secrets
+
+For most data scientists and AI engineers, this is all you need. No GPG encryption, no cloud storage account, no extra scripts.
+
+**What to create in the user's repository:**
+
+1. Copy the three workflow files to `.github/workflows/`:
+
+   | Source | Destination | Trigger |
+   |--------|-------------|---------|
+   | `examples/github-cd-pulumi-cloud.yml` | `.github/workflows/cd.yml` | Automatic — every merge to `main` |
+   | `examples/github-deploy-pulumi-cloud.yml` | `.github/workflows/deploy-pr.yml` | Manual — user picks PR branch + enters stack name (e.g. `pr-42`) |
+   | `examples/github-destroy-pulumi-cloud.yml` | `.github/workflows/destroy.yml` | Manual — user enters stack name to tear down |
+
+2. Create `.github/workflows/README.md` from `examples/workflows-README.md`. This is the setup guide that tells the user exactly what secrets and variables to add and how.
+
+3. Tell the user to follow the setup guide in `.github/workflows/README.md`.
+
+That's it. Do **not** add anything to `infra/Taskfile.yaml` or create `infra/scripts/` for this path.
+
+**Required GitHub Secrets** (both required — no defaults):
+
+| Name | Kind |
+|------|------|
+| `DATAROBOT_API_TOKEN` | Secret |
+| `PULUMI_ACCESS_TOKEN` | Secret |
+
+**Optional GitHub Variable** (defaults to `ci` if not set):
+
+| Name | Kind | Default |
+|------|------|---------|
+| `PULUMI_STACK_CI_NAME` | Variable | `ci` |
+
+**When to use the advanced approach (GPG + DIY backends) instead:**
+- You have many secrets (GPG encrypts all of `.env` behind a single passphrase — only one GitHub Secret needed)
+- Your organization prohibits Pulumi Cloud and requires a self-managed backend (Azure Blob / S3 / GCS)
+- You need GitLab CI/CD
+
+The templates and scripts for all of these are in `scripts/` in this skill directory. If the skill has already been propagated to the project's `infra/` directory (common in downstream templates), look in `infra/scripts/` instead. See the [Implementation Pattern](#implementation-pattern) section below for full setup guidance.
+
+| Scenario | Key files in `scripts/` |
+|----------|------------------------|
+| Azure Blob / S3 / GCS Pulumi backend | `pulumi-setup.sh`, `taskfile-snippets.yaml` |
+| GitHub Actions + GPG secrets | `github-deploy.yml`, `github-cd.yml`, `encrypt-secrets.sh`, `setup-github-secrets.sh` |
+| GitLab CI/CD | `gitlab-ci.yml`, `setup-gitlab-variables.sh` |
+
+### Adapting the deploy command
+
+The example workflows use `uv run pulumi up --yes` directly. Before copying them, check `infra/Taskfile.yaml` — the project may already wrap the deploy command in a task:
+
+```bash
+cat infra/Taskfile.yaml   # look for 'up-yes', 'deploy', or similar tasks
+```
+
+| What you find | What to use in CI |
+|---------------|-------------------|
+| `up-yes` task | `task up-yes` — non-interactive, purpose-built for CI; prefer this over raw Pulumi |
+| `deploy` task (alias for `up`) | Avoid — typically runs `pulumi up` interactively; only safe in CI if you confirm it passes `-y` internally |
+| No Taskfile or no relevant task | Keep `uv run pulumi up --yes` as-is |
+
+To use `task` in a workflow, add an install step and swap the run command:
+
+```yaml
+- name: Install Task
+  run: pip install go-task-bin
+
+- name: Deploy
+  working-directory: infra
+  env:
+    DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
+    PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+  run: |
+    uv sync --all-extras
+    task up-yes
+```
+
+### DataRobot API token (service account)
+
+`DATAROBOT_API_TOKEN` should come from a **DataRobot service account** — a DataRobot user created for automation, not tied to anyone's personal login. This prevents CI/CD from breaking when the engineer who originally set it up leaves the team.
+
+To set one up: ask your DataRobot admin to create a dedicated user (e.g. `ci-bot@your-org.com`). Under that account, go to **Developer Tools → API Key** and generate a token. Store it as the `DATAROBOT_API_TOKEN` secret in GitHub.
+
+> **Note:** This is purely a DataRobot concept — it has no relation to Pulumi state management or backend configuration. "Service account" here just means a non-personal DataRobot user.
 
 ## When to use this skill
 
@@ -425,6 +507,14 @@ pulumi stack rm review-app-123 --yes
 ## Secrets Management
 
 All credentials (DataRobot API token, Pulumi access token, LLM keys, cloud storage keys) are stored in `.env` and committed to the repository encrypted as `.env.gpg`. The only secret that needs to be configured in the CI/CD system directly is `CICD_SECRET_PASSPHRASE` (the GPG passphrase). Non-sensitive stack name variables (`PULUMI_STACK_CI_NAME`, `PULUMI_STACK_REVIEW_NAME`) are set as plain variables, not secrets.
+
+### DataRobot API token (service account)
+
+`DATAROBOT_API_TOKEN` should come from a **DataRobot service account** — a DataRobot user created for automation, not tied to anyone's personal login. This prevents CI/CD from breaking when the engineer who originally set it up leaves the team.
+
+To set one up: ask your DataRobot admin to create a dedicated user (e.g. `ci-bot@your-org.com`). Under that account, go to **Developer Tools → API Key** and generate a token. Store it as the `DATAROBOT_API_TOKEN` secret in your CI/CD system.
+
+> **Note:** This is purely a DataRobot concept — it has no relation to Pulumi state management or backend configuration. "Service account" here just means a non-personal DataRobot user.
 
 ### GitHub
 

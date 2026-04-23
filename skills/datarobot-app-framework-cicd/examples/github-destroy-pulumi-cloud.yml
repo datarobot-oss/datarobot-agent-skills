@@ -1,0 +1,41 @@
+---
+# Manual stack destroy: triggered from the GitHub Actions UI (Actions → Destroy Stack → Run workflow).
+# Use this to clean up review stacks after a PR is merged or closed.
+#
+# Required GitHub Secrets:
+#   DATAROBOT_API_TOKEN  — DataRobot service account API key
+#   PULUMI_ACCESS_TOKEN  — from https://app.pulumi.com/account/tokens
+
+name: Destroy Stack
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: "Stack name to destroy (e.g. review-pr-42)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    env:
+      # Bind input to an env var — prevents it from being interpolated directly into shell.
+      PULUMI_STACK: ${{ github.event.inputs.stack_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Destroy Stack
+        working-directory: infra
+        env:
+          DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          uv sync --all-extras
+          uv run pulumi stack select $PULUMI_STACK
+          uv run pulumi destroy --yes
+          uv run pulumi stack rm --yes

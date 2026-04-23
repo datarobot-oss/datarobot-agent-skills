@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  PULUMI_STACK: ${{ vars.PULUMI_STACK_REVIEW_NAME }}-${{ github.event.number }}
+  PULUMI_STACK: ${{ vars.PULUMI_STACK_REVIEW_NAME || 'review' }}-${{ github.event.number }}
 
 jobs:
   # Test and lint job - runs first
