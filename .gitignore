@@ -35,6 +35,8 @@ Thumbs.db
 *.json
 !gemini-extension.json
 !.cursor-plugin/plugin.json
+!.claude-plugin/marketplace.json
+!.claude-plugin/plugin.json
 
 # Environment variables
 .env
