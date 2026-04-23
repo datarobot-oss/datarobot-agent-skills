@@ -15,6 +15,7 @@
   <a href="https://docs.datarobot.com/en/docs/get-started/troubleshooting/general-help.html">Support</a>
 </p>
 
+<p align="center">
   <a href="https://join.slack.com/t/datarobot-community/shared_invite/zt-3uzfp8k50-SUdMqeux25ok9_5wr4okrg">
     <img src="https://img.shields.io/badge/%23skills-a?label=Slack&labelColor=30373D&color=81FBA6" alt="Slack #skills">
   </a>
@@ -22,9 +23,9 @@
 
 Agentic skills for DataRobot enterprise AI and agent workflows.
 
-
 ```bash
 npx ai-agent-skills install datarobot-oss/datarobot-agent-skills
+```
 
 ## Overview
 
