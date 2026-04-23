@@ -164,6 +164,7 @@ Available skills (in datarobot-* folders):
 - datarobot-model-monitoring: Model performance monitoring
 - datarobot-model-explainability: Model explainability and diagnostics
 - datarobot-data-preparation: Data upload and validation
+- datarobot-app-framework-cicd: CI/CD pipelines for DataRobot application templates
 - datarobot-external-agent-monitoring: External agent OTel instrumentation for DataRobot monitoring
 
 When asked to use a DataRobot skill, read the corresponding SKILL.md file for detailed guidance.
