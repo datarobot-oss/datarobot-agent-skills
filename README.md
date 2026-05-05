@@ -166,6 +166,7 @@ Available skills (in datarobot-* folders):
 - datarobot-data-preparation: Data upload and validation
 - datarobot-app-framework-cicd: CI/CD pipelines for DataRobot application templates
 - datarobot-external-agent-monitoring: External agent OTel instrumentation for DataRobot monitoring
+- datarobot-mcp-server-deployment: Deploy FastMCP MCP server template to DataRobot
 
 When asked to use a DataRobot skill, read the corresponding SKILL.md file for detailed guidance.
 ```
@@ -225,6 +226,7 @@ This repository contains skills for common DataRobot workflows. You can also con
 | `skills/datarobot-data-preparation/` | Utilities for data upload, dataset management, and data validation. | [SKILL.md](skills/datarobot-data-preparation/SKILL.md) |
 | `skills/datarobot-app-framework-cicd/` | Set up CI/CD pipelines for DataRobot application templates with GitLab and GitHub Actions. | [SKILL.md](skills/datarobot-app-framework-cicd/SKILL.md) |
 | `skills/datarobot-external-agent-monitoring/` | Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring and observability. Supports Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, and generic Python agents. | [SKILL.md](skills/datarobot-external-agent-monitoring/SKILL.md) |
+| `skills/datarobot-mcp-server-deployment/` | Self-contained deploy guide for the community **datarobot-mcp-template** (Pulumi, `.env`, MCP clients); clone URL and steps are in the skill. | [SKILL.md](skills/datarobot-mcp-server-deployment/SKILL.md) |
 
 ## Using skills in your coding agent
 

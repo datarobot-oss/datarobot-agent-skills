@@ -38,6 +38,9 @@ Use this skill when setting up CI/CD pipelines for DataRobot application templat
 ### datarobot-external-agent-monitoring
 Use this skill when instrumenting external AI agents for DataRobot monitoring. Supports Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, and generic Python agents. Creates shell deployments and configures OpenTelemetry to send traces, logs, and metrics to DataRobot.
 
+### datarobot-mcp-server-deployment
+Use this skill when deploying the community **datarobot-mcp-template** (FastMCP, Pulumi, serverless MCP). The skill markdown is self-contained—load `skills/datarobot-mcp-server-deployment/SKILL.md` and follow it without fetching external documentation. After the **Gate**, run **`task infra:auth-check`** before Pulumi deploy; on failure or missing `.env` values, **stop** and have the user fix local files (**Agent obligations**)—do not ask for secrets in chat.
+
 ## How to Use
 
 When a user requests a DataRobot-related task:
@@ -61,6 +64,7 @@ Skills provide instructions, workflows, and code examples - the agent writes and
 - **Model explainability**: Use `datarobot-model-explainability`
 - **CI/CD for application templates**: Use `datarobot-app-framework-cicd`
 - **External agent monitoring**: Use `datarobot-external-agent-monitoring`
+- **MCP server on DataRobot**: Use `datarobot-mcp-server-deployment`
 
 For complex tasks, you may need to use multiple skills in sequence.
 

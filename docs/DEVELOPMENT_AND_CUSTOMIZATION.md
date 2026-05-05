@@ -108,4 +108,4 @@ For example, if you ask for a prediction dataset template, the agent reads `skil
 
 ### Optional: MCP server support
 
-If you have a DataRobot MCP server running, agents can also use MCP tools instead of calling the SDK directly. See the [MCP Server Template](https://github.com/datarobot-community/datarobot-mcp-template) for more information.
+If you have a DataRobot MCP server running, agents can also use MCP tools instead of calling the SDK directly. See the [MCP Server Template](https://github.com/datarobot-community/datarobot-mcp-template) for more information, and use the `datarobot-mcp-server-deployment` skill (`skills/datarobot-mcp-server-deployment/SKILL.md`) for deploy steps, client wiring, and an environment gaps checklist.

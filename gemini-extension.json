@@ -48,6 +48,11 @@
       "name": "datarobot-external-agent-monitoring",
       "description": "Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance",
       "path": "skills/datarobot-external-agent-monitoring/SKILL.md"
+    },
+    {
+      "name": "datarobot-mcp-server-deployment",
+      "description": "MCP template deploy; after Gate run task infra:auth-check before Pulumi; on failure stop and guide user to .env/UI—no secrets in chat",
+      "path": "skills/datarobot-mcp-server-deployment/SKILL.md"
     }
   ]
 }
