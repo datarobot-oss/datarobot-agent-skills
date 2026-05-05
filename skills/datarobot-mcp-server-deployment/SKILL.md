@@ -1,6 +1,6 @@
 ---
 name: datarobot-mcp-server-deployment
-description: MCP deploy: create missing `dr_mcp/.env` / root `.env` with skeleton then user fills; Gate, auth-check, post-deploy `list_deployments` curl; stop on failure—no secrets in chat.
+description: "MCP deploy: create missing dr_mcp/.env and root .env skeletons, user fills values; Gate; auth-check; post-deploy list_deployments curl; stop on failure; no secrets in chat."
 ---
 
 # DataRobot MCP server deployment
