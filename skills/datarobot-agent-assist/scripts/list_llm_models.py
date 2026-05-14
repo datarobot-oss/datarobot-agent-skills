@@ -68,13 +68,15 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[dict]:
             # Ensure model name has datarobot/ prefix
             if model_name and not model_name.startswith("datarobot/"):
                 model_name = f"datarobot/{model_name}"
-            
-            result.append({
-                "name": model_name,
-                "description": m.get("description", ""),
-                "provider": m.get("provider", "Unknown"),
-                "context_size": m.get("contextSize", 0),
-            })
+
+            result.append(
+                {
+                    "name": model_name,
+                    "description": m.get("description", ""),
+                    "provider": m.get("provider", "Unknown"),
+                    "context_size": m.get("contextSize", 0),
+                }
+            )
 
         return result
 
@@ -115,8 +117,14 @@ def format_as_table(models: list[dict]) -> str:
         name = m["name"]
         provider = m["provider"]
         context = str(m["context_size"])
-        description = m["description"][:80] + "..." if len(m["description"]) > 80 else m["description"]
-        lines.append(f"{name:<{name_width}} | {provider:<{provider_width}} | {context:>{context_width}} | {description}")
+        description = (
+            m["description"][:80] + "..."
+            if len(m["description"]) > 80
+            else m["description"]
+        )
+        lines.append(
+            f"{name:<{name_width}} | {provider:<{provider_width}} | {context:>{context_width}} | {description}"
+        )
 
     return "\n".join(lines)
 
@@ -168,7 +176,9 @@ def main():
 
     if not endpoint and not api_token:
         print("Error: DATAROBOT_ENDPOINT environment variable not set", file=sys.stderr)
-        print("Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr)
+        print(
+            "Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr
+        )
         sys.exit(1)
 
     if not endpoint:
@@ -176,7 +186,9 @@ def main():
         sys.exit(1)
 
     if not api_token:
-        print("Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr)
+        print(
+            "Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr
+        )
         sys.exit(1)
 
     try:

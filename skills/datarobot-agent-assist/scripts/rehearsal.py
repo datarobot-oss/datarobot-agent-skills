@@ -29,10 +29,13 @@ from env_utils import ensure_env_file, read_env_variable
 
 # Model used for spec extraction and tool simulation.
 # The agent's own model (from the spec) is used for the main turn loop.
-SIMULATION_MODEL = os.environ.get("DR_SIMULATION_MODEL", "bedrock/anthropic.claude-sonnet-4-6")
+SIMULATION_MODEL = os.environ.get(
+    "DR_SIMULATION_MODEL", "bedrock/anthropic.claude-sonnet-4-6"
+)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def progress(msg):
     print(f"[rehearsal] {msg}", file=sys.stderr, flush=True)
@@ -69,13 +72,18 @@ def get_credentials():
 
     # Fall back to environment variables if not found in .env
     if not endpoint:
-        endpoint = os.environ.get("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2")
+        endpoint = os.environ.get(
+            "DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2"
+        )
 
     if not api_token:
         api_token = os.environ.get("DATAROBOT_API_TOKEN")
 
     if not api_token:
-        print("Error: DATAROBOT_API_TOKEN not found in .env file or environment variables", file=sys.stderr)
+        print(
+            "Error: DATAROBOT_API_TOKEN not found in .env file or environment variables",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     return (api_token, endpoint)
@@ -83,7 +91,7 @@ def get_credentials():
 
 def strip_model_prefix(model):
     while model.startswith("datarobot/"):
-        model = model[len("datarobot/"):]
+        model = model[len("datarobot/") :]
     return model
 
 
@@ -98,7 +106,9 @@ def strip_code_fence(text):
 @contextlib.contextmanager
 def capture_output(session_dir):
     """Redirect stdout to a new temp file inside session_dir; yield the file path."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, dir=session_dir) as out:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, dir=session_dir
+    ) as out:
         path = out.name
         sys.stdout = out
         try:
@@ -108,6 +118,7 @@ def capture_output(session_dir):
 
 
 # ── turn progress tracking ────────────────────────────────────────────────────
+
 
 class TurnProgress:
     """Tracks per-turn LLM stats and emits progress lines to stderr."""
@@ -134,9 +145,15 @@ class TurnProgress:
         progress(f"simulated {fn}  {elapsed:.1f}s")
 
     def summary(self, wall_elapsed):
-        tok = f"  {self.agent_in_tok}→{self.agent_out_tok} tok" if (self.agent_in_tok or self.agent_out_tok) else ""
+        tok = (
+            f"  {self.agent_in_tok}→{self.agent_out_tok} tok"
+            if (self.agent_in_tok or self.agent_out_tok)
+            else ""
+        )
         sims = f"  {self.n_sims} simulations" if self.n_sims else ""
-        progress(f"total  wall {wall_elapsed:.1f}s  {self.n_agent} LLM calls{tok}{sims}")
+        progress(
+            f"total  wall {wall_elapsed:.1f}s  {self.n_agent} LLM calls{tok}{sims}"
+        )
 
 
 # ── LLM interface ─────────────────────────────────────────────────────────────
@@ -160,12 +177,12 @@ def _model_params(model: str, **kwargs) -> dict:
 
 
 TYPE_MAP = {
-    "str":   "string",
-    "int":   "integer",
+    "str": "string",
+    "int": "integer",
     "float": "number",
-    "bool":  "boolean",
-    "list":  "array",
-    "dict":  "object",
+    "bool": "boolean",
+    "list": "array",
+    "dict": "object",
 }
 
 # Tool definition used to extract structured fields from the spec file
@@ -190,8 +207,8 @@ EXTRACT_TOOL = {
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "arg_name":      {"type": "string"},
-                                        "type":          {"type": "string"},
+                                        "arg_name": {"type": "string"},
+                                        "type": {"type": "string"},
                                         "object_schema": {"type": "string"},
                                     },
                                     "required": ["arg_name", "type"],
@@ -202,8 +219,8 @@ EXTRACT_TOOL = {
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "arg_name":      {"type": "string"},
-                                        "type":          {"type": "string"},
+                                        "arg_name": {"type": "string"},
+                                        "type": {"type": "string"},
                                         "object_schema": {"type": "string"},
                                     },
                                     "required": ["arg_name", "type"],
@@ -213,7 +230,7 @@ EXTRACT_TOOL = {
                                 "type": "object",
                                 "properties": {
                                     "service_name": {"type": "string"},
-                                    "auth_method":  {"type": "string"},
+                                    "auth_method": {"type": "string"},
                                 },
                             },
                         },
@@ -230,7 +247,11 @@ EXTRACT_TOOL = {
 
 def llm_call(token, endpoint, model, messages, tools=None, tool_choice="auto"):
     url = f"{endpoint.rstrip('/')}/genai/llmgw/chat/completions"
-    payload = {"model": model, "messages": messages, **_model_params(model, temperature=0.0)}
+    payload = {
+        "model": model,
+        "messages": messages,
+        **_model_params(model, temperature=0.0),
+    }
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice
@@ -274,14 +295,20 @@ def build_tool_definitions(tools):
         if auth:
             desc += f" | Requires {auth['service_name']} {auth['auth_method']}"
 
-        defs.append({
-            "type": "function",
-            "function": {
-                "name": tool["function_name"],
-                "description": desc,
-                "parameters": {"type": "object", "properties": props, "required": required},
-            },
-        })
+        defs.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["function_name"],
+                    "description": desc,
+                    "parameters": {
+                        "type": "object",
+                        "properties": props,
+                        "required": required,
+                    },
+                },
+            }
+        )
     return defs
 
 
@@ -296,20 +323,25 @@ def simulate_tool_return(token, endpoint, tool_name, arguments, spec_tools):
     else:
         out_schema = "result (string)"
 
-    resp = llm_call(token, endpoint, SIMULATION_MODEL, [
-        {
-            "role": "system",
-            "content": (
-                "Generate a realistic return value for the following tool call. "
-                "Return ONLY valid JSON — no explanation, no markdown, no code fences. "
-                "The JSON must contain exactly the output fields listed."
-            ),
-        },
-        {
-            "role": "user",
-            "content": f"Tool: {tool_name}\nArguments: {json.dumps(arguments)}\nOutput fields: {out_schema}",
-        },
-    ])
+    resp = llm_call(
+        token,
+        endpoint,
+        SIMULATION_MODEL,
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Generate a realistic return value for the following tool call. "
+                    "Return ONLY valid JSON — no explanation, no markdown, no code fences. "
+                    "The JSON must contain exactly the output fields listed."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Tool: {tool_name}\nArguments: {json.dumps(arguments)}\nOutput fields: {out_schema}",
+            },
+        ],
+    )
 
     content = strip_code_fence(resp["choices"][0]["message"]["content"].strip())
     try:
@@ -320,11 +352,15 @@ def simulate_tool_return(token, endpoint, tool_name, arguments, spec_tools):
 
 # ── session management ────────────────────────────────────────────────────────
 
+
 def load_session(session_dir):
     config_file = os.path.join(session_dir, "config.json")
-    state_file  = os.path.join(session_dir, "messages.json")
+    state_file = os.path.join(session_dir, "messages.json")
     if not os.path.exists(config_file) or not os.path.exists(state_file):
-        print(f"Error: session not found at {session_dir}. Run with --init first.", file=sys.stderr)
+        print(
+            f"Error: session not found at {session_dir}. Run with --init first.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     with open(config_file) as f:
         config = json.load(f)
@@ -334,6 +370,7 @@ def load_session(session_dir):
 
 
 # ── commands ──────────────────────────────────────────────────────────────────
+
 
 def cmd_init(spec_path, session_dir):
     if not os.path.exists(spec_path):
@@ -346,38 +383,51 @@ def cmd_init(spec_path, session_dir):
         content = f.read()
 
     progress("extracting spec...")
-    t0   = time.monotonic()
+    t0 = time.monotonic()
     resp = llm_call(
-        token, endpoint, SIMULATION_MODEL,
+        token,
+        endpoint,
+        SIMULATION_MODEL,
         messages=[
-            {"role": "system", "content": "Extract the structured fields from the agent spec provided by the user."},
+            {
+                "role": "system",
+                "content": "Extract the structured fields from the agent spec provided by the user.",
+            },
             {"role": "user", "content": content},
         ],
         tools=[EXTRACT_TOOL],
         tool_choice={"type": "function", "function": {"name": "extract_spec"}},
     )
     elapsed = time.monotonic() - t0
-    usage   = resp.get("usage", {})
-    progress(f"extract spec  {elapsed:.1f}s  {usage.get('prompt_tokens', '?')}→{usage.get('completion_tokens', '?')} tok")
+    usage = resp.get("usage", {})
+    progress(
+        f"extract spec  {elapsed:.1f}s  {usage.get('prompt_tokens', '?')}→{usage.get('completion_tokens', '?')} tok"
+    )
 
     tool_calls = resp["choices"][0]["message"].get("tool_calls")
     if not tool_calls:
-        print("Error: spec extraction failed — model did not return structured data", file=sys.stderr)
+        print(
+            "Error: spec extraction failed — model did not return structured data",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    spec          = json.loads(tool_calls[0]["function"]["arguments"])
-    model         = strip_model_prefix(spec["model"])
+    spec = json.loads(tool_calls[0]["function"]["arguments"])
+    model = strip_model_prefix(spec["model"])
     system_prompt = spec["system_prompt"]
-    tools         = spec.get("tools", [])
-    examples      = spec.get("examples", [])
+    tools = spec.get("tools", [])
+    examples = spec.get("examples", [])
 
     with open(os.path.join(session_dir, "config.json"), "w") as f:
-        json.dump({
-            "model":            model,
-            "system_prompt":    system_prompt,
-            "tool_definitions": build_tool_definitions(tools),
-            "spec_tools":       tools,
-            "examples":         examples,
-        }, f)
+        json.dump(
+            {
+                "model": model,
+                "system_prompt": system_prompt,
+                "tool_definitions": build_tool_definitions(tools),
+                "spec_tools": tools,
+                "examples": examples,
+            },
+            f,
+        )
 
     with open(os.path.join(session_dir, "messages.json"), "w") as f:
         json.dump([{"role": "system", "content": system_prompt}], f)
@@ -419,9 +469,9 @@ def run_tool_call(tc, token, endpoint, spec_tools, stats, lock):
         print(json.dumps(args, indent=2))
         print()
 
-    t0        = time.monotonic()
+    t0 = time.monotonic()
     simulated = simulate_tool_return(token, endpoint, fn, args, spec_tools)
-    elapsed   = time.monotonic() - t0
+    elapsed = time.monotonic() - t0
 
     with lock:
         stats.sim_done(fn, elapsed)
@@ -436,8 +486,8 @@ def cmd_turn(session_dir, message):
     token, endpoint = get_credentials()
     config, messages, state_file = load_session(session_dir)
 
-    model      = config["model"]
-    tool_defs  = config["tool_definitions"]
+    model = config["model"]
+    tool_defs = config["tool_definitions"]
     spec_tools = config["spec_tools"]
 
     messages.append({"role": "user", "content": message})
@@ -446,23 +496,29 @@ def cmd_turn(session_dir, message):
     t_wall = time.monotonic()
 
     while True:
-        t0      = time.monotonic()
-        resp    = llm_call(token, endpoint, model, messages, tool_defs or None)
+        t0 = time.monotonic()
+        resp = llm_call(token, endpoint, model, messages, tool_defs or None)
         elapsed = time.monotonic() - t0
-        usage   = resp.get("usage", {})
-        stats.agent_done(elapsed, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+        usage = resp.get("usage", {})
+        stats.agent_done(
+            elapsed, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+        )
 
-        msg           = resp["choices"][0]["message"]
+        msg = resp["choices"][0]["message"]
         finish_reason = resp["choices"][0]["finish_reason"]
 
         if finish_reason == "tool_calls" or msg.get("tool_calls"):
             messages.append(msg)
             lock = threading.Lock()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                tool_messages = list(executor.map(
-                    lambda tc: run_tool_call(tc, token, endpoint, spec_tools, stats, lock),
-                    msg["tool_calls"],
-                ))
+                tool_messages = list(
+                    executor.map(
+                        lambda tc: run_tool_call(
+                            tc, token, endpoint, spec_tools, stats, lock
+                        ),
+                        msg["tool_calls"],
+                    )
+                )
             messages.extend(tool_messages)
         else:
             content = msg.get("content", "")
@@ -480,12 +536,13 @@ def cmd_turn(session_dir, message):
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="DataRobot Dress Rehearsal")
-    parser.add_argument("--init",    action="store_true")
-    parser.add_argument("--spec",    default="agent_spec.md")
+    parser.add_argument("--init", action="store_true")
+    parser.add_argument("--spec", default="agent_spec.md")
     parser.add_argument("--session", metavar="DIR")
-    parser.add_argument("message",   nargs="?")
+    parser.add_argument("message", nargs="?")
     args = parser.parse_args()
 
     if args.init:

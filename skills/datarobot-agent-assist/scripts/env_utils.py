@@ -9,41 +9,42 @@ from pathlib import Path
 def read_env_variable(env_file: Path, variable_name: str) -> str:
     """
     Read a variable value from a .env file.
-    
+
     Args:
         env_file: Path to the .env file
         variable_name: Name of the variable to read
-        
+
     Returns:
         The variable value (stripped of quotes if present)
-        
+
     Raises:
         FileNotFoundError: If the .env file doesn't exist
         ValueError: If the variable is not found in the file
     """
     if not env_file.exists():
         raise FileNotFoundError(f".env file not found: {env_file}")
-    
-    with open(env_file, 'r') as f:
+
+    with open(env_file, "r") as f:
         for line in f:
             line = line.strip()
             # Skip empty lines and comments
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
-            
+
             # Split on first = sign
-            if '=' in line:
-                key, value = line.split('=', 1)
+            if "=" in line:
+                key, value = line.split("=", 1)
                 key = key.strip()
                 value = value.strip()
-                
+
                 if key == variable_name:
                     # Remove surrounding quotes if present
-                    if (value.startswith('"') and value.endswith('"')) or \
-                       (value.startswith("'") and value.endswith("'")):
+                    if (value.startswith('"') and value.endswith('"')) or (
+                        value.startswith("'") and value.endswith("'")
+                    ):
                         value = value[1:-1]
                     return value
-    
+
     raise ValueError(f"Variable '{variable_name}' not found in {env_file}")
 
 
@@ -64,12 +65,16 @@ def ensure_env_file(env_file: Path = Path(".env")) -> None:
                 ["dr", "dotenv", "setup", "--yes", "--output", "."],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
             )
             print(result.stdout)
         except subprocess.CalledProcessError as e:
-            print(f"Warning: Failed to run 'dr dotenv setup': {e.stderr}", file=sys.stderr)
+            print(
+                f"Warning: Failed to run 'dr dotenv setup': {e.stderr}", file=sys.stderr
+            )
             print("Falling back to environment variables...", file=sys.stderr)
         except FileNotFoundError:
-            print("Warning: 'dr' command not found. Falling back to environment variables...", file=sys.stderr)
-
+            print(
+                "Warning: 'dr' command not found. Falling back to environment variables...",
+                file=sys.stderr,
+            )

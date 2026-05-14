@@ -51,7 +51,9 @@ def save_framework(target_dir: Path, framework_value: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Save the agentic framework for a DataRobot agent project.")
+    parser = argparse.ArgumentParser(
+        description="Save the agentic framework for a DataRobot agent project."
+    )
     parser.add_argument(
         "--framework",
         required=True,
