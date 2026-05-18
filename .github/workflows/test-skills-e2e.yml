@@ -70,10 +70,9 @@ jobs:
           path: tests/e2e/skill_hashes.json
           key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}
 
-      - name: Commit updated hashes (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Warn if committed hash cache is stale
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add tests/e2e/skill_hashes.json
-          git diff --cached --quiet || (git commit -m "chore: update skill e2e hash cache [skip ci]" && git pull --rebase && git push)
+          if ! git diff --quiet -- tests/e2e/skill_hashes.json; then
+            echo "::warning::tests/e2e/skill_hashes.json is out of date. Run 'task test:e2e' locally and commit the refreshed file in a follow-up PR."
+          fi

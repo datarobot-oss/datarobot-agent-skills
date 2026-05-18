@@ -22,6 +22,22 @@ seven days
 - Ensure the bug was not already reported in the projects Issues section
 - Open an issue as described above
 
+## Running e2e skill tests
+
+Skill quality is evaluated end-to-end by an LLM judge. To keep CI cheap, unchanged skills are skipped via an MD5 cache at `tests/e2e/skill_hashes.json`.
+
+If you change a skill, run the suite locally before pushing and commit the refreshed hash file alongside your skill changes:
+
+```
+cp .env.example .env  # fill in DATAROBOT_ENDPOINT + DATAROBOT_API_TOKEN
+task test:e2e         # or: uv run --group e2e pytest tests/e2e/ -v
+git add tests/e2e/skill_hashes.json
+```
+
+Force a full re-evaluation (ignore the cache) with `task test:e2e:force`.
+
+CI does not write back to `main`; if the committed cache drifts, the workflow logs a warning and the fix is to run the command above locally and open a PR.
+
 ## Responding to issues and pull requests
 
 This project's maintainers will make every effort to respond to any
