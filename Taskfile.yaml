@@ -50,6 +50,7 @@ tasks:
       - validate
       - ruff:check
       - ruff:format:check
+      - mypy
       - shellcheck
       - yamlfmt:check
 

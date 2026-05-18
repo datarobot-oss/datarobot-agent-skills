@@ -24,6 +24,7 @@ import urllib.request
 import urllib.error
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, cast
 
 from env_utils import ensure_env_file, read_env_variable
 
@@ -165,7 +166,7 @@ _UNSUPPORTED_PARAMS: dict[str, set[str]] = {
 }
 
 
-def _model_params(model: str, **kwargs) -> dict:
+def _model_params(model: str, **kwargs: Any) -> dict[str, Any]:
     """Return kwargs filtered to params supported by the given model."""
     unsupported: set[str] = set()
     for pattern, fields in _UNSUPPORTED_PARAMS.items():
@@ -250,10 +251,10 @@ def llm_call(
     token: str,
     endpoint: str,
     model: str,
-    messages: list[dict],
-    tools: list[dict] | None = None,
-    tool_choice: str | dict = "auto",
-) -> dict:
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] = "auto",
+) -> dict[str, Any]:
     url = f"{endpoint.rstrip('/')}/genai/llmgw/chat/completions"
     payload = {
         "model": model,
@@ -274,14 +275,14 @@ def llm_call(
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read())
+            return cast(dict[str, Any], json.loads(resp.read()))
     except urllib.error.HTTPError as e:
         body = e.read().decode()
         print(f"API error {e.code}: {body}", file=sys.stderr)
         sys.exit(1)
 
 
-def build_tool_definitions(tools: list[dict]) -> list[dict]:
+def build_tool_definitions(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     defs = []
     for tool in tools:
         props = {}
@@ -324,9 +325,9 @@ def simulate_tool_return(
     token: str,
     endpoint: str,
     tool_name: str,
-    arguments: dict,
-    spec_tools: list[dict],
-) -> dict:
+    arguments: dict[str, Any],
+    spec_tools: list[dict[str, Any]],
+) -> dict[str, Any]:
     spec_tool = next((t for t in spec_tools if t["function_name"] == tool_name), None)
     if spec_tool:
         out_schema = ", ".join(
@@ -359,7 +360,7 @@ def simulate_tool_return(
 
     content = strip_code_fence(resp["choices"][0]["message"]["content"].strip())
     try:
-        return json.loads(content)
+        return cast(dict[str, Any], json.loads(content))
     except json.JSONDecodeError:
         return {"result": content}
 
@@ -367,7 +368,7 @@ def simulate_tool_return(
 # ── session management ────────────────────────────────────────────────────────
 
 
-def load_session(session_dir: str) -> tuple[dict, list[dict], str]:
+def load_session(session_dir: str) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     config_file = os.path.join(session_dir, "config.json")
     state_file = os.path.join(session_dir, "messages.json")
     if not os.path.exists(config_file) or not os.path.exists(state_file):
@@ -469,13 +470,13 @@ def cmd_init(spec_path: str, session_dir: str) -> None:
 
 
 def run_tool_call(
-    tc: dict,
+    tc: dict[str, Any],
     token: str,
     endpoint: str,
-    spec_tools: list[dict],
+    spec_tools: list[dict[str, Any]],
     stats: TurnProgress,
     lock: threading.Lock,
-) -> dict:
+) -> dict[str, Any]:
     """Execute one tool call cycle: dispatch → simulate → return tool message."""
     fn = tc["function"]["name"]
     try:
