@@ -45,7 +45,8 @@ After the user selects an option, and before proceeding, run through the **[Pre-
 Run in order before proceeding:
 
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
-2. **DataRobot CLI** — follow **DataRobot CLI Setup** at the bottom:
+2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
+3. **DataRobot CLI** — follow **DataRobot CLI Setup** at the bottom:
    - If missing, **ALWAYS RUN** the install command before proceeding
    - **ALWAYS RUN** the upgrade command before proceeding
    - If not authenticated, **ALWAYS RUN** the auth command before proceeding
