@@ -37,8 +37,15 @@ tasks:
     cmds:
       - yamlfmt -lint .
 
+  mypy:
+    desc: Run mypy type checker on Python scripts (override dir with DIR=<path>)
+    vars:
+      DIR: '{{.DIR | default "skills/"}}'
+    cmds:
+      - uv run --group dev mypy {{.DIR}}
+
   lint:
-    desc: Run all linting checks (validate skills + ruff + shellcheck + yamlfmt)
+    desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + yamlfmt)
     deps:
       - validate
       - ruff:check
