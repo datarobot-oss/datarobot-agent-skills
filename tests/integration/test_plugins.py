@@ -59,12 +59,8 @@ def test_gemini_entry_name_matches_folder(gemini_entry: dict) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Claude plugin validation (uses the official `claude plugin validate` CLI)
-# ---------------------------------------------------------------------------
-
-
 def test_claude_plugin_validate() -> None:
+    """Validate the Claude plugin using the official `claude plugin validate` CLI."""
     result = subprocess.run(
         ["claude", "plugin", "validate", "."],
         cwd=REPO_ROOT,
@@ -76,16 +72,13 @@ def test_claude_plugin_validate() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Cursor plugin structural validation (.cursor-plugin/plugin.json)
-# ---------------------------------------------------------------------------
-
 CURSOR_PLUGIN_FILE = REPO_ROOT / ".cursor-plugin" / "plugin.json"
 _CURSOR_REQUIRED_FIELDS = {"name", "description", "version", "skills_directory"}
 
 
 @pytest.fixture(scope="module")
 def cursor_plugin() -> dict:
+    """Load and return the parsed .cursor-plugin/plugin.json manifest."""
     assert CURSOR_PLUGIN_FILE.exists(), (
         f".cursor-plugin/plugin.json not found at {CURSOR_PLUGIN_FILE}"
     )
@@ -111,4 +104,32 @@ def test_cursor_plugin_skills_directory_exists(cursor_plugin: dict) -> None:
     skills_dir = cursor_plugin.get("skills_directory", "")
     assert (REPO_ROOT / skills_dir).is_dir(), (
         f".cursor-plugin/plugin.json skills_directory '{skills_dir}' does not exist"
+    )
+
+
+def test_all_plugin_versions_match() -> None:
+    """Assert that all plugin manifests (Claude, Cursor, Gemini) declare the same version."""
+    claude_plugin_file = REPO_ROOT / ".claude-plugin" / "plugin.json"
+    claude_marketplace_file = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+    cursor_plugin_file = REPO_ROOT / ".cursor-plugin" / "plugin.json"
+    gemini_file = REPO_ROOT / "gemini-extension.json"
+
+    with open(claude_plugin_file, encoding="utf-8") as f:
+        claude_plugin_version = json.load(f)["version"]
+    with open(claude_marketplace_file, encoding="utf-8") as f:
+        claude_marketplace_version = json.load(f)["plugins"][0]["version"]
+    with open(cursor_plugin_file, encoding="utf-8") as f:
+        cursor_version = json.load(f)["version"]
+    with open(gemini_file, encoding="utf-8") as f:
+        gemini_version = json.load(f)["version"]
+
+    versions = {
+        ".claude-plugin/plugin.json": claude_plugin_version,
+        ".claude-plugin/marketplace.json (plugins[0])": claude_marketplace_version,
+        ".cursor-plugin/plugin.json": cursor_version,
+        "gemini-extension.json": gemini_version,
+    }
+    unique_versions = set(versions.values())
+    assert len(unique_versions) == 1, "Plugin versions are out of sync:\n" + "\n".join(
+        f"  {name}: {ver}" for name, ver in versions.items()
     )
