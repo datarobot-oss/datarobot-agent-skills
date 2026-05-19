@@ -30,11 +30,17 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
+      - name: Install claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Install go
         uses: actions/setup-go@v6
 
       - name: Install yamlfmt
         run: go install github.com/google/yamlfmt/cmd/yamlfmt@latest
+
+      - name: Install integration dependencies
+        run: uv sync --group integration
 
       - name: Run lint
         run: task lint

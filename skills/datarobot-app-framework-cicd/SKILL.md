@@ -1,6 +1,6 @@
 ---
 name: datarobot-app-framework-cicd
-description: Guidance for setting up CI/CD pipelines for DataRobot application templates using GitLab, GitHub Actions, and Pulumi for infrastructure as code.
+description: Guidance for setting up CI/CD pipelines for DataRobot application templates using GitLab, GitHub Actions, and Pulumi for infrastructure as code. Use when setting up CI/CD pipelines, configuring deployments, or managing infrastructure for DataRobot application templates.
 context-tokens: "~6 000 (SKILL.md) + ~2 000 (scripts/*) + ~400 per examples/* file"
 ---
 

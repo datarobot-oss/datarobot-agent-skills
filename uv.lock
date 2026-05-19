@@ -344,6 +344,11 @@ e2e = [
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
 ]
+integration = [
+    { name = "datarobot-genai" },
+    { name = "pytest" },
+    { name = "python-frontmatter" },
+]
 
 [package.metadata]
 
@@ -355,6 +360,11 @@ e2e = [
     { name = "pytest-asyncio" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
+integration = [
+    { name = "datarobot-genai" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "python-frontmatter", specifier = ">=1.1" },
+]
 
 [[package]]
 name = "datarobot-agent-tester"
@@ -364,6 +374,15 @@ dependencies = [
     { name = "litellm" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+]
+
+[[package]]
+name = "datarobot-genai"
+version = "0.15.57"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/53/79f9065cb0ab4bcbd1acd92402d89416f0210a2b0b0c8f4610226f6aaa36/datarobot_genai-0.15.57.tar.gz", hash = "sha256:af9846cec82bc2e5fbcc6cbc656b5322beeb22d278a90de6161cd51195c135d8", size = 318144, upload-time = "2026-05-18T15:40:06.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/10/575e0562130451c231811efb935bb89899f0f96e7f84848447b8d13ffb76/datarobot_genai-0.15.57-py3-none-any.whl", hash = "sha256:aed60cbb9d524d16f72a1f9efb5b7af8cc583ad5607567470650c8620c517dd4", size = 441457, upload-time = "2026-05-18T15:40:04.565Z" },
 ]
 
 [[package]]
@@ -1463,6 +1482,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
+]
+
+[[package]]
+name = "python-frontmatter"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/21/88aefb4f1de6661b5a003175e21e4a5ad94f5e52b2abf4170a11883c7d81/python_frontmatter-1.2.0.tar.gz", hash = "sha256:5b26ccd3cb85af77feb11d83b922c7bb5aeccb0c9d3fb236b938c600b6322984", size = 16890, upload-time = "2026-05-17T23:42:05.493Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/b1/ec12e3e746234006b77dec69d53878253b1da09dbb55fa3cb456083d9069/python_frontmatter-1.2.0-py3-none-any.whl", hash = "sha256:e1ee1d4300450a2f84e778eb4f70edf573da6cd7d463801066f05edc4e819c78", size = 10396, upload-time = "2026-05-17T23:42:04.637Z" },
 ]
 
 [[package]]

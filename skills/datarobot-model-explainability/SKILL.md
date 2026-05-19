@@ -1,6 +1,6 @@
 ---
 name: datarobot-model-explainability
-description: Tools and guidance for model explainability, prediction explanations, feature impact analysis, SHAP values, and model diagnostics.
+description: Tools and guidance for model explainability, prediction explanations, feature impact analysis, SHAP values, and model diagnostics. Use when analyzing model explanations, feature impact, SHAP values, or diagnosing model behavior.
 ---
 
 # DataRobot Model Explainability Skill

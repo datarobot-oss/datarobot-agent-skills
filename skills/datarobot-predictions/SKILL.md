@@ -1,6 +1,6 @@
 ---
 name: datarobot-predictions
-description: Tools and guidance for making predictions with DataRobot models, including real-time predictions, batch scoring, and prediction dataset generation.
+description: Tools and guidance for making predictions with DataRobot models, including real-time predictions, batch scoring, and prediction dataset generation. Use when making predictions, running batch scoring, or generating prediction datasets.
 ---
 
 # DataRobot Predictions Skill

@@ -2,10 +2,10 @@
 version: '3'
 
 tasks:
-  validate:
+  test:integration:
     desc: Validate all DataRobot skills (naming, structure, frontmatter)
     cmds:
-      - uv run bin/validate_skills.py
+      - uv run --group integration pytest tests/integration/ -v --tb=short
 
   ruff:check:
     desc: Run ruff linter on all Python scripts
@@ -47,7 +47,7 @@ tasks:
   lint:
     desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + yamlfmt)
     deps:
-      - validate
+      - test:integration
       - ruff:check
       - ruff:format:check
       - mypy
