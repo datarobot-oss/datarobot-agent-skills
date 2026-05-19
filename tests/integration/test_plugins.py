@@ -62,6 +62,35 @@ def test_gemini_entry_name_matches_folder(gemini_entry: dict) -> None:
     )
 
 
+def test_gemini_all_skills_included() -> None:
+    """Assert that every skills/ subfolder is listed in gemini-extension.json."""
+    skills_root = REPO_ROOT / "skills"
+    skill_folders = {p.name for p in skills_root.iterdir() if p.is_dir()}
+
+    gemini_file = REPO_ROOT / "gemini-extension.json"
+    with open(gemini_file, encoding="utf-8") as f:
+        config = json.load(f)
+    listed_names = {e.get("name") for e in config.get("skills", [])}
+
+    missing = skill_folders - listed_names
+    assert not missing, (
+        f"Skills present on disk but missing from gemini-extension.json: {sorted(missing)}"
+    )
+
+
+def test_gemini_extension_validate() -> None:
+    """Validate the Gemini extension using the official `gemini extensions validate` CLI."""
+    result = subprocess.run(
+        ["gemini", "extensions", "validate", "."],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"`gemini extensions validate .` failed:\n{result.stdout}\n{result.stderr}"
+    )
+
+
 def test_claude_plugin_validate() -> None:
     """Validate the Claude plugin using the official `claude plugin validate` CLI."""
     result = subprocess.run(

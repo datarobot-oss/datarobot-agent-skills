@@ -19,6 +19,8 @@ jobs:
         run: sudo apt-get install -y shellcheck
       - name: Install claude CLI
         run: npm install -g @anthropic-ai/claude-code
+      - name: Install gemini CLI
+        run: npm install -g @google/gemini-cli
       - uses: actions/setup-go@v6
       - name: Install go tools
         run: |
