@@ -3,7 +3,7 @@
 # Default owner for repo scaffolding, CI, docs, and anything outside skills/
 * @datarobot-oss/datarobot-agent-skills
 
-# Agent assist is owned by agentic-assistant
+# Agent assist team skills
 /skills/datarobot-agent-assist/ @datarobot/agentic-assistant
 /skills/datarobot-setup/ @datarobot/agentic-assistant
 
@@ -16,8 +16,9 @@
 /skills/datarobot-model-training/ @datarobot/core-modeling
 /skills/datarobot-predictions/ @datarobot/core-modeling
 
-# App framework skills are owned by the Applications team
+# All App Framework skills are owned by the Applications team
 /skills/datarobot-app-framework-*/ @datarobot/applications
 
-# External agent monitoring is owned by vitali93
+# Individual Contributor skills
 /skills/datarobot-external-agent-monitoring/ @vitali93
+/skills/datarobot-setup/ @amberb617

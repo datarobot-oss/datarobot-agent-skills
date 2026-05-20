@@ -1,7 +1,7 @@
 {
   "name": "datarobot-agent-skills",
   "description": "A collection of DataRobot agent skills for model training, deployment, predictions, monitoring, and more.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": {
     "name": "DataRobot",
     "email": "carson.gee@datarobot.com"

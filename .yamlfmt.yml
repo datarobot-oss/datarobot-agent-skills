@@ -8,3 +8,4 @@ formatter:
 exclude:
   - .datarobot/
   - .venv/
+  - .git/
