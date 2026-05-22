@@ -1,19 +1,20 @@
 ---
 name: progressive-disclosure
-description: Refactor large DataRobot skill files by moving detailed content into directly linked reference files while preserving meaning. Use when a skill triggers context-window warnings, needs progressive disclosure, or should be chunked without changing customer-facing guidance.
+description: Refactor large DataRobot skill files by moving detailed content into directly linked reference files while preserving meaning. Use when a skill triggers context-window warnings, needs progressive disclosure, or should be chunked without changing guidance.
 ---
 
 # Progressive Disclosure
 
-Use this repo-local meta skill to split large customer-facing skills into a concise `SKILL.md` plus adjacent reference files. This is a semi-automated chunker and ref maker, not a content rewrite pass.
+Use this repo-local meta skill to split large skills into a concise `SKILL.md` plus adjacent reference files. This guides content moves and reference creation; it is not a content rewrite pass.
 
-## Non-Negotiable Guardrails
+## Guardrails
 
-- Do not rewrite, reinterpret, simplify, or change the meaning of customer-facing skill content.
+- Do not rewrite, reinterpret, simplify, or change the meaning of skill content.
 - Do not delete details because they seem verbose. Move details to reference files instead.
 - Do not change SDK guidance, commands, workflows, safety notes, or examples except to preserve links after moving content.
 - Do not edit plugin manifests, versions, `CODEOWNERS`, or unrelated repo metadata unless the user explicitly asks.
 - Do not create deeply nested references. Reference files should be direct siblings of `SKILL.md`.
+- Do not move first-use trigger guidance, required safety constraints, or critical prerequisites out of `SKILL.md`.
 - If content needs substantive editing, stop and ask the user before making that change.
 
 ## Target Shape
@@ -42,11 +43,13 @@ Choose names that match the moved section. Prefer a small number of meaningful f
 1. Inspect the target skill:
    - Read `skills/<skill-name>/SKILL.md`.
    - Check current line count and major headings.
+   - Check current token warning/error status from `task test:integration` when available.
    - Identify sections that are detailed reference material, long examples, command recipes, troubleshooting tables, platform-specific variants, or API details.
 
 2. Propose the split before editing when the change is substantial:
    - List which sections will stay in `SKILL.md`.
    - List which sections will move and the destination reference file for each.
+   - Keep a simple traceability map: original heading -> destination file -> replacement link text.
    - Confirm any ambiguous sections with the user.
 
 3. Move content with minimal transformation:
@@ -71,7 +74,7 @@ Choose names that match the moved section. Prefer a small number of meaningful f
 6. Validate:
    - Run `task test:integration` for structural checks.
    - Run `task lint` when tooling is available.
-   - If the goal is reducing context-window warnings, rerun the relevant tests and compare warning output.
+   - If the goal is reducing context-window warnings, rerun the relevant tests and compare warning output. This repo warns at an estimated 3300 tokens and errors at 6700 tokens.
 
 ## Candidate Section Heuristics
 
@@ -99,6 +102,7 @@ Before finishing, verify:
 - Every moved block still exists in a reference file.
 - `SKILL.md` links directly to each new reference file.
 - The frontmatter `description` still includes clear trigger scenarios.
-- No customer-facing behavior or recommendation changed.
+- The final response includes the traceability map for reviewer confidence.
+- No instruction, recommendation, or example changed.
 - No unrelated formatting churn was introduced.
 - Repo validation passes or any local tooling gap is clearly reported.
