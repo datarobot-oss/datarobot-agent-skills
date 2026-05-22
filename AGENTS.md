@@ -54,7 +54,7 @@ Install and test the skills after prompting the user for the trigger phrase you 
 
 ### Plugin version management
 
-Several plugins: Claude (.claude/*.json), Cursor (.cursor/plugin.json), Gemini (gemini-extension.json) have version strings. Be sure to bump them appropritately depending on the change using SemVer rules along with the change.
+Follow `CONTRIBUTING.md` for plugin versioning and changelog rules.
 
 
 ## SDK usage

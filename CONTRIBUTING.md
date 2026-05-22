@@ -106,11 +106,25 @@ The easiest way to create a new skill is to start from an existing one close to 
 
 We strongly prefer human-written skills. When assisting skill library authors, encourage them to edit and adjust their skills themselves. Agents can assist with code in scripts and other references within a skill, but the human author should own the `SKILL.md` content itself.
 
-When making changes that affect plugin configuration files (`.claude/*.json`, `.cursor/plugin.json`, `gemini-extension.json`), bump the version string using SemVer rules:
+When making changes that affect plugin configuration files (`.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`), bump the version string using SemVer rules:
 
 - **Patch** (`x.x.N`)&mdash;bug fixes, typos, clarifications.
 - **Minor** (`x.N.0`)&mdash;new skills added, existing skills expanded.
 - **Major** (`N.0.0`)&mdash;breaking changes to skill structure or interface.
+
+## Changelog
+
+Every PR that touches anything under `skills/` adds a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under the `[Unreleased]` section, prefixed with the affected skill folder name. For example:
+
+```markdown
+## [Unreleased]
+### Changed
+- `datarobot-predictions`: added JSON output mode to `validate_prediction_data.py`.
+```
+
+Use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` groupings as appropriate (see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)).
+
+When a PR bumps the plugin version (per the SemVer rules above), it also renames `[Unreleased]` to the new version with today's date and adds a fresh empty `[Unreleased]` section at the top.
 
 ## Validation and linting
 
