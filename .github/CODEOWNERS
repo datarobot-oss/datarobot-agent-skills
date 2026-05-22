@@ -18,6 +18,9 @@
 # All App Framework skills are owned by the Applications team
 /skills/datarobot-app-framework-*/ @datarobot/applications
 
+# OpenCode plugin (theme, install scripts, metadata)
+/.opencode-plugin/ @datarobot-oss/datarobot-agent-skills
+
 # Individual Contributor skills
 /skills/datarobot-external-agent-monitoring/ @vitali93
 /skills/datarobot-setup/ @amberb617

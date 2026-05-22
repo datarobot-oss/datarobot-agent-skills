@@ -1,0 +1,230 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "drGreen": "#81FBA5",
+    "drBlack": "#0B0B0B",
+    "drWhite": "#FFFFFF",
+    "drGrey": "#E4E4E4",
+    "drPurple": "#A6B0FF",
+    "drIndigo": "#5C41FF",
+    "drBlue": "#44BFFC",
+    "drYellow": "#FFFF54",
+    "drDarkPanel": "#1A1A1A",
+    "drDarkElement": "#252525",
+    "drDarkBorder": "#1E3D2A",
+    "drDarkBorderActive": "#81FBA5",
+    "drDarkMuted": "#777777",
+    "drLightPanel": "#F5F5F5",
+    "drLightElement": "#E8E8E8",
+    "drLightBorder": "#AADCBA",
+    "drLightBorderActive": "#5C41FF",
+    "drLightMuted": "#666666",
+    "drError": "#E85D6C",
+    "drWarningDark": "#FFFF54",
+    "drWarningLight": "#B8A600",
+    "drSuccess": "#81FBA5",
+    "drGreenDeep": "#2E8B47"
+  },
+  "theme": {
+    "primary": {
+      "dark": "drGreen",
+      "light": "drIndigo"
+    },
+    "secondary": {
+      "dark": "drGreen",
+      "light": "drIndigo"
+    },
+    "accent": {
+      "dark": "drBlue",
+      "light": "drBlue"
+    },
+    "error": {
+      "dark": "drError",
+      "light": "drError"
+    },
+    "warning": {
+      "dark": "drWarningDark",
+      "light": "drWarningLight"
+    },
+    "success": {
+      "dark": "drSuccess",
+      "light": "drGreenDeep"
+    },
+    "info": {
+      "dark": "drPurple",
+      "light": "drIndigo"
+    },
+    "text": {
+      "dark": "drGrey",
+      "light": "drBlack"
+    },
+    "textMuted": {
+      "dark": "drDarkMuted",
+      "light": "drLightMuted"
+    },
+    "background": {
+      "dark": "drBlack",
+      "light": "drWhite"
+    },
+    "backgroundPanel": {
+      "dark": "drDarkPanel",
+      "light": "drLightPanel"
+    },
+    "backgroundElement": {
+      "dark": "drDarkElement",
+      "light": "drLightElement"
+    },
+    "border": {
+      "dark": "drDarkBorder",
+      "light": "drLightBorder"
+    },
+    "borderActive": {
+      "dark": "drDarkBorderActive",
+      "light": "drLightBorderActive"
+    },
+    "borderSubtle": {
+      "dark": "drDarkBorder",
+      "light": "drLightBorder"
+    },
+    "diffAdded": {
+      "dark": "drGreen",
+      "light": "drGreenDeep"
+    },
+    "diffRemoved": {
+      "dark": "drError",
+      "light": "drError"
+    },
+    "diffContext": {
+      "dark": "drDarkMuted",
+      "light": "drLightMuted"
+    },
+    "diffHunkHeader": {
+      "dark": "drDarkMuted",
+      "light": "drLightMuted"
+    },
+    "diffHighlightAdded": {
+      "dark": "drGreen",
+      "light": "drGreenDeep"
+    },
+    "diffHighlightRemoved": {
+      "dark": "drError",
+      "light": "drError"
+    },
+    "diffAddedBg": {
+      "dark": "drDarkPanel",
+      "light": "drLightPanel"
+    },
+    "diffRemovedBg": {
+      "dark": "drDarkPanel",
+      "light": "drLightPanel"
+    },
+    "diffContextBg": {
+      "dark": "drDarkElement",
+      "light": "drLightElement"
+    },
+    "diffLineNumber": {
+      "dark": "drDarkMuted",
+      "light": "drLightMuted"
+    },
+    "diffAddedLineNumberBg": {
+      "dark": "drDarkPanel",
+      "light": "drLightPanel"
+    },
+    "diffRemovedLineNumberBg": {
+      "dark": "drDarkPanel",
+      "light": "drLightPanel"
+    },
+    "markdownText": {
+      "dark": "drGrey",
+      "light": "drBlack"
+    },
+    "markdownHeading": {
+      "dark": "drGreen",
+      "light": "drIndigo"
+    },
+    "markdownLink": {
+      "dark": "drBlue",
+      "light": "drBlue"
+    },
+    "markdownLinkText": {
+      "dark": "drPurple",
+      "light": "drIndigo"
+    },
+    "markdownCode": {
+      "dark": "drGreen",
+      "light": "drGreenDeep"
+    },
+    "markdownBlockQuote": {
+      "dark": "drDarkMuted",
+      "light": "drLightMuted"
+    },
+    "markdownEmph": {
+      "dark": "drBlue",
+      "light": "drBlue"
+    },
+    "markdownStrong": {
+      "dark": "drYellow",
+      "light": "drWarningLight"
+    },
+    "markdownHorizontalRule": {
+      "dark": "drDarkBorder",
+      "light": "drLightBorder"
+    },
+    "markdownListItem": {
+      "dark": "drGreen",
+      "light": "drIndigo"
+    },
+    "markdownListEnumeration": {
+      "dark": "drPurple",
+      "light": "drIndigo"
+    },
+    "markdownImage": {
+      "dark": "drBlue",
+      "light": "drBlue"
+    },
+    "markdownImageText": {
+      "dark": "drPurple",
+      "light": "drIndigo"
+    },
+    "markdownCodeBlock": {
+      "dark": "drGrey",
+      "light": "drBlack"
+    },
+    "syntaxComment": {
+      "dark": "drDarkMuted",
+      "light": "drLightMuted"
+    },
+    "syntaxKeyword": {
+      "dark": "drIndigo",
+      "light": "drIndigo"
+    },
+    "syntaxFunction": {
+      "dark": "drBlue",
+      "light": "drBlue"
+    },
+    "syntaxVariable": {
+      "dark": "drPurple",
+      "light": "drIndigo"
+    },
+    "syntaxString": {
+      "dark": "drGreen",
+      "light": "drGreenDeep"
+    },
+    "syntaxNumber": {
+      "dark": "drYellow",
+      "light": "drWarningLight"
+    },
+    "syntaxType": {
+      "dark": "drPurple",
+      "light": "drIndigo"
+    },
+    "syntaxOperator": {
+      "dark": "drBlue",
+      "light": "drBlue"
+    },
+    "syntaxPunctuation": {
+      "dark": "drGrey",
+      "light": "drBlack"
+    }
+  }
+}

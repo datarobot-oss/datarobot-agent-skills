@@ -162,6 +162,18 @@ datarobot-my-skill/
       ---
 ```
 
+## Testing the OpenCode plugin locally
+
+The `opencode-datarobot-skills` npm package is defined by `package.json` at the repo root. To test it locally before publishing, point OpenCode at the local clone using a `file:` reference in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["file:/absolute/path/to/datarobot-agent-skills"]
+}
+```
+
+OpenCode (via Bun) resolves `file:` paths and loads the plugin directly from disk, so edits to `.opencode-plugin/index.ts` or the skill files are picked up on the next OpenCode restart without any reinstall step.
+
 ## Continuous integration
 
 This repository uses GitHub Actions for automated checks:

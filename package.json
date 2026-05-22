@@ -1,0 +1,33 @@
+{
+  "name": "opencode-datarobot-skills",
+  "version": "0.1.1",
+  "description": "OpenCode plugin providing DataRobot skills for AI/ML workflows and a DataRobot-branded theme.",
+  "type": "module",
+  "main": ".opencode-plugin/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/datarobot-oss/datarobot-agent-skills.git"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "datarobot",
+    "machine-learning",
+    "mlops",
+    "automl",
+    "agent-skills"
+  ],
+  "author": {
+    "name": "DataRobot",
+    "url": "https://github.com/datarobot-oss/datarobot-agent-skills"
+  },
+  "license": "Apache-2.0",
+  "files": [
+    ".opencode-plugin/index.ts",
+    ".opencode-plugin/themes/",
+    "skills/"
+  ],
+  "dependencies": {
+    "@opencode-ai/plugin": "1.15.7"
+  }
+}

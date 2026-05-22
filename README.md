@@ -209,6 +209,20 @@ In Copilot Chat, reference skills naturally:
 
 </details>
 
+<details><summary><strong>OpenCode</strong></summary>
+
+Add to your `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["opencode-datarobot-skills"]
+}
+```
+
+OpenCode automatically installs the plugin on startup. The plugin also includes a DataRobot-branded theme with full dark and light variants. To activate it, add `"theme": "datarobot"` to your `opencode.json`.
+
+</details>
+
 ## Skills
 
 This repository contains skills for common DataRobot workflows. You can also contribute your own skills.

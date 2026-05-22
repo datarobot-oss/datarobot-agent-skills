@@ -41,6 +41,8 @@ Thumbs.db
 !.claude-plugin/marketplace.json
 !.claude-plugin/plugin.json
 !tests/e2e/skill_hashes.json
+!package.json
+!.opencode-plugin/themes/*.json
 
 # Environment variables
 .env
