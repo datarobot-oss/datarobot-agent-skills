@@ -36,7 +36,17 @@ What would you like to do?
   3. Deploy an AI agent     → Deploy an implemented agent to DataRobot
 ```
 
-After the user selects an option, and before proceeding, run through the **[Pre-requisite Check](#pre-requisite-check)** section below.
+Show this menu first. After the user selects an option (`1`, `2`, or `3`), run the **[Pre-requisite Check](#pre-requisite-check)** and then the **[Script Path Resolution](#script-path-resolution)** before doing anything else for that option.
+
+---
+
+## Script Path Resolution
+
+Before invoking any helper script, resolve `<skill_scripts_dir>` once for the session:
+
+- `<skill_scripts_dir>` is the `scripts/` subdirectory of the directory containing this `SKILL.md` file.
+- Confirm it exists with `ls <path_to_this_skill_dir>/scripts/`. If the directory is missing, tell the user the skill installation is incomplete and stop.
+- Use the resolved absolute path for every `<skill_scripts_dir>/...` reference in this skill.
 
 ---
 
@@ -77,6 +87,7 @@ Run in order before proceeding:
   **CRITICAL**: In case the script fails due to any reason, do **not** proceed. Instead, return the error message to the user and ask how they want to proceed.
 
 - Recommend a `gpt-5`, `claude-4-5`, or `gemini-2.5` model from the list unless the user specifies cost or other constraints.
+- If none of those preferred families appear in the catalog, pick the highest-capability available model by name — prefer ones containing `large`, `pro`, `opus`, or `sonnet` over `mini`, `haiku`, or `flash`.
 - Only display the full model catalog when the user **explicitly** asks to browse models.
 - If the user's desired model is unavailable, suggest starting with an available one and updating after implementation.
 
@@ -99,11 +110,13 @@ Then update the spec accordingly:
 
 ### Agent Simulation (Before Coding)
 
-Always offer to simulate the agent before coding it. **Run simulation** by following [Dress Rehearsal](#dress-rehearsal) in this skill end to end: initialize with `rehearsal.py --init`, drive turns with `--session`, handle `NOTE:` / `DONE`, and produce the dress rehearsal feedback report. Do not substitute improvised role-play or manual mock tool traces for this flow.
+Before transitioning to coding, ask the user (exact wording):
 
-Script path (from project root):
+> "Would you like to run a dress rehearsal simulation first? (recommended)"
 
-`python <skill_scripts_dir>/rehearsal.py ...`
+Wait for their reply. If they say yes, follow **[Dress Rehearsal](#dress-rehearsal)** end to end: initialize with `rehearsal.py --init`, drive turns with `--session`, handle `NOTE:` / `DONE`, and produce the feedback report. Do not substitute improvised role-play or manual mock tool traces. If they decline or skip, proceed directly to coding — do not simulate without explicit confirmation.
+
+Script path: `python <skill_scripts_dir>/rehearsal.py ...`
 
 ---
 
@@ -190,17 +203,29 @@ Then offer to implement any changes to `agent_spec.md`.
 
 **On Windows: coding is not supported. STOP and do NOT proceed with the next steps!**
 
+### Before Coding Begins
+
+Verify `agent_spec.md` contains at minimum:
+
+- `model` — a valid LLM Gateway model ID
+- `system_prompt` — non-empty
+- `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
+- `frontend.type` — set
+
+If `agent_spec.md` does not exist, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update the spec before continuing. Do not start coding against an incomplete spec.
+
 ### Pre-coding Checklist
 
-1. Check if `agent_spec.md` exists — if so, **read it first**
-2. Check if `AGENTS.md` exists in the template directory (default: current working directory)
+1. **Read `agent_spec.md`** — it must exist (see gate above).
+2. Check if `AGENTS.md` exists in the template directory (default: current working directory).
 3. If `AGENTS.md` does **not** exist, prepare the template with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the template is properly set up and avoiding wasted effort coding on a broken foundation.
-   a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding
-   b. **Clone the template**: Run the helper script:
+   a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding.
+   b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
+   c. **Clone the template**: Run the helper script:
    ```
    python <skill_scripts_dir>/clone_template.py
    ```
-   c. **Select the agentic framework**:
+   d. **Select the agentic framework**:
 
    **STOP. Do NOT proceed until the user has replied with their framework choice.**
 
@@ -212,15 +237,15 @@ Then offer to implement any changes to `agent_spec.md`.
    > 4. NeMo Agent Toolkit (NAT)
    > 5. Base
 
-   Wait for the user's reply. Do not assume or default to any framework. Once the user replies, map their choice to the corresponding value (`langgraph`, `crewai`, `llamaindex`, `nat`, `base`) and run:
+   Wait for the user's reply. Do not assume or default to any framework. If their next message is not a framework choice (silence, unrelated text), re-display the options and wait again — do not proceed with any other coding step. Once the user replies, map their choice to the corresponding value (`langgraph`, `crewai`, `llamaindex`, `nat`, `base`) and run:
    ```
    python <skill_scripts_dir>/select_framework.py \
      --target-dir . \
      --framework <value>
    ```
 
-   d. **Validate the template**: Run `dr dependency check`. If it fails, return the error message to the user DO NOT proceed. If it succeeds, continue to the next step.
-   e. **Setup the template**: Run the helper script:
+   e. **Validate the template**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
+   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
    ```
    python <skill_scripts_dir>/setup_template.py \
      --llm-model <model-name> \
@@ -229,8 +254,8 @@ Then offer to implement any changes to `agent_spec.md`.
 
    **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
 
-   f. **Re-read `AGENTS.md`** now that the template is ready
-4. Recreate the TODO list based on the `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool
+   g. **Re-read `AGENTS.md`** now that the template is ready.
+4. Recreate the TODO list based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
 
 
 ### Coding Rules
@@ -250,18 +275,11 @@ Then offer to implement any changes to `agent_spec.md`.
 
 ### After Coding
 
-1. **Proactively test the agent code locally** — read `AGENTS.md` and follow its local testing instructions to validate the implementation. Attempt this before suggesting next steps.
-
-2. **If the user asks for help testing locally**:
-   - Read `AGENTS.md` to find the exact shell command(s) required to run the agent locally
-   - Display the command(s) in a code block
-   - Tell the user to run the command in a **new terminal** in the current directory
-   - Do **not** run the command yourself
-
-3. After completing code generation and testing, present next steps:
-   - Testing the agent locally
-   - Revising aspects of the implementation
-   - Deploying to DataRobot
+1. Read `AGENTS.md` to find the local test command.
+2. Display the command in a code block.
+3. Tell the user: "Run this command in a **new terminal** in the current directory to test the agent locally."
+4. Do **not** run the command yourself.
+5. Present next steps: revise the implementation, or deploy to DataRobot.
 
 ---
 
@@ -468,4 +486,3 @@ dr auth login
 ```
 
 This will guide the user through the authentication process interactively.
-=======
