@@ -9,13 +9,21 @@ This skill provides comprehensive guidance for understanding model decisions, an
 
 ## Quick Start
 
-**Most common use case**: Get prediction explanations for a specific prediction
+**Most common use case**: Get SHAP explanations for a leaderboard / training model
 
-1. **Identify model/project**: Get `project_id` + `model_id` (from a deployment’s champion model, or from training)
-2. **Compute explanations**: Use `dr.PredictionExplanations.create(project_id, model_id, dataset_id, ...)`
-3. **Read explanation rows**: Use `dr.PredictionExplanations.get(project_id, prediction_explanations_id)` and iterate `get_rows()`
+1. **Identify the model**: Get `model_id` (from a deployment's champion model, or from training)
+2. **Compute the insight**: Use the unified Insights API — `ShapMatrix.create(entity_id=model_id, source="validation")`
+3. **Read the values**: Use `ShapMatrix.get_as_dataframe(model_id)`, or read `.matrix` / `.columns` / `.base_value`
 
 **Example**: "Explain why the model predicted 0.85 for this customer record"
+
+> **API note**: This skill uses the unified `datarobot.insights` API (SDK 3.x+), which is the
+> preferred way to compute and retrieve model insights. Every insight class shares the same
+> `create` / `compute` / `get` / `list` methods keyed on an `entity_id` (the model ID). The older
+> per-resource methods (`model.get_roc_curve`, `model.get_confusion_matrix`,
+> `model.get_lift_chart`, `dr.PredictionExplanations`) are legacy and should not be used for new
+> work. For **deployment-time, per-row** prediction explanations returned alongside scoring, use
+> the `datarobot-predictions` skill instead.
 
 ## When to use this skill
 
@@ -94,21 +102,33 @@ pip install datarobot
 
 ### Key SDK Operations
 
-Use these DataRobot SDK methods for model explainability:
+Model insights live in the unified `datarobot.insights` module. Import the class you need and
+call `create` (compute + wait + return) or `get` (retrieve a previously computed insight). All
+classes are keyed on `entity_id` (the model ID) and accept `source` (`"validation"`,
+`"crossValidation"`, `"holdout"`, `"training"`) plus optional `data_slice_id`.
 
-**Prediction Explanations (SDK v3.10.0)**:
-- `dr.PredictionExplanations.create(project_id, model_id, dataset_id, ...)` - Compute prediction explanations on a dataset
-- `dr.PredictionExplanations.get(project_id, prediction_explanations_id)` - Fetch explanations and read rows
-- `prediction_explanations.get_rows()` - Iterate explanation rows
+```python
+from datarobot.insights import (
+    ShapMatrix, ShapImpact, RocCurve, ConfusionMatrix, LiftChart,
+)
+```
 
-**Model Diagnostics**:
-- `model.get_roc_curve(source='validation')` - Get ROC curve with AUC
-- `model.get_confusion_matrix()` - Get confusion matrix
-- `model.get_lift_chart()` - Get lift chart data
-- `model.get_feature_impact()` - Get feature importance
+**Prediction explanations (SHAP)**:
+- `ShapMatrix.create(entity_id=model_id, source="validation")` - Compute per-row SHAP values
+- `ShapMatrix.get_as_dataframe(model_id)` - SHAP matrix as a pandas DataFrame
+- `.matrix`, `.columns`, `.base_value` - Raw SHAP values, feature names, and baseline
 
-**Feature Analysis**:
-- `model.get_partial_dependence(feature_name)` - Get partial dependence data
+**Model diagnostics**:
+- `RocCurve.create(entity_id=model_id, source="validation")` - `.auc`, `.roc_points`
+- `ConfusionMatrix.create(entity_id=model_id, source="validation")` - `.confusion_matrix_data`, `.global_metrics`
+- `LiftChart.create(entity_id=model_id, source="validation")` - `.bins`
+
+**Feature importance**:
+- `ShapImpact.create(entity_id=model_id, source="training")` - `.shap_impacts` (SHAP-based global importance)
+- `model.get_or_request_feature_impact()` - Permutation-based feature impact (remains a `Model` method)
+
+**Feature analysis**:
+- `dr.FeatureEffects` / `model.get_or_request_feature_effects(source)` - Partial dependence / feature effects (remains a `Model` method; not part of the insights module)
 
 See the [Common Patterns](#common-patterns) section below for complete examples.
 
@@ -123,10 +143,11 @@ See the [Common Patterns](#common-patterns) section below for complete examples.
 
 ## Common patterns
 
-### Pattern 1: Get prediction explanations
+### Pattern 1: Get SHAP prediction explanations (Insights API)
 
 ```python
 import datarobot as dr
+from datarobot.insights import ShapMatrix
 import os
 
 # Initialize client
@@ -135,48 +156,49 @@ client = dr.Client(
     endpoint=os.getenv("DATAROBOT_ENDPOINT")
 )
 
-# Example: compute explanations for a dataset (batch)
-project_id = "project_id_here"
 model_id = "model_id_here"
-dataset_id = "dataset_id_here"  # dataset to explain
 
-pe = dr.PredictionExplanations.create(
-    project_id=project_id,
-    model_id=model_id,
-    dataset_id=dataset_id,
-    max_explanations=5,
-)
+# create() computes the insight and blocks until it's ready (use compute() for async).
+shap = ShapMatrix.create(entity_id=model_id, source="validation")
 
-pe2 = dr.PredictionExplanations.get(project_id, pe.id)
-for row in pe2.get_rows():
-    # row contains per-row explanation info
-    print(row)
+# Per-row SHAP values as a DataFrame (rows = scored records, columns = features)
+df = ShapMatrix.get_as_dataframe(model_id)
+print(df.head())
+
+# Or work with the raw values
+print("Baseline (base value):", shap.base_value)
+print("Features:", shap.columns)
+print("First row SHAP values:", shap.matrix[0])
 ```
 
-### Pattern 2: Generate model diagnostics
+> SHAP-based explanations require a model that supports SHAP. If `create` reports the insight is
+> unavailable, fall back to XEMP via the deployment scoring path (`datarobot-predictions` skill)
+> or the legacy `dr.PredictionExplanations` API.
+
+### Pattern 2: Generate model diagnostics (Insights API)
 
 ```python
 import datarobot as dr
+from datarobot.insights import RocCurve, ConfusionMatrix, LiftChart
 
-# Get model
-model = dr.Model.get("xyz123")
+model_id = "xyz123"
 
-# Get ROC curve
-roc_curve = model.get_roc_curve(source='validation')
-print(f"AUC Score: {roc_curve.auc:.3f}")
+# ROC curve + AUC
+roc = RocCurve.create(entity_id=model_id, source="validation")
+print(f"AUC Score: {roc.auc:.3f}")
+# roc.roc_points is a list of {falsePositiveRate, truePositiveRate, threshold, ...} dicts
+best = max(roc.roc_points, key=lambda p: p["truePositiveRate"] - p["falsePositiveRate"])
+print(f"Best threshold (Youden's J): {best['threshold']:.3f}")
 
-# Get confusion matrix (for classification models)
-try:
-    cm = model.get_confusion_matrix(source='validation')
-    print(f"Precision: {cm.precision:.3f}")
-    print(f"Recall: {cm.recall:.3f}")
-    print(f"F1 Score: {cm.f1_score:.3f}")
-except:
-    print("Confusion matrix not available for this model type")
+# Confusion matrix (classification models)
+cm = ConfusionMatrix.create(entity_id=model_id, source="validation")
+print("Classes:", cm.columns)
+print("Matrix:", cm.confusion_matrix_data)
+print("Global metrics:", cm.global_metrics)
 
-# Get lift chart
-lift_chart = model.get_lift_chart(source='validation')
-print(f"Lift at 10%: {lift_chart.lift[10]:.3f}")
+# Lift chart
+lift = LiftChart.create(entity_id=model_id, source="validation")
+print(f"Number of bins: {len(lift.bins)}")
 ```
 
 ## Understanding SHAP Values
@@ -244,7 +266,7 @@ client = dr.Client(
 ## Resources
 
 - [DataRobot Python SDK Documentation](https://datarobot-public-api-client.readthedocs-hosted.com/)
+- [DataRobot Insights API Reference](https://datarobot-public-api-client.readthedocs-hosted.com/en/latest/autodoc/api_reference.html#insights) (`datarobot.insights`)
 - [DataRobot Model Insights Documentation](https://docs.datarobot.com/en/docs/modeling/analyze-models/index.html)
-- [Prediction Explanations Guide](https://docs.datarobot.com/en/docs/api/dev-learning/python/modeling/insights/prediction_explanations.html)
 - [SHAP Documentation](https://shap.readthedocs.io/)
 

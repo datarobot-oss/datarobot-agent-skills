@@ -11,6 +11,10 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+- `datarobot-model-explainability`: migrate SHAP explanations and model diagnostics
+  (ROC curve, confusion matrix, lift chart) from the legacy per-resource APIs to the
+  unified `datarobot.insights` API.
+
 ## [1.2.0] - 2026-05-20
 
 First tracked release. Skills included:

@@ -3,6 +3,12 @@
 # Default owner for repo scaffolding, CI, docs, and anything outside skills/
 * @datarobot-oss/datarobot-agent-skills
 
+# Changelog is owned by the predictive-ai team
+/CHANGELOG.md @datarobot/predictive-ai
+
+# CODEOWNERS / repo meta — explicit so it doesn't fall to the default `*` rule
+/.github/ @datarobot-oss/datarobot-agent-skills
+
 # Agent assist team skills
 /skills/datarobot-agent-assist/ @datarobot/agentic-assistant
 
