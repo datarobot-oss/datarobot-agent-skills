@@ -1,6 +1,6 @@
 {
   "name": "datarobot-skills",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "DataRobot Skills for AI/ML workflows including model training, deployment, predictions, feature engineering, monitoring, and data preparation",
   "author": "DataRobot",
   "skills": [
@@ -36,7 +36,7 @@
     },
     {
       "name": "datarobot-model-explainability",
-      "description": "Tools and guidance for model explainability, prediction explanations, SHAP values, and model diagnostics",
+      "description": "Tools and guidance for model explainability, prediction explanations, SHAP values, SHAP distributions, anomaly assessment, and model diagnostics",
       "path": "skills/datarobot-model-explainability/SKILL.md"
     },
     {
