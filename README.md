@@ -260,6 +260,7 @@ Some skills include helper scripts that an agent can run directly:
 
 - **datarobot-predictions**: `get_deployment_features.py`, `generate_prediction_data_template.py`, `validate_prediction_data.py`, `make_prediction.py`
 - **datarobot-model-training**: `create_project.py`, `start_training.py`, `list_models.py`
+- **datarobot-model-explainability**: `compute_shap_matrix.py`
 - **datarobot-data-preparation**: `upload_dataset.py`
 - **datarobot-external-agent-monitoring**: `create_shell_deployment.py`, `verify_otel_connection.py`
 - **datarobot-agent-assist**: `select_framework.py`, `clone_template.py`, `setup_template.py`, `list_llm_models.py`, `rehearsal.py`, `env_utils.py`

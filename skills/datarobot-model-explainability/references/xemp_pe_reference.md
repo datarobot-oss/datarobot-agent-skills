@@ -12,8 +12,7 @@ Source: https://datarobot-public-api-client.readthedocs-hosted.com/en/latest-rel
 | Situation | Use |
 |-----------|-----|
 | Default / new code | `ShapMatrix` / `ShapPreview` from `datarobot.insights` |
-| Blender models | XEMP PE (`dr.PredictionExplanations`) |
-| >1000 feature models | XEMP PE |
+| Anomaly-detection models with >1000 features | XEMP PE if SHAP is unavailable |
 | Regulatory requirement for XEMP | XEMP PE |
 | Feature Impact methodology required | XEMP PE |
 
@@ -66,7 +65,7 @@ Submit an async job to compute explanations on a dataset. Call
 | `project_id` | str | required | DataRobot project ID |
 | `model_id` | str | required | DataRobot model ID |
 | `dataset_id` | str | required | AI Catalog dataset ID to explain |
-| `max_explanations` | int | 3 | Top-N feature explanations per row |
+| `max_explanations` | int | 3 | Top-N feature explanations per row; at most 50 can be returned |
 | `threshold_high` | float | None | Only explain rows with prediction >= this |
 | `threshold_low` | float | None | Only explain rows with prediction <= this |
 | `mode` | `TopPredictionsMode` or `ClassListMode` | predicted class only | For multiclass/clustering: which classes to explain |
@@ -111,7 +110,7 @@ Each entry in `prediction_explanations`:
 {
     "feature": "income",         # feature name
     "featureValue": "85000",     # actual value of the feature
-    "strength": 0.18,            # XEMP/SHAP contribution (positive = increases prediction)
+    "strength": 0.18,            # XEMP contribution (positive = increases prediction)
     "label": "income",           # display label
     "qualitative_strength": "++" # qualitative indicator
 }
@@ -149,7 +148,8 @@ print(pe_obj.is_multiclass())
 
 ## Notes
 
-- `max_explanations` is capped at 100 for CSV export; use the API (`.get_rows()`) for more
+- `max_explanations` can return at most 50 explanations because XEMP computes explanations for
+  the global top 50 features
 - `threshold_high` and `threshold_low` can be combined to explain only extreme predictions
 - XEMP explanations use the XEMP methodology (not SHAP); magnitudes are not comparable across models
 - For SHAP-based explanations, prefer `datarobot.insights.ShapMatrix` / `ShapPreview` with

@@ -1,7 +1,8 @@
 # SHAP API Reference
 
 Full parameter signatures for `datarobot.insights` classes.
-SDK version: `datarobot>=3.4.0` (latest-release: 3.10.0rc0)
+SDK version: `datarobot>=3.6.0` for the full set below (`ShapDistributions` was added in 3.6;
+`ShapMatrix`, `ShapImpact`, and `ShapPreview` are available in `datarobot>=3.4.0`)
 
 Source: https://datarobot-public-api-client.readthedocs-hosted.com/en/latest-release/insights.html
 
@@ -81,11 +82,11 @@ Do not call `result.get_as_dataframe()` — that API shape is for legacy `dataro
 
 ### Notes
 
-- Not available for blenders
-- Not available for models with >1000 features
-- Universal SHAP (permutation-based) works on any other supported model without prerequisites
-- Model-specific SHAP (tree/kernel explainer) available for select model types
-- When `link_function='logit'`, values are in log-odds space; use `exp(shap)` for probability space
+- Available for blenders
+- The >1000-feature limitation applies to anomaly-detection models only
+- When `link_function='logit'`, values are in log-odds space; add contributions to
+  `base_value` in log-odds space, then use inverse-logit (`scipy.special.expit`) on the total.
+  Do not apply `expit` to individual SHAP values as probability deltas
 
 ---
 
@@ -100,7 +101,7 @@ Blocking call.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `entity_id` | str | required | Model ID |
-| `source` | str | `'training'` | Currently only `'training'` is supported |
+| `source` | str | `'training'` | Source type to use when computing the insight |
 | `data_slice_id` | str | None | Optional Data Slice ID |
 | `quick_compute` | bool | None | If true/unspecified, compute on a 2500-row sample; if false, compute all rows |
 
@@ -108,9 +109,9 @@ Blocking call.
 
 Non-blocking. Returns job; call `job.get_result_when_complete()`.
 
-### `ShapImpact.get(entity_id, source='training', ...)` / `ShapImpact.list(entity_id)`
+### `ShapImpact.get(entity_id, source=..., ...)` / `ShapImpact.list(entity_id)`
 
-Retrieve existing ShapImpact results. Pass `source='training'` (the only supported partition).
+Retrieve existing ShapImpact results. Pass the same `source` used when computing the insight.
 
 ### Attributes
 
@@ -218,9 +219,8 @@ Same `BaseInsight` pattern as SHAP: `create`, `compute`, `get`, `list` with `ent
 
 | Constraint | Detail |
 |-----------|--------|
-| Blenders | SHAP not computed for blenders |
-| Feature count | SHAP not available for >1000 features |
-| ShapImpact source | Only `'training'` currently supported |
+| Blenders | SHAP insights are available for blenders |
+| Feature count | The >1000-feature limitation applies to anomaly-detection models only |
 | Holdout | `source='holdout'` requires holdout to be unlocked in the project |
 | Data slices | Use `dr.DataSlice.create()`, `.list()`, or `.get()`, then pass `data_slice_id` |
 | Custom models | SHAP for custom models requires additional setup (see SHAP insights user guide) |
