@@ -1,6 +1,7 @@
 # SECURITY: Use "pull_request" only — NEVER "pull_request_target".
 # pull_request does not pass secrets to fork PRs (safe).
 # pull_request_target does pass secrets to fork PRs (unsafe — credentials leak risk).
+---
 name: Review Router
 
 on:
