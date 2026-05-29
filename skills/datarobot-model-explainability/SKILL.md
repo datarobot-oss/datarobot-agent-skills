@@ -124,8 +124,8 @@ from datarobot.insights import (
 - `LiftChart.create(entity_id=model_id, source="validation")` - `.bins`
 
 **Feature importance**:
-- `ShapImpact.create(entity_id=model_id, source="training")` - `.shap_impacts` (SHAP-based global importance)
-- `model.get_or_request_feature_impact()` - Permutation-based feature impact (remains a `Model` method)
+- `ShapImpact.create(entity_id=model_id, source="training")` - SHAP-based global importance. `.shap_impacts` is a list of dicts with **snake_case** keys: `feature_name`, `impact_normalized`, `impact_unnormalized`.
+- `model.get_or_request_feature_impact()` - Permutation-based feature impact (remains a `Model` method). Returns a list of dicts with **camelCase** keys: `featureName`, `impactNormalized`, `impactUnnormalized`, `redundantWith`. (The two APIs use different casing — don't assume one's keys work on the other.)
 
 **Feature analysis**:
 - `dr.FeatureEffects` / `model.get_or_request_feature_effects(source)` - Partial dependence / feature effects (remains a `Model` method; not part of the insights module)
@@ -199,6 +199,33 @@ print("Global metrics:", cm.global_metrics)
 # Lift chart
 lift = LiftChart.create(entity_id=model_id, source="validation")
 print(f"Number of bins: {len(lift.bins)}")
+```
+
+### Pattern 3: Global feature importance (SHAP-based)
+
+```python
+import datarobot as dr
+from datarobot.insights import ShapImpact
+
+model_id = "xyz123"
+
+# SHAP-based global importance — snake_case keys
+si = ShapImpact.create(entity_id=model_id, source="training")
+for row in sorted(si.shap_impacts, key=lambda r: -abs(r["impact_normalized"]))[:10]:
+    print(f"{row['feature_name']:30s}  {row['impact_normalized']:+.4f}")
+```
+
+### Pattern 4: Global feature importance (permutation-based, legacy `Model` method)
+
+```python
+import datarobot as dr
+
+# Permutation feature impact lives on the Model object, not in the insights module.
+# Note the camelCase keys — different from ShapImpact above.
+model = dr.Model.get(project_id="proj123", model_id="xyz123")
+fi = model.get_or_request_feature_impact()
+for row in fi[:10]:
+    print(f"{row['featureName']:30s}  {row['impactNormalized']:+.4f}")
 ```
 
 ## Understanding SHAP Values
