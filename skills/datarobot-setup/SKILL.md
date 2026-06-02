@@ -193,8 +193,9 @@ dr plugin install assist
 
 2. **Python SDK**:
    ```bash
-   source .venv/bin/activate && timeout 60 python -c "import datarobot as dr; dr.Client(); [print(p.project_name) for p in dr.Project.list(limit=3)]" < /dev/null
+   source .venv/bin/activate && python -c "import datarobot; datarobot.Client(connect_timeout=10); [print(p.project_name) for p in datarobot.Project.list(limit=3)]"
    ```
+   if this fails due to the source command not working, try it without activating the venv
 
 ## Step 9: Print Summary
 
