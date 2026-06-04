@@ -1,12 +1,13 @@
 ---
 name: datarobot-agent-assist
 description: >-
-  Unified DataRobot agent workflow — design (agent_spec.md), optional dress-rehearsal simulation
-  via built-in rehearsal engine, template-based coding, and deployment. Combines agent design guidance
-  with interactive pre-code simulation (DataRobot LLM Gateway, feedback report). Use when the user
-  wants to design, build, code, or deploy an AI agent for DataRobot, run a spec simulation before
-  coding, mentions "agent spec", "datarobot-agent-assist", "dr-assist", "dress rehearsal", or is creating agents on DataRobot's
-  platform.
+  Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive
+  model) to DataRobot; mentions agent_spec.md, dr-assist, datarobot-agent-assist, dress rehearsal,
+  or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base
+  agent targeting DataRobot; wants to add an MCP server, backend API, or React frontend to a
+  DataRobot agent application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom
+  application. Covers the full workflow: agent design, agent_spec.md authoring, dress-rehearsal
+  simulation via the DataRobot LLM Gateway, template-based coding, and deployment.
 ---
 
 # DataRobot Agent Assist

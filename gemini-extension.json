@@ -1,6 +1,6 @@
 {
   "name": "datarobot-skills",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "DataRobot Skills for AI/ML workflows including model training, deployment, predictions, feature engineering, monitoring, and data preparation",
   "author": "DataRobot",
   "skills": [
@@ -51,7 +51,7 @@
     },
     {
       "name": "datarobot-agent-assist",
-      "description": "Build AI agents and deploy them to DataRobot. Supports building LangGraph, CrewAI, LlamaIndex, NAT and Base agents. Created agents can be bundled with MCP server, backend APIs & React frontend",
+      "description": "Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive model) to DataRobot; mentions agent_spec.md, dr-assist, dress rehearsal, or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base agent targeting DataRobot; or wants to add an MCP server, backend API, or React frontend to a DataRobot agent application.",
       "path": "skills/datarobot-agent-assist/SKILL.md"
     },
     {
