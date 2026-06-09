@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to DataRobot agent skills are tracked here.
+All notable changes to DataRobot Agent Skills are tracked here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 version numbers track the shared plugin version maintained across
