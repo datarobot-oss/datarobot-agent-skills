@@ -12,7 +12,6 @@ on:
 jobs:
   route:
     if: >-
-      github.event_name != 'issue_comment'
-      || contains(github.event.comment.body, '/review')
+      github.event_name != 'issue_comment' || contains(github.event.comment.body, '/review')
     uses: datarobot-oss/.github/.github/workflows/review-router.yml@main
     secrets: inherit
