@@ -4,10 +4,11 @@ description: >-
   Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive
   model) to DataRobot; mentions agent_spec.md, dr-assist, datarobot-agent-assist, dress rehearsal,
   or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base
-  agent targeting DataRobot; wants to add an MCP server, backend API, or React frontend to a
-  DataRobot agent application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom
-  application. Covers the full workflow: agent design, agent_spec.md authoring, dress-rehearsal
-  simulation via the DataRobot LLM Gateway, template-based coding, and deployment.
+  agent targeting DataRobot; wants to compose a DataRobot agent project from Application Framework
+  components; wants to add an MCP server, backend API, or React frontend to a DataRobot agent
+  application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom application.
+  Covers the full workflow: agent design, agent_spec.md authoring, dress-rehearsal simulation via
+  the DataRobot LLM Gateway, AF v2 component composition, and deployment.
 ---
 
 # DataRobot Agent Assist
@@ -17,7 +18,7 @@ This skill merges **agent design, coding, and deployment** with **interactive dr
 Assistance falls into three categories:
 
 1. **Designing an AI agent** → Clarify requirements, build `agent_spec.md`, optionally simulate the agent before coding
-2. **Coding an AI agent** → Adapt the DataRobot agent application template to the spec
+2. **Coding an AI agent** → Compose a project from DataRobot Application Framework components and implement the spec
 3. **Deploying an AI agent** → Follow `AGENTS.md` deployment instructions
 
 If the user's first message is simply `1`, `2`, or `3`, treat it as selecting one of these categories.
@@ -219,14 +220,10 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
 
 1. **Read `agent_spec.md`** — it must exist (see gate above).
 2. Check if `AGENTS.md` exists in the template directory (default: current working directory).
-3. If `AGENTS.md` does **not** exist, prepare the template with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the template is properly set up and avoiding wasted effort coding on a broken foundation.
+3. If `AGENTS.md` does **not** exist, compose the project with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the project is properly set up and avoiding wasted effort coding on a broken foundation.
    a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding.
-   b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
-   c. **Clone the template**: Run the helper script:
-   ```
-   python <skill_scripts_dir>/clone_template.py
-   ```
-   d. **Select the agentic framework**:
+   b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before composing so it isn't overwritten. Restore it after composition completes.
+   c. **Select the agentic framework**:
 
    **STOP. Do NOT proceed until the user has replied with their framework choice.**
 
@@ -238,24 +235,34 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
    > 4. NeMo Agent Toolkit (NAT)
    > 5. Base
 
-   Wait for the user's reply. Do not assume or default to any framework. If their next message is not a framework choice (silence, unrelated text), re-display the options and wait again — do not proceed with any other coding step. Once the user replies, map their choice to the corresponding value (`langgraph`, `crewai`, `llamaindex`, `nat`, `base`) and run:
+   Wait for the user's reply. Do not assume or default to any framework. If their next message is not a framework choice (silence, unrelated text), re-display the options and wait again — do not proceed with any other coding step. Once the user replies, map their choice to the corresponding value (`langgraph`, `crewai`, `llamaindex`, `nat`, `base`).
+
+   d. **Derive the app name** — use the name of the current working directory as the app name slug (e.g. `my-sales-agent`).
+
+   e. **Compose the application**: Run the helper script:
    ```
-   python <skill_scripts_dir>/select_framework.py \
+   python <skill_scripts_dir>/compose_template.py \
      --target-dir . \
-     --framework <value>
+     --spec /tmp/agent_spec.md.bak \
+     --framework <value> \
+     --app-name <app-name>
    ```
 
-   e. **Validate the template**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
-   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
+   **CRITICAL**: In case the script fails for any reason, do **not** proceed with coding. Return the full error output to the user and ask how they want to proceed. If the failure mentions a registry or component not being available, advise the user to try again once the AF v2 registry is live or to pass `--registry-uri file://...` pointing at a local registry.
+
+   f. **Restore `agent_spec.md`** from `/tmp/agent_spec.md.bak`.
+
+   g. **Validate the project**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
+   h. **Setup the project**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
    ```
    python <skill_scripts_dir>/setup_template.py \
      --llm-model <model-name> \
      --target-dir .
    ```
 
-   **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
+   **CRITICAL**: In case setup_template.py fails for any reason, do **not** proceed with coding. Return the error message to the user and ask how they want to proceed.
 
-   g. **Re-read `AGENTS.md`** now that the template is ready.
+   i. **Re-read `AGENTS.md`** now that the project is ready.
 4. Recreate the TODO list based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
 
 
@@ -308,43 +315,38 @@ python <scripts_dir>/list_llm_models.py \
 
 Requires env vars: `DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`
 
-### clone_template.py
+### compose_template.py
 
-Clones the DataRobot agent application template repository.
+Composes a new DataRobot agent project using Application Framework v2. Initializes
+framework state, adds a component registry, adds modules derived from `agent_spec.md`
+(minimal graph: base + llm + datarobot-mcp + agent; full chat graph when
+`frontend.type: chat`), answers module questions, and runs `dr component copy` +
+`dr component run-tasks` to materialize the project.
 
-Clones the template to the current directory (repository URL and branch are hardcoded):
 ```bash
-python <scripts_dir>/clone_template.py
+python <scripts_dir>/compose_template.py \
+  --framework langgraph \
+  --target-dir . \
+  --spec /tmp/agent_spec.md.bak \
+  --app-name my-agent
 ```
 
-Clone to a specific directory:
-```bash
-python <scripts_dir>/clone_template.py \
-  --target-dir ./my-project
-```
+Optional flags:
+- `--registry-uri <uri>` — default: `https://af.datarobot.com/registry.yml`; use `file://` for a local registry
+- `--registry-alias <alias>` — default: `core`
+- `--dry-run` — print the full `dr component` sequence without executing
 
 ### setup_template.py
 
-Sets up a template repository for initializing a new agent project.
+Sets up a composed project for local development. Runs **after** AF v2 composition.
+Writes `.env`, runs `dr dotenv setup`, initializes a Pulumi stack, and starts the
+agent with `task start-non-interactive`.
 
 ```bash
 python <scripts_dir>/setup_template.py \
   --llm-model <model-name> \
   --target-dir .
 ```
-
-### select_framework.py
-
-Saves the chosen agentic framework to `.datarobot/answers/agent-agent.yml`
-(field `agent_template_framework`). Preserves all other fields in the file.
-
-```bash
-python <scripts_dir>/select_framework.py \
-  --framework langgraph \
-  --target-dir .
-```
-
-Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
 
 
 ## Error Handling
