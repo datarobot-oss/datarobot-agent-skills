@@ -36,7 +36,7 @@ test -f ~/.config/datarobot/drconfig.yaml && echo "drconfig: found" || echo "drc
 
 # If drconfig exists, verify credentials are actually valid
 if test -f ~/.config/datarobot/drconfig.yaml; then
-  dr auth status 2>/dev/null && echo "auth: valid" || echo "auth: INVALID (re-authentication required)"
+  dr auth check 2>/dev/null && echo "auth: valid" || echo "auth: INVALID (re-authentication required)"
 fi
 ```
 
