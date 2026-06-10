@@ -65,8 +65,19 @@ Guided sequence — no external spec file required:
 3. **Partition questions**:
    - `ask_user: true` — ask the user (show `help` and `reason`)
    - `ask_user: false` — derive silently using the derivation map below
-4. **STOP. Do NOT run `compose_template.py` until all `ask_user: true` questions have been answered.**
-5. **Run `compose_template.py`** with the pre-collected answers.
+4. **STOP. Do NOT compose until all `ask_user: true` questions have been answered.**
+5. **Compose** with `dr component add`, passing modules in dependency order and collected answers as `--data` flags:
+
+```bash
+dr component add <module1> <module2> ... \
+  --data <question1>=<value1> \
+  --data <question2>=<value2> \
+  --yes
+```
+
+The CLI automatically initializes the framework and registers the default registry. For a non-default framework location, pass `--framework-path <path>` or set `DR_APP_FRAMEWORK_PATH`.
+
+**CRITICAL**: On failure, do **not** proceed. Return the full error to the user.
 
 #### Derivation map for `ask_user: false` questions
 
@@ -77,19 +88,6 @@ Guided sequence — no external spec file required:
 | `copyright_year` | Current year |
 | `mcp_development_port` | `8080` |
 | All others | Declared default |
-
-#### compose_template.py invocation
-
-```bash
-python <skill_scripts_dir>/compose_template.py \
-  --modules '<json array>' \
-  --answers '<json object of label.question=value>' \
-  --target-dir .
-```
-
-Pass `--registry-uri file://...` if the registry is not yet live.
-
-**CRITICAL**: On failure, do **not** proceed. Return the full error to the user. If the error mentions a missing registry or component, advise the user to pass `--registry-uri file://...` pointing at a local registry.
 
 ---
 

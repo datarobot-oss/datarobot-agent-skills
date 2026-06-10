@@ -13,7 +13,7 @@ A spec-driven skill for designing and building DataRobot custom applications usi
 
 Intended as a replacement path for `datarobot-agent-assist` once proven.
 
-The AF composition logic (component discovery, question collection, `compose_template.py` invocation) is embedded inline rather than delegated to the `af-component` skill. This keeps the two skills independent.
+The AF composition logic (component discovery, question collection, `dr component add` invocation) is embedded inline rather than delegated to the `af-component` skill. This keeps the two skills independent.
 
 ---
 
@@ -128,18 +128,18 @@ Runs inline after `design.md` is confirmed (and after any dress rehearsal):
 2. Re-run `dr component describe <module> --format json` for each selected module to collect all questions.
 3. Deduplicate questions by name across modules. Partition into `ask_user: true` / `ask_user: false`.
 4. For `ask_user: true` questions: ask the user one at a time, showing `help` and `reason`.
-5. **STOP. Do NOT run `compose_template.py` until all `ask_user: true` questions have been answered.**
+5. **STOP. Do NOT compose until all `ask_user: true` questions have been answered.**
 6. For `ask_user: false` questions: derive silently using the derivation map below.
-7. Run `compose_template.py`:
+7. Compose with `dr component add`, passing modules in dependency order and all collected answers as `--data` flags:
 
 ```bash
-python <skill_scripts_dir>/compose_template.py \
-  --modules '<json array>' \
-  --answers '<json object of label.question=value>' \
-  --target-dir .
+dr component add <module1> <module2> ... \
+  --data <question1>=<value1> \
+  --data <question2>=<value2> \
+  --yes
 ```
 
-Pass `--registry-uri file://...` if the registry is not yet live.
+The CLI automatically initializes the framework and registers the default registry. For a non-default framework location, pass `--framework-path <path>` or set `DR_APP_FRAMEWORK_PATH`.
 
 **CRITICAL**: On failure, do **not** proceed. Return the full error to the user.
 

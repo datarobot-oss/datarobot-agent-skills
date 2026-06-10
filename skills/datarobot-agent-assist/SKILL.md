@@ -221,7 +221,7 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
 1. **Read `agent_spec.md`** — it must exist (see gate above).
 2. Check if `AGENTS.md` exists in the template directory (default: current working directory).
 3. If `AGENTS.md` does **not** exist, compose the project with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the project is properly set up and avoiding wasted effort coding on a broken foundation.
-   a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding.
+   a. **Check the working directory** — if it contains files other than `agent_spec.md` (ignoring `.git`, `.gitignore`, `.github`, and other dot-files), warn the user and ask them to clear it before proceeding. A `.git` file or directory is permitted and will not block composition.
    b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before composing so it isn't overwritten. Restore it after composition completes.
    c. **Discover available components**: Run `dr component list-available --format json`. Use `agent_guidance.summary` to identify relevant modules. Default to the minimal graph: `base`, `llm`, `datarobot_mcp`, `agent`. For `frontend.type: chat`, also consider the FastAPI/React stack — but only if those modules appear in the output; if absent, warn the user and use the minimal graph.
 
@@ -232,20 +232,20 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
    - `mcp_app_name` → `mcp_server`; `copyright_year` → current year; `mcp_development_port` → `8080`
    - All others → their declared default
 
-   e. **Collect answers**: For each `ask_user: true` question (dependency order), ask the user, showing the question `help` and `guidance.reason`. Derive `ask_user: false` answers silently. Assemble as `{"<label>.<question_name>": value}`.
+   e. **Collect answers**: For each `ask_user: true` question (dependency order), ask the user, showing the question `help` and `guidance.reason`. Derive `ask_user: false` answers silently. Assemble as a flat `{question_name: value}` map (question names are already deduplicated across modules in step 3d).
 
    **STOP. Do NOT proceed to step f until all `ask_user: true` questions have been answered.**
 
-   f. **Compose the application**: Run:
+   f. **Compose the application**: Run `dr component add` with the modules in dependency order and the collected answers as `--data` flags:
    ```
-   python <skill_scripts_dir>/compose_template.py \
-     --target-dir . \
-     --modules '<json array of module names>' \
-     --answers '<json object of label.question=value pairs>'
+   dr component add <module1> <module2> ... \
+     --data <question1>=<value1> \
+     --data <question2>=<value2> \
+     --yes
    ```
-   Pass `--registry-uri file://...` if the AF v2 registry is not yet live.
+   Default modules: `base llm datarobot_mcp agent`. The CLI automatically initializes the framework and registers the default registry. For a non-default framework location, pass `--framework-path <path>` or set `DR_APP_FRAMEWORK_PATH`.
 
-   **CRITICAL**: On failure, do **not** proceed. Return the full error to the user. If the error mentions a missing registry or component, advise the user to pass `--registry-uri file://...` pointing at a local registry.
+   **CRITICAL**: On failure, do **not** proceed. Return the full error to the user.
 
    g. **Restore `agent_spec.md`** from `/tmp/agent_spec.md.bak`.
 
@@ -311,31 +311,6 @@ python <scripts_dir>/list_llm_models.py \
 ```
 
 Requires env vars: `DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`
-
-### compose_template.py
-
-Thin executor for the AF v2 composition sequence. Receives the module list and all
-answers pre-collected by the agent, then runs `initialize-framework` → `add-registry`
-→ `add-module` (for each module) → `answer` (for each collected answer) → `copy` →
-`run-tasks`. Component selection and question collection are handled conversationally
-by the agent before this script is called.
-
-```bash
-python <scripts_dir>/compose_template.py \
-  --modules '["base", "llm", "datarobot_mcp", "agent"]' \
-  --answers '{"core.agent.1.agent_template_framework": "langgraph", "core.agent.1.agent_app_name": "my-agent"}' \
-  --target-dir .
-```
-
-Required flags:
-- `--modules <json>` — JSON array of module short names in dependency order
-- `--answers <json>` — JSON object mapping `<label>.<question_name>` to value
-
-Optional flags:
-- `--target-dir <dir>` — default: current directory
-- `--registry-uri <uri>` — default: `https://af.datarobot.com/registry.yml`; use `file://` for a local registry
-- `--registry-alias <alias>` — default: `core`
-- `--dry-run` — print the full `dr component` sequence without executing
 
 ### setup_template.py
 
