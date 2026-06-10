@@ -80,7 +80,7 @@ r = httpx.post(f"{base}/workloads/", headers=headers, json={
         "name": "my-api-service-artifact",
         "spec": {
             "type": "service",
-            "containerGroups": [{"containers": [{
+            "containerGroups": [{"name": "default", "containers": [{
                 "name": "main",
                 "imageUri": "ghcr.io/org/my-app:latest",
                 "port": 8000,
@@ -91,12 +91,13 @@ r = httpx.post(f"{base}/workloads/", headers=headers, json={
         },
     },
     "runtime": {"containerGroups": [{
-        "name": "default",   # must match artifact.spec.containerGroups[].name
+        "name": "default",   # must match artifact.spec.containerGroups[].name (above)
         "replicaCount": 1,
         "containers": [{"name": "main",
                         "resourceAllocation": {"cpu": 1, "memory": "512MB"}}],
     }]},
 })
+r.raise_for_status()   # 400=schema/limit, 403=cap exceeded (run check_limits.py), 409=name conflict
 workload_id = r.json()["id"]
 ```
 
@@ -104,11 +105,11 @@ Then `python scripts/wait_for_running.py <workload_id>` to wait for `running`.
 
 **Critical gotchas:**
 
-- `importance`: `low` / `moderate` / `high` / `critical`. `type`: `service` (default) or `nim`. Exactly one container per group has `primary: true`.
-- `cpu` is **cores** (float OK: `0.25`, `0.5`, `1`). `memory` accepts a decimal string (`"512MB"`, `"8GB"`, units B/KB/MB/GB) or a raw byte integer (`536870912`). Kubernetes-style binary suffixes (`Mi`, `Gi`) are NOT supported.
-- `port` MUST be `>= 1024`. The container must actually listen on it (set via image env vars or entrypoint if defaults disagree).
-- Image must include a **linux/amd64** manifest. Apple Silicon defaults to ARM64 and crash-loops with `exec format error`. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t <ref> --push .`; verify with `docker buildx imagetools inspect <ref>`.
-- Status lifecycle (full table in `references/status-vocabulary.md`): `submitted` → `provisioning` → `launching` → `running` (happy path); `updating` during rolling redeploys; `errored` recoverable; `failed`/`terminated` unrecoverable.
+- `importance`: `low`/`moderate`/`high`/`critical`; `type`: `service` (default) or `nim`. Exactly one container per group has `primary: true`.
+- `cpu` is cores (float OK). `memory` accepts decimal string (`"512MB"`, units B/KB/MB/GB) or byte integer; Kubernetes binary suffixes (`Mi`/`Gi`) NOT supported.
+- `port` MUST be `>= 1024`. The container must actually listen on it (set via image env vars or entrypoint).
+- Image must include a **linux/amd64** manifest. Apple Silicon defaults to ARM64 and crash-loops with `exec format error`. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t <ref> --push .`.
+- Status lifecycle: `submitted` → `provisioning` → `launching` → `running` (happy path); `updating` during rolling redeploys; `errored` recoverable; `failed`/`terminated` unrecoverable. Full table in `references/status-vocabulary.md`.
 
 ## "Update the workload" disambiguation
 
@@ -120,30 +121,29 @@ Then `python scripts/wait_for_running.py <workload_id>` to wait for `running`.
 
 ## Replicas, resources, autoscaling
 
-`PATCH /workloads/{wid}/settings/` with `runtime.containerGroups[0]` — use exactly one of `replicaCount` (fixed) or `autoscaling`. Read settings first via `GET /workloads/{wid}/settings/` to see the current shape, then PATCH back. Autoscaling shape:
+`PATCH /workloads/{wid}/settings/` with full body shape — use exactly one of `replicaCount` or `autoscaling`. Read settings first via `GET /workloads/{wid}/settings/`, then PATCH back:
 
-```json
-{"autoscaling": {"enabled": true, "policies": [{
-   "scalingMetric": "cpuAverageUtilization",
-   "target": 70, "minCount": 1, "maxCount": 10}]}}
+```python
+httpx.patch(f"{base}/workloads/{wid}/settings/", headers=headers, json={
+    "runtime": {"containerGroups": [{
+        "name": "default", "replicaCount": 3,
+        "containers": [{"name": "main", "resourceAllocation": {"cpu": 2, "memory": "1GB"}}],
+        # OR: "autoscaling": {"enabled": True, "policies": [{
+        #       "scalingMetric": "cpuAverageUtilization",
+        #       "target": 70, "minCount": 1, "maxCount": 10}]}
+    }]}
+})
 ```
 
 Valid `scalingMetric` values: `cpuAverageUtilization`, `httpRequestsConcurrency`, `gpuCacheUtilization`, `gpuRequestQueueDepth`, or a custom NIM metric. Settings updates are **rolling**; zero-downtime only with `replicaCount >= 2` (or autoscaling `minCount >= 2`).
 
 ## Org-set scaling limits — check before scaling
 
-Each org has two admin-set caps: `maxConcurrentWorkloads` (max running workloads) and `maxWorkloadReplicas` (max replicas per workload). Users cannot change them; value `0` = unlimited. Read the effective limits via **`GET /account/info/`** → `limits` block (or `python scripts/check_limits.py`). The spec-documented `/users/{uid}/` and `/organizations/{id}/` paths require Admin API access (`403` for normal users) — `/account/info/` is the only one for regular users.
+Two admin-set caps: `maxConcurrentWorkloads` and `maxWorkloadReplicas`. Value `0` = unlimited; users can't change them. Read via **`GET /account/info/`** — response includes `{"limits": {"maxConcurrentWorkloads": N, "maxWorkloadReplicas": M}}` (or `python scripts/check_limits.py`). The spec's `/users/{uid}/` and `/organizations/{id}/` paths require Admin API access. Exceeding either limit returns **HTTP 403** with `{"detail": "Requested replicas (N) exceeds the maximum allowed (M)."}` — check limits first, then propose the max allowed or flag that admin help is needed.
 
-Exceeding either limit on `POST /workloads/`, `PATCH /workloads/{id}/settings/`, or autoscaling `maxCount` returns **HTTP 403** with `{"detail": "Requested replicas (N) exceeds the maximum allowed (M)."}`. When a user asks to scale beyond what's possible, **check limits first**, then propose the max allowed value or note that admin help is needed. Schema details in `references/schema-reference.md`.
+## GPU type / VRAM — set via compute bundle, not direct
 
-## GPU type / VRAM = compute bundle (not direct)
-
-`resourceAllocation` only accepts `cpu`, `memory`, and `gpu` *count*. There is no `gpuType` or `gpuMemory` field. To target a GPU model or VRAM size:
-
-1. `GET /mlops/compute/bundles/` — lists bundles like `cpu.small`, `gpu.l4.small`, `gpu.a10g.medium`.
-2. Pass via `resourceBundles` (a list for API compatibility, but **exactly one** bundle allowed): `"resourceBundles": ["gpu.l4.small"]` under the container group.
-
-When a bundle is set, CPU and memory in `resourceAllocation` are ignored; the bundle defines them.
+`resourceAllocation` only accepts `cpu`, `memory`, `gpu` (count). There is NO `gpuType` or `gpuMemory` field. To target a GPU model / VRAM size: `GET /mlops/compute/bundles/` lists bundles (`cpu.small`, `gpu.l4.small`, `gpu.a10g.medium`); pass via `"resourceBundles": ["gpu.l4.small"]` (a list, but exactly ONE bundle allowed) under the container group. When a bundle is set, CPU/memory in `resourceAllocation` are ignored — the bundle defines them.
 
 ## Credential injection — never hardcode secrets
 
@@ -157,7 +157,7 @@ DataRobot credentials are stored centrally and injected into `environmentVars` b
 ]
 ```
 
-Workflow: `GET /credentials/?limit=50` → find the credential ID and its `credentialType` → look up the `key` field names for that type. See `references/schema-reference.md` for the full type-to-keys table (`s3`, `basic`, `api_token`, `bearer`, `oauth`, `gcp`, `azure_service_principal`, `databricks_*`, `snowflake_*`, …).
+Workflow: `GET /credentials/?limit=50` → note the credential's `credentialType` → look up the valid `key` field names for that type in `references/schema-reference.md` (covers `s3`, `basic`, `api_token`, `bearer`, `oauth`, `gcp`, `azure_*`, `databricks_*`, `snowflake_*`, …).
 
 ## Create from an existing artifact
 
@@ -173,17 +173,15 @@ Provide `artifactId` instead of the inline `artifact` block. The `containerGroup
 python scripts/diagnose_workload.py <workload_id>
 ```
 
-Runs all 5 steps below, prints a structured report (status / logTail signals / flagged events / proton K8s detail / evidence / recommended next step / console URL). `--json` for machine-readable.
-
-If the script's `Evidence` is empty, pull application logs via section 3 — don't guess from status alone.
+Runs all 5 steps below, prints a structured report (status / logTail signals / flagged events / proton K8s detail / evidence / recommended next step / console URL). `--json` for machine-readable. If `Evidence` is empty, pull application logs via section 3 — don't guess from status alone.
 
 ## The 5-step flow
 
-The script encapsulates this; here's the model an agent needs when output is ambiguous or a one-off call is needed.
+The script encapsulates this; here's the model for ambiguous output or one-off calls.
 
 1. **`GET /workloads/{id}/`** — `status`, `statusDetails.logTail` (~30 lines), `statusDetails.conditions`. Scan `logTail` for `error` / `exception` / `traceback` / `killed` / `permission denied` / `connection refused`. Guard `statusDetails` with `(w.get("statusDetails") or {})` — it can be `null` during `submitted` / `provisioning`.
 2. **`GET /workloads/{id}/events/`** — flag any event with `type: Warning` or `reason` containing `Failed` / `Error` / `Kill` / `OOM`. The last `Warning` before `errored` is usually the trigger.
-3. **`GET /workloads/{id}/protons/`** — pick `role: "active"`. During a rolling replacement debug the `candidate` instead if that's what's failing. If no active role, take the most recent `createdAt`.
+3. **`GET /workloads/{id}/protons/`** — response: `{"data": [{"id": "...", "role": "active"|"candidate"|"retiring", "createdAt": "..."}]}`. Pick `role: "active"`; during a rolling replacement debug the `candidate` if that's what's failing. If no active role, take the most recent `createdAt`.
 4. **`GET /workloads/{id}/protons/{pid}/statusDetails/`** — returns `204` while still initializing; that's not an error. Once populated, read in this order: `replicas[*].containers[*].status` + `restartCount` (the headline) → `replicas[*].conditions[*]` (any `value: false` is a smoking gun) → `overallStatus.summary` (DataRobot's human-readable interpretation).
 5. **Application logs** — section 3.
 
@@ -227,7 +225,7 @@ for log in r.json().get("data", []):
     print(f"[{log['timestamp']}] {log['level'].upper()}: {log['message']}")
 ```
 
-To filter to one proton (find proton IDs in section 2): `params = {"limit": 100, "searchKeys": "proton_id", "searchValues": "<pid>"}`. `searchKeys`/`searchValues` are positional parallel lists — repeat the param to filter on multiple attributes (not comma-joined).
+To filter to one proton (find proton IDs in section 2): `params = {"limit": 100, "searchKeys": "proton_id", "searchValues": "<pid>"}`. `searchKeys` / `searchValues` are positional parallel lists — for multiple attributes pass a **list of tuples** to httpx (dict can't repeat keys): `params = [("searchKeys", "proton_id"), ("searchValues", pid), ("searchKeys", "level"), ("searchValues", "error")]`.
 
 ## Traces
 
@@ -248,26 +246,16 @@ Service stats response shape:
 
 ```python
 stats = httpx.get(f"{base}/workloads/{wid}/stats/", headers=headers).json()
-# {
-#   "period":  {"start": "...", "end": "..."},
-#   "metrics": {"totalRequests": ..., "serverErrors": ..., "userErrors": ..., "slowRequests": ...,
-#               "responseTime": ..., "requestsPerMinute": ..., "concurrentRequests": ...,
-#               "totalErrorRate": ..., "serverErrorRate": ..., "userErrorRate": ...}
-# }
+# Returns {"period": {start, end}, "metrics": {totalRequests, serverErrors, userErrors,
+#   slowRequests, responseTime, requestsPerMinute, concurrentRequests, totalErrorRate,
+#   serverErrorRate, userErrorRate}}.  /workloads/stats/ (aggregate) same shape.
 ```
-
-`GET /workloads/stats/` (aggregate across all workloads) uses the same shape.
 
 > **Warning — destructive.** `DELETE /workloads/{id}/stats/?metricName=<name>` zeroes a metric's history. Only call when the user explicitly asks to reset stats.
 
 ## Presenting results
 
-- **Logs:** `timestamp | level | message`, group `ERROR`/`CRITICAL` first, truncate over 300 chars.
-- **Traces:** table `traceId | rootService/rootSpan | duration_ms | spans | errors`, sort by errors desc then recency.
-- **Metrics:** `displayName | currentValue (converted) | unit`.
-- **Service stats:** *"`{totalRequests}` requests, `{totalErrorRate*100:.2f}%` error rate (server `{serverErrors}` / user `{userErrors}`), `{responseTime:.1f}` ms avg, `{requestsPerMinute}` req/min."*
-
-Empty `data` → say *why* (not running yet / not instrumented / time window empty), don't just "no data".
+Logs: `timestamp | level | message`, ERROR/CRITICAL first. Traces: table sorted by errors desc then recency. Metrics: apply unit conversion before display. Service stats one-liner: *"`{totalRequests}` requests, `{totalErrorRate*100:.2f}%` errors, `{responseTime:.1f}` ms avg, `{requestsPerMinute}` req/min."* Empty data → say *why* (not running, not instrumented, empty window), don't just "no data".
 
 ---
 
@@ -279,7 +267,11 @@ An **artifact** is the immutable-after-lock definition of what a workload runs (
 
 To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. If `draft`: PATCH in place → `POST /workloads/{id}/replacement/`. If `locked`: clone → PATCH the clone → lock it → `POST /workloads/{id}/replacement/`.
 
-**Replacement status-match rule:** rejected with 400 unless the new artifact's status matches the running one's. draft↔draft, locked↔locked. To go from draft to production WITHOUT a restart, use `POST /workloads/{id}/promote/` (atomic lock-in-place; pods are NOT restarted).
+**Lock an artifact:** `PATCH /artifacts/{id}/ {"status": "locked"}`. No `POST /artifacts/{id}/lock/`. For a draft already running on a workload, use `promote` (no restart).
+
+**Replacement status-match rule:** `400 {"detail": "Artifact status mismatch: ..."}` unless the new artifact's status matches the running one's. draft↔draft, locked↔locked. Check before calling.
+
+**Promote (no restart):** `POST /workloads/{wid}/promote/` (empty body, returns 200) locks the draft the workload is currently running, in place. No pod restart. Only valid if the workload already runs that artifact — for a *different* one, use replacement.
 
 For runtime-only changes (replicas / resources / autoscaling), use section 1's `PATCH /workloads/{id}/settings/`; don't touch the artifact. **Patching an artifact does NOT affect running workloads** — trigger a replacement (or `promote`) to apply changes to live workloads. Full code in `references/lifecycle-flows.md`.
 
