@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Poll a server-side artifact image build until terminal state.
 
+Works for both build flows:
+  - Image-first builds may report status as BUILT or COMPLETED (uppercase).
+  - Code-to-Workload (C2W) builds report status as `completed` (lowercase).
+Status is uppercased before comparison so both shapes succeed.
+
 Reads DATAROBOT_ENDPOINT (must include /api/v2) and DATAROBOT_API_TOKEN from
-the environment.  Exits 0 on BUILT/COMPLETED, 2 on FAILED (prints last 2KB of
-build logs to stderr), 3 on timeout.
+the environment.  Exits 0 on success, 2 on FAILED (prints last 2KB of build
+logs to stderr), 3 on timeout.
 
 Usage:
     python wait_for_build.py <artifact_id> <build_id> [--timeout SECONDS] [--interval SECONDS]

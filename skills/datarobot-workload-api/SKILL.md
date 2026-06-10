@@ -30,12 +30,13 @@ Run container images as managed, autoscalable services on DataRobot. One skill, 
 
 ## Bundled scripts
 
-Runnable Python ships in this skill's `scripts/` directory — these are real files alongside this SKILL.md. Invoke from the skill folder:
+Runnable Python in `scripts/` (this skill's folder). Each uses `httpx` and reads `DATAROBOT_ENDPOINT` + `DATAROBOT_API_TOKEN`:
 
-- `scripts/wait_for_running.py <workload_id>` — poll until `running`; exit 2 on terminal failure, 3 on timeout.
-- `scripts/diagnose_workload.py <workload_id>` — execute the full 5-step debug flow and print a structured diagnosis with a recommended next step. `--json` for machine-readable output.
-- `scripts/wait_for_build.py <artifact_id> <build_id>` — poll a server-side image build; dumps the last 2KB of build logs on `FAILED`.
-- `scripts/wait_for_replacement.py <workload_id>` — poll a rolling artifact replacement; handles the 404-when-cleared case.
+- `wait_for_running.py <workload_id>` — poll until `running`; exit 2 on terminal failure, 3 on timeout
+- `diagnose_workload.py <workload_id>` — run the 5-step debug flow, print a structured diagnosis (`--json` for machine-readable)
+- `wait_for_build.py <artifact_id> <build_id>` — poll a server-side image build; dumps last 2KB of logs on `FAILED`
+- `wait_for_replacement.py <workload_id>` — poll a rolling replacement; handles the 404-when-cleared case
+- `check_limits.py` — print the user's effective org-set scaling limits via `/account/info/`
 
 ## Deeper docs in references/
 
@@ -44,20 +45,21 @@ The SKILL.md is the operational core. Detail an agent needs occasionally lives i
 - `references/status-vocabulary.md` — workload + proton status enums and lifecycle transitions
 - `references/common-error-patterns.md` — `CrashLoopBackOff` / `ImagePullBackOff` / `OOMKilled` / probe failures / `exec format error` / pending pods
 - `references/schema-reference.md` — OpenAPI schemas worth looking up, credential type → key mappings, public-spec path-key quirks
-- `references/lifecycle-flows.md` — full artifact draft → lock → production flow; complete code examples for create / iterate / clone / build
+- `references/lifecycle-flows.md` — artifact draft → lock → production flow rules and behavioral gotchas
+- `references/code-to-workload.md` — deploy from source code (no Dockerfile authoring): `dr` CLI commands, `codeRef`, Execution Environments, generated vs provided Dockerfile modes, iterate-rebuild loop
 
-## Always consult the OpenAPI spec for unfamiliar requests
+## OpenAPI spec is source of truth
 
-The published spec (`https://docs.datarobot.com/en/docs/api/reference/public-api/openapi.yaml`) is the source of truth — field names, enums, required vs optional. Consult whenever a request body isn't fully shown, the API returns 400/422, or an enum value is unclear.
+Published at `https://docs.datarobot.com/en/docs/api/reference/public-api/openapi.yaml`. **The spec is ~5 MB — never dump it whole into context.** Save once, then extract targeted slices with `yq`:
 
-```python
-import httpx, yaml
-spec = yaml.safe_load(httpx.get(f"{base}/openapi.yaml", headers=headers).text)
-print(spec["components"]["schemas"]["CreateWorkloadRequest"])
-print(spec["paths"]["/workloads/{workloadId}/"]["patch"])
+```bash
+curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
+yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml
+yq '.paths."/workloads/{workloadId}/".patch'    /tmp/wapi-spec.yaml
+yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i workload   # discover
 ```
 
-`references/schema-reference.md` lists the most-useful schema names and notes the public spec's path-key prefix quirk (workload paths key without `/api/v2/`, OTEL/credentials/bundles paths key with it).
+Python fallback: only `print()` the specific key, never the parsed dict. Path-key prefix quirk — see `references/schema-reference.md`.
 
 ---
 
@@ -73,26 +75,26 @@ headers = {"Authorization": f"Bearer {os.environ['DATAROBOT_API_TOKEN']}"}
 
 r = httpx.post(f"{base}/workloads/", headers=headers, json={
     "name": "my-api-service",
-    "importance": "low",                  # low | moderate | high | critical
+    "importance": "low",
     "artifact": {
         "name": "my-api-service-artifact",
         "spec": {
-            "type": "service",            # or "nim" for NVIDIA NIMs
+            "type": "service",
             "containerGroups": [{"containers": [{
                 "name": "main",
                 "imageUri": "ghcr.io/org/my-app:latest",
-                "port": 8000,             # MUST be >= 1024
-                "primary": True,          # exactly one container per group is primary
+                "port": 8000,
+                "primary": True,
                 "readinessProbe": {"path": "/readyz", "port": 8000, "initialDelaySeconds": 10},
                 "livenessProbe":  {"path": "/healthz", "port": 8000, "initialDelaySeconds": 30},
             }]}],
         },
     },
     "runtime": {"containerGroups": [{
-        "name": "default",                # MUST match artifact.spec.containerGroups[].name
+        "name": "default",   # must match artifact.spec.containerGroups[].name
         "replicaCount": 1,
-        "containers": [{"name": "main",   # MUST match the container name above
-                        "resourceAllocation": {"cpu": 1, "memory": 536870912}}],
+        "containers": [{"name": "main",
+                        "resourceAllocation": {"cpu": 1, "memory": "512MB"}}],
     }]},
 })
 workload_id = r.json()["id"]
@@ -102,8 +104,9 @@ Then `python scripts/wait_for_running.py <workload_id>` to wait for `running`.
 
 **Critical gotchas:**
 
-- `cpu` is **cores** (float OK: `0.25`, `0.5`, `1`). `memory` is **bytes** — `536870912` = 512 MiB, `1073741824` = 1 GiB, `4294967296` = 4 GiB. The API rejects strings like `"512Mi"`.
-- `port` MUST be `>= 1024`. The container must actually listen on that port (set via image env vars or entrypoint if defaults disagree).
+- `importance`: `low` / `moderate` / `high` / `critical`. `type`: `service` (default) or `nim`. Exactly one container per group has `primary: true`.
+- `cpu` is **cores** (float OK: `0.25`, `0.5`, `1`). `memory` accepts a decimal string (`"512MB"`, `"8GB"`, units B/KB/MB/GB) or a raw byte integer (`536870912`). Kubernetes-style binary suffixes (`Mi`, `Gi`) are NOT supported.
+- `port` MUST be `>= 1024`. The container must actually listen on it (set via image env vars or entrypoint if defaults disagree).
 - Image must include a **linux/amd64** manifest. Apple Silicon defaults to ARM64 and crash-loops with `exec format error`. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t <ref> --push .`; verify with `docker buildx imagetools inspect <ref>`.
 - Status lifecycle (full table in `references/status-vocabulary.md`): `submitted` → `provisioning` → `launching` → `running` (happy path); `updating` during rolling redeploys; `errored` recoverable; `failed`/`terminated` unrecoverable.
 
@@ -117,26 +120,15 @@ Then `python scripts/wait_for_running.py <workload_id>` to wait for `running`.
 
 ## Replicas, resources, autoscaling
 
-Read first (returns the shape you'll PATCH back), then update — use exactly one of `replicaCount` or `autoscaling`:
+`PATCH /workloads/{wid}/settings/` with `runtime.containerGroups[0]` — use exactly one of `replicaCount` (fixed) or `autoscaling`. Read settings first via `GET /workloads/{wid}/settings/` to see the current shape, then PATCH back. Autoscaling shape:
 
-```python
-# Fixed replicas
-httpx.patch(f"{base}/workloads/{wid}/settings/", headers=headers, json={
-    "runtime": {"containerGroups": [{"name": "default", "replicaCount": 3}]}
-})
-
-# Autoscaling — metrics: cpuAverageUtilization | httpRequestsConcurrency |
-#   gpuCacheUtilization | gpuRequestQueueDepth | <custom NIM metric>
-httpx.patch(f"{base}/workloads/{wid}/settings/", headers=headers, json={
-    "runtime": {"containerGroups": [{"name": "default", "autoscaling": {
-        "enabled": True,
-        "policies": [{"scalingMetric": "cpuAverageUtilization",
-                      "target": 70, "minCount": 1, "maxCount": 10}],
-    }}]}
-})
+```json
+{"autoscaling": {"enabled": true, "policies": [{
+   "scalingMetric": "cpuAverageUtilization",
+   "target": 70, "minCount": 1, "maxCount": 10}]}}
 ```
 
-Settings updates are **rolling**: zero-downtime only with `replicaCount >= 2` (or autoscaling `minCount >= 2`).
+Valid `scalingMetric` values: `cpuAverageUtilization`, `httpRequestsConcurrency`, `gpuCacheUtilization`, `gpuRequestQueueDepth`, or a custom NIM metric. Settings updates are **rolling**; zero-downtime only with `replicaCount >= 2` (or autoscaling `minCount >= 2`).
 
 ## Org-set scaling limits — check before scaling
 
@@ -285,34 +277,22 @@ An **artifact** is the immutable-after-lock definition of what a workload runs (
 
 ## Picking the right path
 
-**To change a running workload's image / env vars / probes / port:** find the workload's current artifact and check its status.
+To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. If `draft`: PATCH in place → `POST /workloads/{id}/replacement/`. If `locked`: clone → PATCH the clone → lock it → `POST /workloads/{id}/replacement/`.
 
-```python
-artifact_id = httpx.get(f"{base}/workloads/{wid}/", headers=headers).json()["artifactId"]
-status = httpx.get(f"{base}/artifacts/{artifact_id}/", headers=headers).json()["status"]
-```
+**Replacement status-match rule:** rejected with 400 unless the new artifact's status matches the running one's. draft↔draft, locked↔locked. To go from draft to production WITHOUT a restart, use `POST /workloads/{id}/promote/` (atomic lock-in-place; pods are NOT restarted).
 
-- `status == "draft"`: PATCH the artifact in place → `POST /workloads/{id}/replacement/`.
-- `status == "locked"`: clone → PATCH the clone → lock the clone → `POST /workloads/{id}/replacement/`.
+For runtime-only changes (replicas / resources / autoscaling), use section 1's `PATCH /workloads/{id}/settings/`; don't touch the artifact. **Patching an artifact does NOT affect running workloads** — trigger a replacement (or `promote`) to apply changes to live workloads. Full code in `references/lifecycle-flows.md`.
 
-**Replacement status-match rule:** the API rejects replacement with 400 unless the new artifact's status matches the running one's. draft↔draft only; locked↔locked only. To go from draft to production WITHOUT a restart, use `POST /workloads/{id}/promote/` (atomic lock-in-place; pods are NOT restarted).
+## How does your image get to DataRobot?
 
-**To change only runtime (replicas / resources / autoscaling) without changing the artifact:** section 1's `PATCH /workloads/{id}/settings/`. Don't touch the artifact.
+The Workload API does **not yet accept image-pull credentials at workload creation** — the artifact's `imageUri` must point at a registry DataRobot can already pull from. Two paths:
 
-**Important:** patching an artifact does NOT affect running workloads. The workload keeps running its last-deployed image/spec. Trigger a replacement (or `promote`) to apply artifact changes to live workloads.
+1. **Bring your own image** — when the image lives in a public registry (`ghcr.io/org/app:tag`, Docker Hub public) or one the org admin pre-configured. Build locally with `docker buildx ... --platform linux/amd64`, push, reference via `imageUri`. The default flow used throughout this skill.
+2. **Code-to-Workload (C2W)** — when you can't publish (no local Docker, no public registry, admin can't add pull credentials). The `dr` CLI uploads source code (`dr workload code init` + `code sync`); `POST /artifacts/{id}/builds` triggers a platform build that pushes to DataRobot's **internal** registry and populates `imageUri`. From there, identical to bring-your-own-image. Full flow in `references/code-to-workload.md`.
 
-Full code examples for create / iterate / clone / lock / build live in `references/lifecycle-flows.md`. Operational summary below.
+Poll either path with `python scripts/wait_for_build.py <artifact_id> <build_id>`. Only drafts can build.
 
-## Server-side image builds
-
-If the artifact was created with an `imageBuildConfig` referencing source in DataRobot Files, the platform builds for you:
-
-```python
-triggered = httpx.post(f"{base}/artifacts/{artifact_id}/builds/", headers=headers).json()
-build_id = triggered["buildIds"][0]
-```
-
-Then `python scripts/wait_for_build.py <artifact_id> <build_id>` to poll. On success the platform populates the artifact's `imageUri` automatically — re-`GET` the artifact to see it. Only drafts can build.
+> **C2W is preview / feature-flagged** — needs `ENABLE_WORKLOAD_API_CONTAINERS=true` on the org and `DATAROBOT_CLI_FEATURE_WORKLOAD=true` client-side. Steps may change before GA.
 
 ## Rolling artifact replacement
 

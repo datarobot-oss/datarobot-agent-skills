@@ -1,14 +1,15 @@
 # Schema reference (non-spec content)
 
-The public OpenAPI spec at `${DATAROBOT_ENDPOINT}/openapi.yaml` is the source of truth for all schemas and endpoints — fetch it directly:
+The public OpenAPI spec at `${DATAROBOT_ENDPOINT}/openapi.yaml` is the source of truth for all schemas and endpoints. **The spec is ~5 MB — never load it whole into agent context.** Save once and extract targeted slices with `yq`:
 
-```python
-import httpx, yaml
-spec = yaml.safe_load(httpx.get(f"{base}/openapi.yaml", headers=headers).text)
-print(spec["components"]["schemas"]["CreateWorkloadRequest"])      # schema body
-print(spec["paths"]["/workloads/{workloadId}/"]["patch"])           # endpoint params
-[n for n in spec["components"]["schemas"] if "Otel" in n]           # discovery
+```bash
+curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
+yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml     # schema body
+yq '.paths."/workloads/{workloadId}/".patch'    /tmp/wapi-spec.yaml     # endpoint params
+yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i otel   # discover names
 ```
+
+If `yq` isn't available, fall back to Python — but only `print()` the specific key (`spec["components"]["schemas"]["X"]`), never the parsed `spec` dict itself.
 
 This file holds only the things the spec **doesn't** document: authorization quirks, runtime constraints not enforced at the schema level, and aggregate tables that would otherwise require repeated grepping.
 
