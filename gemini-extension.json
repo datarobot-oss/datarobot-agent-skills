@@ -58,6 +58,16 @@
       "name": "datarobot-setup",
       "description": "Sets up DataRobot for local development including the Python SDK, dr-cli, and Agent Assist. Use when the user has not yet worked with DataRobot on this machine and they want to deploy agents to DataRobot, build an agent from scratch, or connect to DataRobot's APIs from a project.",
       "path": "skills/datarobot-setup/SKILL.md"
+    },
+    {
+      "name": "datarobot-af-component",
+      "description": "EXPERIMENTAL — invoke-only during initial testing. Use when the user explicitly invokes /datarobot-af-component to discover, inspect, or compose DataRobot Application Framework v2 components via `dr component`. Do not auto-activate from natural-language triggers about agents, AF, or MCP.",
+      "path": "skills/datarobot-af-component/SKILL.md"
+    },
+    {
+      "name": "datarobot-openspec-af",
+      "description": "EXPERIMENTAL — invoke-only during initial testing. Use when the user explicitly invokes /datarobot-openspec-af to design and scaffold a DataRobot custom application via the OpenSpec artifact chain (proposal → spec → design → AF composition → tasks). Do not auto-activate from natural-language triggers.",
+      "path": "skills/datarobot-openspec-af/SKILL.md"
     }
   ]
 }
