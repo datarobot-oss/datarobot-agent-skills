@@ -15,6 +15,8 @@ on:
     types: [labeled, opened, closed]
   pull_request_review:
     types: [submitted]
+  pull_request_review_comment:
+    types: [created]
   issue_comment:
     types: [created]
   schedule:
@@ -22,7 +24,5 @@ on:
 
 jobs:
   route:
-    if: >-
-      github.event_name != 'issue_comment' || contains(github.event.comment.body, '/review')
     uses: datarobot-oss/.github/.github/workflows/review-router.yml@main
     secrets: inherit
