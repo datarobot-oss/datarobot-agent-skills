@@ -1,7 +1,7 @@
 # Find the appropriate team in https://github.com/orgs/datarobot-oss/teams and grant it write permissions to the repository
 
 # Default owner for repo scaffolding, CI, docs, and anything outside skills/
-* @datarobot-oss/agent-skills-maintainers
+* @datarobot-oss/agent-skills-maintainerss
 
 # Agent assist team skills
 /skills/datarobot-agent-assist/ @datarobot/agentic-assistant
@@ -23,4 +23,4 @@
 
 # Individual Contributor skills
 /skills/datarobot-external-agent-monitoring/ @vitali93
-/skills/datarobot-setup/ @amberb617
+/skills/datarobot-setup/ @amberb6171
