@@ -55,11 +55,11 @@ Published at `https://docs.datarobot.com/en/docs/api/reference/public-api/openap
 ```bash
 curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
 yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml
-yq '.paths."/workloads/{workloadId}/".patch'    /tmp/wapi-spec.yaml
+yq '.paths."/api/v2/workloads/{workload_id}/".patch' /tmp/wapi-spec.yaml
 yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i workload   # discover
 ```
 
-Python fallback: only `print()` the specific key, never the parsed dict. Path-key prefix quirk — see `references/schema-reference.md`.
+Python fallback: only `print()` the specific key, never the parsed dict. All workload paths in the public spec are keyed with `/api/v2/` prefix — see `references/schema-reference.md`.
 
 ---
 

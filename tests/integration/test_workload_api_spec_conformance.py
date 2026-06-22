@@ -193,15 +193,15 @@ def test_execution_environments_usecases_enum(public_spec: dict[str, Any]) -> No
 # ---------------------------------------------------------------------------
 
 
-def test_workload_paths_keyed_without_api_v2_prefix(
+def test_workload_paths_keyed_with_api_v2_prefix(
     public_spec: dict[str, Any],
 ) -> None:
-    """The skill warns agents that workload paths key WITHOUT /api/v2/ in the public spec."""
+    """The skill warns agents that workload paths key WITH /api/v2/ in the public spec."""
     paths = public_spec.get("paths", {})
-    workload_root = "/workloads/{workload_id}"
+    workload_root = "/api/v2/workloads/{workload_id}"
     assert workload_root in paths, (
-        f"{workload_root} expected as a path key (without /api/v2/ prefix) — the public spec's "
-        f"path-key prefix quirk has changed. Update references/schema-reference.md."
+        f"{workload_root} expected as a path key (with /api/v2/ prefix) — the public spec's "
+        f"path-key prefix convention has changed. Update references/schema-reference.md."
     )
 
 

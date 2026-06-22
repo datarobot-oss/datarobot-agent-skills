@@ -31,7 +31,7 @@ The published spec at `https://docs.datarobot.com/en/docs/api/reference/public-a
 
 | Path namespace | Keyed in spec as | Example |
 |---|---|---|
-| Workloads + artifacts | **without** `/api/v2/` | `/workloads/{workload_id}/protons/{proton_id}/statusDetails` |
+| Workloads + artifacts | **with** `/api/v2/` | `/api/v2/workloads/{workload_id}/protons/{proton_id}/statusDetails` |
 | OTEL (workload telemetry) | **with** `/api/v2/`, and **templated** | `/api/v2/otel/{entityType}/{entityId}/logs/` (`{entityType}` = literal `workload`) |
 | Credentials | **with** `/api/v2/` | `/api/v2/credentials/` |
 | Compute bundles | **with** `/api/v2/` | `/api/v2/mlops/compute/bundles/` |
