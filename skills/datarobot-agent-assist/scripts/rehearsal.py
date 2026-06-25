@@ -194,11 +194,38 @@ class ModelCatalog:
             return canonical, False
 
         req_slug = _model_slug(requested)
-        for name in self._names:
-            if req_slug == _model_slug(name) or req_slug in _model_slug(name):
-                return name, True
+        if not req_slug:
+            pass
+        else:
+            requested_prefix = (
+                requested.split("/", 1)[0].lower() if "/" in requested else None
+            )
+            slug_matches: list[str] = []
+            for name in self._names:
+                if req_slug == _model_slug(name):
+                    slug_matches.append(name)
+            if slug_matches:
+                if requested_prefix:
+                    for name in slug_matches:
+                        if name.split("/", 1)[0].lower() == requested_prefix:
+                            return name, True
+                return slug_matches[0], True
 
         return self._names[0], True
+
+
+class LazyModelCatalog:
+    """Defers catalog API fetch until pick_available is first called."""
+
+    def __init__(self, token: str, endpoint: str) -> None:
+        self._token = token
+        self._endpoint = endpoint
+        self._catalog: ModelCatalog | None = None
+
+    def pick_available(self, requested: str) -> tuple[str, bool]:
+        if self._catalog is None:
+            self._catalog = ModelCatalog(self._token, self._endpoint)
+        return self._catalog.pick_available(requested)
 
 
 def strip_code_fence(text: str) -> str:
@@ -371,7 +398,7 @@ def llm_call(
     tools: list[dict[str, Any]] | None = None,
     tool_choice: str | dict[str, Any] = "auto",
     *,
-    catalog: ModelCatalog | None = None,
+    catalog: ModelCatalog | LazyModelCatalog | None = None,
     _allow_retry: bool = True,
 ) -> tuple[dict[str, Any], str]:
     url = f"{endpoint.rstrip('/')}/genai/llmgw/chat/completions"
@@ -461,7 +488,7 @@ def simulate_tool_return(
     tool_name: str,
     arguments: dict[str, Any],
     spec_tools: list[dict[str, Any]],
-    catalog: ModelCatalog,
+    catalog: ModelCatalog | LazyModelCatalog | None = None,
 ) -> tuple[dict[str, Any], str]:
     spec_tool = next((t for t in spec_tools if t["function_name"] == tool_name), None)
     if spec_tool:
@@ -619,7 +646,7 @@ def run_tool_call(
     endpoint: str,
     simulation_model: str,
     spec_tools: list[dict[str, Any]],
-    catalog: ModelCatalog,
+    catalog: ModelCatalog | LazyModelCatalog | None,
     stats: TurnProgress,
     lock: threading.Lock,
 ) -> tuple[dict[str, Any], str]:
@@ -663,7 +690,7 @@ def _save_config(session_dir: str, config: dict[str, Any]) -> None:
 
 def cmd_turn(session_dir: str, message: str) -> None:
     token, endpoint = get_credentials()
-    catalog = ModelCatalog(token, endpoint)
+    catalog = LazyModelCatalog(token, endpoint)
     config, messages, state_file = load_session(session_dir)
 
     model = config["model"]
