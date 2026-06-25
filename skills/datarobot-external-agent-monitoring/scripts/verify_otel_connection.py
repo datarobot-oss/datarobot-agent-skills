@@ -13,7 +13,7 @@ Usage:
 
 Env vars:
     DATAROBOT_API_TOKEN      - DataRobot API token
-    DATAROBOT_ENTITY_ID      - deployment-<deployment_id>
+    DATAROBOT_ENTITY_ID      - experiment_container-<use_case_id> (or deployment-<deployment_id>)
     DATAROBOT_OTEL_ENDPOINT  - https://<instance>.datarobot.com/otel
 """
 
@@ -59,9 +59,10 @@ def verify_connection() -> dict:
         errors.append("DATAROBOT_ENTITY_ID env var is required")
     if not endpoint:
         errors.append("DATAROBOT_OTEL_ENDPOINT env var is required")
-    if entity_id and not entity_id.startswith("deployment-"):
+    if entity_id and not entity_id.startswith(("experiment_container-", "deployment-")):
         errors.append(
-            f"DATAROBOT_ENTITY_ID must start with 'deployment-', got: {entity_id}"
+            "DATAROBOT_ENTITY_ID must start with 'experiment_container-' (Use Case) "
+            f"or 'deployment-' (deployment), got: {entity_id}"
         )
 
     if errors:
