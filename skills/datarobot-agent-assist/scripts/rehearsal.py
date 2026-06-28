@@ -670,9 +670,7 @@ def run_tool_call(
 
     with lock:
         stats.sim_done(fn, elapsed)
-        print_section(
-            "SIMULATED RETURN", f"{fn}\n{json.dumps(simulated, indent=2)}"
-        )
+        print_section("SIMULATED RETURN", f"{fn}\n{json.dumps(simulated, indent=2)}")
 
     return (
         {"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(simulated)},
