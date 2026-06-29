@@ -80,13 +80,27 @@ Click on the section that corresponds to your coding agent to see the installati
 
 <details><summary><strong>Claude Code</strong></summary>
 
-Register the repository as a plugin marketplace:
+Install all DataRobot skills from the official Claude plugins marketplace.
+
+From your terminal:
+
+```bash
+claude plugin install datarobot-agent-skills@claude-plugins-official
+```
+
+From within a Claude Code CLI session:
+
+```bash
+/plugin install datarobot-agent-skills@claude-plugins-official
+```
+
+**Alternative:** register the repository as a plugin marketplace from within a Claude Code CLI session:
 
 ```bash
 /plugin marketplace add datarobot-oss/datarobot-agent-skills
 ```
 
-To install a skill, run:
+To install a specific skill, run:
 
 ```bash
 /plugin install <skill-folder>@datarobot-skills
