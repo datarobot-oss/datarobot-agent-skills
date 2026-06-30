@@ -63,6 +63,11 @@
       "name": "datarobot-workload-api",
       "description": "Create, configure, scale, debug, observe, and roll out container workloads on DataRobot's Workload API \u2014 covers deploying containers as managed services, replica/autoscaling settings, CPU/GPU compute bundles, DataRobot credential injection, diagnosing stuck or crash-looping workloads, pulling logs/traces/metrics/service stats, and zero-downtime artifact replacement",
       "path": "skills/datarobot-workload-api/SKILL.md"
+    },
+    {
+      "name": "datarobot-define-tool-schema",
+      "description": "Author and validate the model-metadata.yaml inputSchema that makes a custom DataRobot deployment callable as an MCP tool. Use when a deployment exposes custom (non-chat, non-predictive) request/response shapes and needs a tool interface defined, validated, or fixed.",
+      "path": "skills/datarobot-define-tool-schema/SKILL.md"
     }
   ]
 }
