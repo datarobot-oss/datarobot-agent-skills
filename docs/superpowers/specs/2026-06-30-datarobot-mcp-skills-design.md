@@ -174,10 +174,12 @@ deployment callable. Shared component of skills 1 and 2.
    take ownership — `datarobot-deploy-nim` is most clearly theirs, and possibly the MCP
    skills too, since NIMs/serving are their domain. Re-point the `CODEOWNERS` entries if
    they accept.
-2. **Single plugin vs three:** confirm whether the three skills ship as one plugin/version
-   bump or independently (see `CONTRIBUTING.md` versioning rules).
-3. **Verification depth in tests:** the e2e LLM-judge suite needs trigger phrases per skill;
-   confirm we can exercise tagging/verify against a test deployment in CI or stub it.
+2. **Packaging — decided.** Three distinct skills, shipped as a **single plugin** (one
+   version bump from Claude's perspective). Follow `CONTRIBUTING.md` for the version/changelog.
+3. **CI / e2e — decided.** Each skill gets common trigger phrases for the LLM-judge suite.
+   In addition, at least **one e2e test exercises a real deployment** (tag → surface →
+   `tools/list` → test invocation), not just a stub. Requires a test deployment +
+   `DATAROBOT_ENDPOINT`/`DATAROBOT_API_TOKEN` in CI.
 
 ## Risks
 
