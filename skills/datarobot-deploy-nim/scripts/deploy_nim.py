@@ -49,10 +49,15 @@ def main(argv: list[str]) -> int:
     client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
                        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
 
-    pkg = client.post("modelPackages/fromCustomModelVersion/",
-                      data={"customModelVersionId": args.custom_model_version_id,
-                            "name": args.label}).json()
-    model_package_id = pkg["id"]
+    reg_resp = client.post("modelPackages/fromCustomModelVersion/",
+                           data={"customModelVersionId": args.custom_model_version_id,
+                                 "name": args.label})
+    reg_resp.raise_for_status()
+    pkg = reg_resp.json()
+    model_package_id = pkg.get("id")
+    if not model_package_id:
+        print(f"Failed to register model package: {pkg}", file=sys.stderr)
+        return 1
 
     pe_id = args.prediction_environment_id
     if not pe_id:
@@ -65,6 +70,7 @@ def main(argv: list[str]) -> int:
 
     body = build_deploy_payload(model_package_id, args.label, pe_id)
     resp = client.post("deployments/fromModelPackage/", data=body)
+    resp.raise_for_status()
     out = resp.json()
     print(f"Deployment created: {out.get('id')} (status {resp.status_code}).")
     print("Next: expose it with datarobot-register-mcp-tool (NIM auto-detects as chat).")

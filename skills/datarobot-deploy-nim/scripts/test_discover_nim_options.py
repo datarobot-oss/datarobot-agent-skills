@@ -30,3 +30,7 @@ def test_pick_template_defaults_to_first():
 
 def test_pick_template_empty_returns_none():
     assert pick_nim_template([], "x") is None
+
+
+def test_pick_template_no_match_returns_none():
+    assert pick_nim_template([{"id": "t1", "name": "A"}], "zzz") is None

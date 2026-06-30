@@ -21,9 +21,9 @@ def build_nim_create_payload(template_id, resource_bundle_id,
     if not template_id or not resource_bundle_id:
         raise ValueError("template_id and resource_bundle_id are required")
     body = {"templateId": template_id, "resourceBundleId": resource_bundle_id}
-    if secret_config_id:
+    if secret_config_id is not None:
         body["secretConfigId"] = secret_config_id
-    if container_tag_override:
+    if container_tag_override is not None:
         body["nimContainerTagOverride"] = container_tag_override
     return body
 

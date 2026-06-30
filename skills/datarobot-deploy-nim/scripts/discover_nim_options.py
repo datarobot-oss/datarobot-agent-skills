@@ -16,7 +16,7 @@ import sys
 
 def filter_gpu_bundles(bundles: list) -> list:
     gpu = [b for b in bundles if getattr(b, "has_gpu", False)]
-    return sorted(gpu, key=lambda b: (b.gpu_count, b.gpu_memory_bytes))
+    return sorted(gpu, key=lambda b: (getattr(b, "gpu_count", 0), getattr(b, "gpu_memory_bytes", 0)))
 
 
 def pick_nim_template(templates: list[dict], name_substr: str | None = None) -> dict | None:
@@ -48,6 +48,9 @@ def main(argv: list[str]) -> int:
     for t in templates:
         marker = " <- chosen" if chosen and t.get("id") == chosen.get("id") else ""
         print(f"  {t.get('id')}\t{t.get('name')}{marker}")
+
+    if chosen:
+        print(f"Chosen template id: {chosen.get('id')} (pass to create_nim_from_template.py --template-id)")
 
     print("GPU resource bundles (use with --resource-bundle-id):")
     for b in filter_gpu_bundles(ResourceBundle.list(use_cases=["customModel"])):
