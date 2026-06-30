@@ -169,9 +169,11 @@ deployment callable. Shared component of skills 1 and 2.
 
 ## Open items to resolve during planning
 
-1. **CODEOWNERS:** which team owns these skills? Candidates: the genai/agentic team behind
-   `global-mcp`/`datarobot-genai`, or core-modeling (owner of the feature flag). Needs a
-   `CODEOWNERS` entry per repo policy before merge.
+1. **CODEOWNERS — decided.** All three skills are assigned to `@datarobot/core-modeling`
+   for now so they can merge. **Follow-up:** Slack the mlops team to ask whether they'll
+   take ownership — `datarobot-deploy-nim` is most clearly theirs, and possibly the MCP
+   skills too, since NIMs/serving are their domain. Re-point the `CODEOWNERS` entries if
+   they accept.
 2. **Single plugin vs three:** confirm whether the three skills ship as one plugin/version
    bump or independently (see `CONTRIBUTING.md` versioning rules).
 3. **Verification depth in tests:** the e2e LLM-judge suite needs trigger phrases per skill;
