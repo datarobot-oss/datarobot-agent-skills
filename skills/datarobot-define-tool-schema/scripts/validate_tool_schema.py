@@ -18,6 +18,8 @@ FLAT_KEYS = {"path_params", "query_params"}
 
 def _is_flat_object(prop: dict) -> bool:
     """A flat object: every property is a JSON primitive (no object/array)."""
+    if prop.get("type") == "array":
+        return False
     for sub in (prop.get("properties") or {}).values():
         if sub.get("type") in ("object", "array"):
             return False
@@ -59,13 +61,13 @@ def _load(path: str) -> dict:
 
 def main(argv: list[str]) -> int:
     args = [a for a in argv[1:] if a != "--allow-empty"]
-    allow_empty = "--allow-empty" in argv
+    allow_empty = "--allow-empty" in argv[1:]
     if len(args) >= 2 and args[0] == "--schema":
         schema = json.loads(args[1])
     elif len(args) >= 1:
         schema = _load(args[0])
     else:
-        print(__doc__)
+        print(__doc__ or "")
         return 2
     errors = validate_tool_schema(schema, allow_empty=allow_empty)
     if errors:

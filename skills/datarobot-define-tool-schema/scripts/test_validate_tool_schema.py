@@ -1,6 +1,6 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from validate_tool_schema import validate_tool_schema
+from validate_tool_schema import main, validate_tool_schema
 
 
 def test_valid_json_body_schema_passes():
@@ -54,3 +54,31 @@ def test_query_params_must_be_flat():
     }
     errors = validate_tool_schema(schema)
     assert any("query_params" in e for e in errors)
+
+
+def test_path_params_as_array_type_rejected():
+    """Fix #1: path_params declared as array (not object) must be rejected."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "path_params": {"type": "array"},
+        },
+    }
+    errors = validate_tool_schema(schema)
+    assert errors, "Expected errors when path_params has type array"
+
+
+def test_main_empty_schema_returns_1_allow_empty_returns_0():
+    """main() returns 1 for empty schema; 0 when --allow-empty is passed."""
+    empty_schema_json = '{"type":"object","properties":{}}'
+    assert main(["prog", "--schema", empty_schema_json]) == 1
+    assert main(["prog", "--schema", empty_schema_json, "--allow-empty"]) == 0
+
+
+def test_main_valid_schema_returns_0():
+    """main() returns 0 for a valid schema passed via --schema."""
+    valid_schema_json = (
+        '{"type":"object","properties":{"json":{"type":"object","properties":'
+        '{"text":{"type":"string"}}}}}'
+    )
+    assert main(["prog", "--schema", valid_schema_json]) == 0
