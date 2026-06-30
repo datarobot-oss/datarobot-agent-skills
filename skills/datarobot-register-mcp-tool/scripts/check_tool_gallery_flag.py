@@ -25,7 +25,10 @@ def is_tool_gallery_enabled(client) -> bool:
     payload = resp.json()
     for ent in payload.get("entitlements", []):
         if ent.get("name") == FLAG:
-            return bool(ent.get("value"))
+            value = ent.get("value")
+            if isinstance(value, str):
+                return value.strip().lower() == "true"
+            return bool(value)
     return False
 
 

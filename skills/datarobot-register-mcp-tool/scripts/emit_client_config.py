@@ -13,6 +13,7 @@ import sys
 
 
 def build_client_config(host: str, deployment_id: str | None, hosted: bool, client: str) -> dict:
+    # client param (claude/cursor) is accepted for forward-compatibility; currently emitted config is identical
     host = host.rstrip("/")
     if hosted:
         url = f"{host}/api/v2/genai/globalmcp/mcp"

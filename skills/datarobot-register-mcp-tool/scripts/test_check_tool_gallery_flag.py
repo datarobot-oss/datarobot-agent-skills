@@ -36,3 +36,11 @@ def test_posts_to_entitlements_evaluate():
     url, data = c.last
     assert "entitlements/evaluate" in url
     assert "ENABLE_MCP_TOOLS_GALLERY_SUPPORT" in str(data)
+
+
+def test_returns_true_when_string_value_is_true():
+    assert is_tool_gallery_enabled(_Client("true")) is True
+
+
+def test_returns_false_when_string_value_is_false():
+    assert is_tool_gallery_enabled(_Client("false")) is False
