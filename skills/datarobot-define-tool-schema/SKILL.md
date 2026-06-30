@@ -19,7 +19,7 @@ Three steps to a working tool schema:
    python scripts/validate_tool_schema.py model-metadata.yaml
    ```
 
-   An empty output means the schema is valid. Any validation errors are printed as human-readable strings — fix them and re-run.
+   Exit code 0 with no printed errors means the schema is valid. Any validation errors are printed as human-readable strings — fix them and re-run.
 
 3. **Deploy and register.** Once the validator passes, push the updated custom model to DataRobot and register the deployment as an MCP tool using the `datarobot-register-mcp-tool` skill.
 
@@ -32,7 +32,7 @@ You do NOT need this skill for:
 - **Standard predictive models** (AutoML, registered models with tabular targets). DataRobot automatically generates a fallback schema of `{"data": "<CSV>"}` for these deployments — no `inputSchema` is required.
 - **Agentic workflow or chat deployments** (target type `agenticworkflow`, or any deployment that supports the chat API via `supports_chat_api`). These receive an automatic OpenAI chat-style fallback at `/chat/completions`. The `datarobot-register-mcp-tool` skill handles them without any schema authoring.
 
-If you are not sure which category your deployment falls into, check the deployment's target type in the DataRobot UI or via the SDK (`deployment.model_package.target_type`). If it is `agenticworkflow` or the deployment card shows a Chat tab, skip this skill.
+If you are not sure which category your deployment falls into, check the **Target Type** shown on the deployment overview in the DataRobot UI. Alternatively, retrieve the deployment via the SDK (`dr.Deployment.get(deployment_id)`) and inspect its model info — but do not rely on a specific attribute chain; attribute paths vary across SDK versions. If the target type is `agenticworkflow` or the deployment card shows a Chat tab, skip this skill.
 
 ## The interface envelope
 
@@ -117,11 +117,39 @@ inputSchema:
           type: string
 ```
 
+The following example shows `query_params` (flat, primitive values only) and a `data` body (string-primitive leaves) for a deployment that accepts a form-encoded body and URL query filters:
+
+```yaml
+inputSchema:
+  type: object
+  properties:
+    query_params:
+      type: object
+      properties:
+        format:
+          type: string
+          description: Response format, e.g. "json" or "csv".
+        limit:
+          type: integer
+          description: Maximum number of records to return.
+    data:
+      type: object
+      properties:
+        document_id:
+          type: string
+          description: ID of the document to process.
+        language:
+          type: string
+          description: BCP-47 language tag, e.g. "en-US".
+```
+
+`query_params` is flat — every property is a primitive (`string`, `integer`, `boolean`, or `number`). `data` leaf values are strings. Neither envelope may contain nested objects or arrays.
+
 Keep `path_params` and `query_params` strictly flat. Adding a nested `object` under either will cause a validation error.
 
 ## Validating
 
-Run the local validator before pushing your model to DataRobot. It checks all structural rules enforced by `datarobot-genai` — envelope keys, flatness constraints, type restrictions — and prints each error on its own line. An empty exit means the schema is clean.
+Run the local validator before pushing your model to DataRobot. It checks all structural rules enforced by `datarobot-genai` — envelope keys, flatness constraints, type restrictions — and prints each error on its own line. Exit code 0 with no printed errors means the schema is valid.
 
 ```bash
 python scripts/validate_tool_schema.py model-metadata.yaml
