@@ -46,14 +46,7 @@ python scripts/deploy_nim.py \
 
 Pass `--prediction-environment-id <id>` to target a specific serverless GPU prediction environment if your cluster has more than one. The script prints the deployment ID when the async job completes.
 
-**Step 4 — Expose as a tool.** Tag the deployment and hand off to the sibling skill:
-
-```bash
-# Tag the deployment as an MCP tool
-python scripts/register_deployment_tool.py <deploymentId>
-```
-
-Then invoke the `datarobot-register-mcp-tool` skill to surface it in your MCP client. Because NIM deployments auto-detect as chat models (`supports_chat_api = true`), no `inputSchema` authoring is needed — the MCP server generates the chat interface automatically.
+**Step 4 — Expose as a tool.** Invoke the `datarobot-register-mcp-tool` skill to tag the deployment `tool=tool` and surface it in your MCP client. Because NIM deployments auto-detect as chat models (`supports_chat_api = true`), no `inputSchema` authoring is needed — the MCP server generates the chat interface automatically.
 
 ## Prerequisites
 
@@ -87,7 +80,7 @@ POST /api/v2/customModels/fromModelTemplate/
   "templateId": "<NIM template id>",
   "resourceBundleId": "<gpu bundle id>",
   "secretConfigId": "<secureConfig id>",
-  "nimContainerTagOverride": "latest"
+  "nimContainerTagOverride": "latest"  // optional — defaults to latest
 }
 ```
 
