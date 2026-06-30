@@ -160,6 +160,18 @@
         "validate my deployment's MCP tool interface",
         "write the inputSchema for model-metadata.yaml"
       ]
+    },
+    {
+      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:register-mcp-tool",
+      "displayName": "datarobot-register-mcp-tool",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-register-mcp-tool/SKILL.md",
+      "description": "Register an existing DataRobot deployment as an MCP tool and surface it to Claude, Cursor, or any MCP client without writing custom glue code.",
+      "representativeQueries": [
+        "use my DataRobot deployment as a tool in Claude",
+        "expose this deployment to Cursor over MCP",
+        "I tagged my deployment but it's not showing up as a tool"
+      ]
     }
   ]
 }

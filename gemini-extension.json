@@ -68,6 +68,11 @@
       "name": "datarobot-define-tool-schema",
       "description": "Author and validate the model-metadata.yaml inputSchema that makes a custom DataRobot deployment callable as an MCP tool. Use when a deployment exposes custom (non-chat, non-predictive) request/response shapes and needs a tool interface defined, validated, or fixed.",
       "path": "skills/datarobot-define-tool-schema/SKILL.md"
+    },
+    {
+      "name": "datarobot-register-mcp-tool",
+      "description": "Register an existing DataRobot deployment (predictive, agent, or NIM) as an MCP tool so assistants call it natively instead of writing custom glue. Use when someone wants to use a DataRobot deployment as a tool in Claude/Cursor, expose a deployment to an MCP client, or asks why a tagged deployment isn't showing up.",
+      "path": "skills/datarobot-register-mcp-tool/SKILL.md"
     }
   ]
 }
