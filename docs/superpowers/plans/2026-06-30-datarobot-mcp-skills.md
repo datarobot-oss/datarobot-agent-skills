@@ -24,6 +24,7 @@
 - Feature flag `ENABLE_MCP_TOOLS_GALLERY_SUPPORT` (hosted only): readable via `POST /api/v2/entitlements/evaluate/`; NO public write.
 - **SKILL.md is fully authored by the implementer** (complete prose, not a skeleton). The maintainer explicitly overrode `CLAUDE.md`'s human-written preference. Each SKILL.md must read as a finished, self-contained skill: real prose under every heading, concrete commands, and trigger phrases woven into the `description` and Quick Start. Stay under the 6700-token error threshold; aim under 3300.
 - Version bump: `1.3.2` → `1.4.0` (minor: new skills) in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`. Add `CHANGELOG.md` entries under `[Unreleased]`.
+- **Two per-skill manifests must list every skill (both enforced by `task lint`):** (1) `gemini-extension.json` `skills` array — `{name, path: skills/<name>/SKILL.md, description}`; (2) `docs/.well-known/ai-catalog.json` `entries` array — `{identifier: "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:<suffix-after-datarobot->", displayName: "<folder name>", type: "application/ai-skill", url: "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/<name>/SKILL.md", description, representativeQueries: [3 trigger-phrase strings]}`. Both entries are added by the skill's SKILL.md task (alongside creating the SKILL.md), never before its SKILL.md exists.
 
 ---
 
@@ -135,6 +136,7 @@ def test_query_params_must_be_flat():
 
 Usage:
     python validate_tool_schema.py path/to/model-metadata.yaml
+    python validate_tool_schema.py path/to/model-metadata.yaml --allow-empty
     python validate_tool_schema.py --schema '{"type":"object",...}'
 """
 import json
@@ -185,14 +187,16 @@ def _load(path: str) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) >= 3 and argv[1] == "--schema":
-        schema = json.loads(argv[2])
-    elif len(argv) >= 2:
-        schema = _load(argv[1])
+    args = [a for a in argv[1:] if a != "--allow-empty"]
+    allow_empty = "--allow-empty" in argv
+    if len(args) >= 2 and args[0] == "--schema":
+        schema = json.loads(args[1])
+    elif len(args) >= 1:
+        schema = _load(args[0])
     else:
         print(__doc__)
         return 2
-    errors = validate_tool_schema(schema)
+    errors = validate_tool_schema(schema, allow_empty=allow_empty)
     if errors:
         print("INVALID inputSchema:")
         for e in errors:
@@ -755,11 +759,11 @@ description: Register an existing DataRobot deployment (predictive, agent, or NI
 
 **Suggested trigger phrases:** "use my DataRobot deployment as a tool in Claude", "expose this deployment to Cursor over MCP", "register deployment X as an MCP tool", "I tagged my deployment but it's not showing up as a tool", "connect DataRobot MCP to my assistant".
 
-- [ ] **Step 2: Add the gemini-extension.json entry** for `datarobot-register-mcp-tool` (`path` = `skills/datarobot-register-mcp-tool/SKILL.md`), matching the format of existing entries.
+- [ ] **Step 2: Add the gemini-extension.json entry** for `datarobot-register-mcp-tool` (`path` = `skills/datarobot-register-mcp-tool/SKILL.md`), matching the format of existing entries. **Also add the `docs/.well-known/ai-catalog.json` entry** (`identifier` urn suffix `register-mcp-tool`, `displayName` `datarobot-register-mcp-tool`, `url` the github blob to its SKILL.md, `description`, and 3 `representativeQueries` drawn from the trigger phrases) — matching the shape of existing catalog entries.
 
-- [ ] **Step 3: Verify structural + plugin tests.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py -k "register_mcp_tool or all_skills_included" -v`. Expected: PASS. (Skip the `*_validate` CLI tests.)
+- [ ] **Step 3: Verify structural + plugin + catalog tests.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py tests/integration/test_catalog.py -k "register-mcp-tool or all_skills_included or catalog" -v` (pytest IDs use hyphens). Expected: PASS. (Skip the `*_validate` CLI tests.)
 
-- [ ] **Step 4: Commit.** `git add skills/datarobot-register-mcp-tool/SKILL.md gemini-extension.json && git commit -m "docs(register-mcp-tool): author SKILL.md + gemini entry"`.
+- [ ] **Step 4: Commit.** `git add skills/datarobot-register-mcp-tool/SKILL.md gemini-extension.json docs/.well-known/ai-catalog.json && git commit -m "docs(register-mcp-tool): author SKILL.md + gemini + catalog entries"`.
 
 ### Task B6: Real-deployment e2e test
 
@@ -1224,11 +1228,11 @@ description: Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and ex
 
 **Suggested trigger phrases:** "deploy a NIM on DataRobot and use it as a tool", "stand up CoPilot/an NVIDIA NIM with a GPU", "what GPU bundle do I need for this NIM", "expose my NIM to Claude over MCP".
 
-- [ ] **Step 2: Add the gemini-extension.json entry** for `datarobot-deploy-nim` (`path` = `skills/datarobot-deploy-nim/SKILL.md`), matching the format of existing entries.
+- [ ] **Step 2: Add the gemini-extension.json entry** for `datarobot-deploy-nim` (`path` = `skills/datarobot-deploy-nim/SKILL.md`), matching the format of existing entries. **Also add the `docs/.well-known/ai-catalog.json` entry** (`identifier` urn suffix `deploy-nim`, `displayName` `datarobot-deploy-nim`, `url` the github blob to its SKILL.md, `description`, and 3 `representativeQueries` from the trigger phrases) — matching the shape of existing catalog entries.
 
-- [ ] **Step 3: Verify structural + plugin tests.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py -k "deploy_nim or all_skills_included" -v`. Expected: PASS. (Skip the `*_validate` CLI tests.)
+- [ ] **Step 3: Verify structural + plugin + catalog tests.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py tests/integration/test_catalog.py -k "deploy-nim or all_skills_included or catalog" -v` (pytest IDs use hyphens). Expected: PASS. (Skip the `*_validate` CLI tests.)
 
-- [ ] **Step 4: Commit.** `git add skills/datarobot-deploy-nim/SKILL.md skills/datarobot-deploy-nim/scripts/ gemini-extension.json && git commit -m "docs(deploy-nim): author SKILL.md + gemini entry"`.
+- [ ] **Step 4: Commit.** `git add skills/datarobot-deploy-nim/SKILL.md skills/datarobot-deploy-nim/scripts/ gemini-extension.json docs/.well-known/ai-catalog.json && git commit -m "docs(deploy-nim): author SKILL.md + gemini + catalog entries"`.
 
 ## Final verification
 
