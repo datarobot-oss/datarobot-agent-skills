@@ -29,19 +29,18 @@
 
 ## Phase 0 — Scaffolding
 
-### Task 0: Create skill dirs, CODEOWNERS, version bump, changelog
+### Task 0: CODEOWNERS, version bump, changelog
 
 **Files:**
-- Create: `skills/datarobot-define-tool-schema/scripts/.gitkeep`, `skills/datarobot-register-mcp-tool/scripts/.gitkeep`, `skills/datarobot-deploy-nim/scripts/.gitkeep`
 - Modify: `.github/CODEOWNERS`, `.claude-plugin/plugin.json:4`, `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json:4`, `gemini-extension.json:3`, `CHANGELOG.md`
-- Test: `tests/integration/test_codeowners.py` (existing), `tests/integration/test_plugins.py` (existing)
+- Test: `tests/integration/test_codeowners.py`, `tests/integration/test_plugins.py` (existing)
 
 **Interfaces:**
-- Produces: three skill directories the later tasks populate.
+- Produces: CODEOWNERS + version + changelog groundwork. Does NOT create skill dirs.
 
-- [ ] **Step 1: Create the three skill+scripts directories** with a `.gitkeep` in each `scripts/` so empty dirs commit.
+> **Do NOT create the skill directories or add gemini-extension.json skill entries here.** `test_gemini_all_skills_included` requires every `skills/` dir to be listed in `gemini-extension.json`, and `test_gemini_entry_path_exists` requires each listed entry's `path` (`skills/<name>/SKILL.md`) to exist — so an empty skill dir breaks the suite. Each skill's dir is created by its first script task; its gemini-extension.json entry is added by its SKILL.md task (A2/B5/C4). CODEOWNERS entries for not-yet-existing dirs are harmless (`test_codeowners` only checks dirs that contain a `SKILL.md`).
 
-- [ ] **Step 2: Add CODEOWNERS entries** under the core-modeling block in `.github/CODEOWNERS`:
+- [ ] **Step 1: Add CODEOWNERS entries** under the core-modeling block in `.github/CODEOWNERS`:
 
 ```
 /skills/datarobot-define-tool-schema/ @datarobot/core-modeling
@@ -49,9 +48,9 @@
 /skills/datarobot-deploy-nim/ @datarobot/core-modeling
 ```
 
-- [ ] **Step 3: Bump version `1.3.2` → `1.4.0`** in all four manifest files (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`).
+- [ ] **Step 2: Bump version `1.3.2` → `1.4.0`** in all four manifest files (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`). Do not touch the `skills` arrays.
 
-- [ ] **Step 4: Add CHANGELOG entries** under `## [Unreleased]`:
+- [ ] **Step 3: Add CHANGELOG entries** under `## [Unreleased]`:
 
 ```markdown
 - `datarobot-define-tool-schema`: New skill — author and validate the `model-metadata.yaml inputSchema` that makes a custom deployment callable as an MCP tool.
@@ -59,13 +58,13 @@
 - `datarobot-deploy-nim`: New skill — deploy an NVIDIA NIM with a GPU resource bundle and expose it as an MCP tool.
 ```
 
-- [ ] **Step 5: Run structural tests.** Run: `uv run pytest tests/integration/test_plugins.py tests/integration/test_codeowners.py -q`. Expected: `test_codeowners` will FAIL for the three new dirs until their `SKILL.md` exists (codeowners test only parametrizes dirs that already have `SKILL.md`, so it passes now); `test_plugins` PASSES with matching versions. Confirm version-consistency assertions pass.
+- [ ] **Step 4: Run structural tests.** Run: `uv run pytest tests/integration/test_plugins.py tests/integration/test_codeowners.py -q -k "not validate"`. Expected: PASS (the `*_validate` tests need the gemini/claude CLIs and are environmental; exclude them). Version-consistency assertions pass; no new skill dirs exist yet.
 
-- [ ] **Step 6: Commit.**
+- [ ] **Step 5: Commit.**
 
 ```bash
-git add .github/CODEOWNERS .claude-plugin .cursor-plugin gemini-extension.json CHANGELOG.md skills/datarobot-*/scripts/.gitkeep
-git commit -m "scaffold: add three MCP tool skill dirs, codeowners, v1.4.0 bump"
+git add .github/CODEOWNERS .claude-plugin .cursor-plugin gemini-extension.json CHANGELOG.md
+git commit -m "scaffold: add codeowners + v1.4.0 bump for three MCP tool skills"
 ```
 
 ---
@@ -256,9 +255,11 @@ description: Author and validate the model-metadata.yaml inputSchema that makes 
 
 **Suggested trigger phrases** (for the maintainer to weave into `description`/Quick Start): "define the tool schema for my deployment", "my MCP tool has the wrong inputs", "write the inputSchema for model-metadata.yaml", "validate my deployment's tool interface".
 
-- [ ] **Step 2: Verify structural tests pass.** Run: `uv run pytest tests/integration/test_skills.py -k define_tool_schema -v`. Expected: name-matches-folder, description-has-"Use when", and token-count assertions PASS.
+- [ ] **Step 2: Add the gemini-extension.json entry.** Append to the `skills` array in `gemini-extension.json` (matching the format of existing entries — `name` = folder name, `path` = `skills/datarobot-define-tool-schema/SKILL.md`, plus the same `description`/keys siblings use). This is required: `test_gemini_all_skills_included` now sees the dir on disk.
 
-- [ ] **Step 3: Commit.** `git add skills/datarobot-define-tool-schema/SKILL.md && git commit -m "docs(define-tool-schema): author SKILL.md"`.
+- [ ] **Step 3: Verify structural + plugin tests pass.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py -k "define_tool_schema or all_skills_included" -v` and `... -k "not validate"` for the rest. Expected: name-matches-folder, description-has-"Use when", token-count, gemini-entry-path-exists, and all-skills-included all PASS. (The `*_validate` tests need external CLIs — skip them.)
+
+- [ ] **Step 4: Commit.** `git add skills/datarobot-define-tool-schema/SKILL.md gemini-extension.json && git commit -m "docs(define-tool-schema): author SKILL.md + gemini entry"`.
 
 ---
 
@@ -754,9 +755,11 @@ description: Register an existing DataRobot deployment (predictive, agent, or NI
 
 **Suggested trigger phrases:** "use my DataRobot deployment as a tool in Claude", "expose this deployment to Cursor over MCP", "register deployment X as an MCP tool", "I tagged my deployment but it's not showing up as a tool", "connect DataRobot MCP to my assistant".
 
-- [ ] **Step 2: Verify structural tests.** Run: `uv run pytest tests/integration/test_skills.py -k register_mcp_tool -v`. Expected: PASS.
+- [ ] **Step 2: Add the gemini-extension.json entry** for `datarobot-register-mcp-tool` (`path` = `skills/datarobot-register-mcp-tool/SKILL.md`), matching the format of existing entries.
 
-- [ ] **Step 3: Commit.** `git add skills/datarobot-register-mcp-tool/SKILL.md && git commit -m "docs(register-mcp-tool): author SKILL.md"`.
+- [ ] **Step 3: Verify structural + plugin tests.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py -k "register_mcp_tool or all_skills_included" -v`. Expected: PASS. (Skip the `*_validate` CLI tests.)
+
+- [ ] **Step 4: Commit.** `git add skills/datarobot-register-mcp-tool/SKILL.md gemini-extension.json && git commit -m "docs(register-mcp-tool): author SKILL.md + gemini entry"`.
 
 ### Task B6: Real-deployment e2e test
 
@@ -824,23 +827,25 @@ def test_tag_and_surface_real_deployment():
 
 ## Phase C — `datarobot-deploy-nim`
 
-> **Reality (from research):** the NGC gallery import that creates the NIM registered model is **UI-only**, and binding `resourceBundleId` to a model version is **REST-only** (not in the SDK). This skill orchestrates a guided UI step + SDK/REST steps; it is correctness-and-guidance, not full headless automation. The exact REST contract is captured in `docs/superpowers/research/nim-rest-contract.md` (source-grounded from the API route handlers); C3 implements against it.
+> **Reality (corrected by research):** the NIM+GPU create→deploy flow is **fully REST-scriptable** — the earlier "UI-only" belief was wrong. The exact contract is in `docs/superpowers/research/nim-rest-contract.md` (grounded in the DataRobot API route handlers). None of these calls are in the public SDK, so scripts use the `dr.Client().get/post(...)` REST escape hatch. Genuine prerequisites (not automatable, surfaced by the skill): feature flags `NIM_MODELS` + `MLOPS_RESOURCE_REQUEST_BUNDLES`, and an NGC API key stored as a secureConfig (`secretConfigId`).
 
-### Task C1: GPU bundle discovery (`list_gpu_bundles.py`)
+### Task C1: Discover NIM templates + GPU bundles (`discover_nim_options.py`)
 
 **Files:**
-- Create: `skills/datarobot-deploy-nim/scripts/list_gpu_bundles.py`
-- Test: `skills/datarobot-deploy-nim/scripts/test_list_gpu_bundles.py`
+- Create: `skills/datarobot-deploy-nim/scripts/discover_nim_options.py`
+- Test: `skills/datarobot-deploy-nim/scripts/test_discover_nim_options.py`
 
 **Interfaces:**
-- Produces: `filter_gpu_bundles(bundles: list) -> list` — keep only `has_gpu` bundles, sorted by `gpu_count` then `gpu_memory_bytes`. `bundles` items expose `.has_gpu`, `.gpu_count`, `.gpu_memory_bytes`, `.id`, `.name`.
+- Produces:
+  - `filter_gpu_bundles(bundles: list) -> list` — keep only `has_gpu`, sorted by `gpu_count` then `gpu_memory_bytes`. Items expose `.has_gpu`, `.gpu_count`, `.gpu_memory_bytes`, `.id`, `.name`.
+  - `pick_nim_template(templates: list[dict], name_substr: str | None = None) -> dict | None` — return the template whose `name` contains `name_substr` (case-insensitive); if `name_substr` is None, return the first template; None if the list is empty.
 
 - [ ] **Step 1: Write failing tests.**
 
 ```python
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from list_gpu_bundles import filter_gpu_bundles
+from discover_nim_options import filter_gpu_bundles, pick_nim_template
 
 
 class _B:
@@ -851,18 +856,28 @@ class _B:
         self.gpu_memory_bytes = gpu_memory_bytes
 
 
-def test_filters_non_gpu():
-    out = filter_gpu_bundles([_B("cpu", False), _B("g1", True, 1, 10)])
-    assert [b.id for b in out] == ["g1"]
-
-
-def test_sorts_by_gpu_count_then_memory():
+def test_filters_non_gpu_and_sorts():
     out = filter_gpu_bundles([
-        _B("g2", True, 2, 10), _B("g1a", True, 1, 80), _B("g1b", True, 1, 40)])
+        _B("cpu", False), _B("g2", True, 2, 10),
+        _B("g1a", True, 1, 80), _B("g1b", True, 1, 40)])
     assert [b.id for b in out] == ["g1b", "g1a", "g2"]
+
+
+def test_pick_template_by_substring():
+    tpls = [{"id": "t1", "name": "Llama 3 NIM"}, {"id": "t2", "name": "Mixtral NIM"}]
+    assert pick_nim_template(tpls, "mixtral")["id"] == "t2"
+
+
+def test_pick_template_defaults_to_first():
+    tpls = [{"id": "t1", "name": "A"}, {"id": "t2", "name": "B"}]
+    assert pick_nim_template(tpls)["id"] == "t1"
+
+
+def test_pick_template_empty_returns_none():
+    assert pick_nim_template([], "x") is None
 ```
 
-- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_list_gpu_bundles.py -v`. Expected: FAIL.
+- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_discover_nim_options.py -v`. Expected: FAIL (module not found).
 
 - [ ] **Step 3: Implement.**
 
@@ -870,11 +885,15 @@ def test_sorts_by_gpu_count_then_memory():
 #!/usr/bin/env python3
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""List GPU resource bundles available for custom models.
+"""Discover NIM templates and GPU resource bundles.
+
+Lists NIM container templates (GET /customTemplates/?templateSubType=NIM_CONTAINERS)
+and GPU resource bundles (ResourceBundle.list(use_cases=["customModel"])).
 
 Usage:
-    python list_gpu_bundles.py
+    python discover_nim_options.py [--name <template name substring>]
 """
+import argparse
 import os
 import sys
 
@@ -884,15 +903,39 @@ def filter_gpu_bundles(bundles: list) -> list:
     return sorted(gpu, key=lambda b: (b.gpu_count, b.gpu_memory_bytes))
 
 
+def pick_nim_template(templates: list[dict], name_substr: str | None = None) -> dict | None:
+    if not templates:
+        return None
+    if name_substr is None:
+        return templates[0]
+    needle = name_substr.lower()
+    for t in templates:
+        if needle in (t.get("name") or "").lower():
+            return t
+    return None
+
+
 def main(argv: list[str]) -> int:
     import datarobot as dr
     from datarobot.models.resource_bundle import ResourceBundle
 
-    dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
-              endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
-    bundles = ResourceBundle.list(use_cases=["customModel"])
-    for b in filter_gpu_bundles(bundles):
-        print(f"{b.id}\t{b.name}\tgpu_count={b.gpu_count}\tgpu_mem={b.gpu_memory_bytes}")
+    p = argparse.ArgumentParser()
+    p.add_argument("--name", help="filter NIM template by name substring")
+    args = p.parse_args(argv[1:])
+
+    client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
+                       endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
+    resp = client.get("customTemplates/", params={"templateSubType": "NIM_CONTAINERS"})
+    templates = resp.json().get("data", [])
+    chosen = pick_nim_template(templates, args.name)
+    print("NIM templates:")
+    for t in templates:
+        marker = " <- chosen" if chosen and t.get("id") == chosen.get("id") else ""
+        print(f"  {t.get('id')}\t{t.get('name')}{marker}")
+
+    print("GPU resource bundles (use with --resource-bundle-id):")
+    for b in filter_gpu_bundles(ResourceBundle.list(use_cases=["customModel"])):
+        print(f"  {b.id}\t{b.name}\tgpu_count={b.gpu_count}\tgpu_mem={b.gpu_memory_bytes}")
     return 0
 
 
@@ -900,18 +943,19 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
 ```
 
-- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_list_gpu_bundles.py -v`. Expected: 2 passed.
+- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_discover_nim_options.py -v`. Expected: 4 passed.
 
-- [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/list_gpu_bundles.py skills/datarobot-deploy-nim/scripts/test_list_gpu_bundles.py && git commit -m "feat(deploy-nim): GPU resource bundle discovery"`.
+- [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/discover_nim_options.py skills/datarobot-deploy-nim/scripts/test_discover_nim_options.py && git commit -m "feat(deploy-nim): discover NIM templates + GPU bundles"`.
 
-### Task C2: Deploy a registered NIM model (`deploy_registered_nim.py`)
+### Task C2: Create the NIM model from a template (`create_nim_from_template.py`)
 
 **Files:**
-- Create: `skills/datarobot-deploy-nim/scripts/deploy_registered_nim.py`
-- Test: `skills/datarobot-deploy-nim/scripts/test_deploy_registered_nim.py`
+- Create: `skills/datarobot-deploy-nim/scripts/create_nim_from_template.py`
+- Test: `skills/datarobot-deploy-nim/scripts/test_create_nim_from_template.py`
 
 **Interfaces:**
-- Produces: `deploy_kwargs(model_package_id: str, label: str, prediction_environment_id: str) -> dict` — builds the kwargs for `Deployment.create_from_registered_model_version`, enforcing that a `prediction_environment_id` (serverless GPU PE) is provided and never paired with a `default_prediction_server_id`.
+- Consumes: a `template_id` + `resource_bundle_id` from C1's discovery.
+- Produces: `build_nim_create_payload(template_id, resource_bundle_id, secret_config_id=None, container_tag_override=None) -> dict` — body for `POST /customModels/fromModelTemplate/`. `templateId` and `resourceBundleId` always present; optional keys omitted when None.
 
 - [ ] **Step 1: Write failing tests.**
 
@@ -919,23 +963,29 @@ if __name__ == "__main__":
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import pytest
-from deploy_registered_nim import deploy_kwargs
+from create_nim_from_template import build_nim_create_payload
 
 
-def test_kwargs_include_pe_and_package():
-    kw = deploy_kwargs("pkg1", "my-nim", "pe123")
-    assert kw["model_package_id"] == "pkg1"
-    assert kw["label"] == "my-nim"
-    assert kw["prediction_environment_id"] == "pe123"
-    assert "default_prediction_server_id" not in kw
+def test_minimal_payload():
+    body = build_nim_create_payload("tpl1", "bundleG")
+    assert body == {"templateId": "tpl1", "resourceBundleId": "bundleG"}
 
 
-def test_requires_prediction_environment():
+def test_optional_fields_included_when_set():
+    body = build_nim_create_payload("tpl1", "bundleG",
+                                    secret_config_id="sec1", container_tag_override="latest")
+    assert body["secretConfigId"] == "sec1"
+    assert body["nimContainerTagOverride"] == "latest"
+
+
+def test_requires_template_and_bundle():
     with pytest.raises(ValueError):
-        deploy_kwargs("pkg1", "my-nim", "")
+        build_nim_create_payload("", "bundleG")
+    with pytest.raises(ValueError):
+        build_nim_create_payload("tpl1", "")
 ```
 
-- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_deploy_registered_nim.py -v`. Expected: FAIL.
+- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_create_nim_from_template.py -v`. Expected: FAIL.
 
 - [ ] **Step 3: Implement.**
 
@@ -943,46 +993,52 @@ def test_requires_prediction_environment():
 #!/usr/bin/env python3
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Deploy a registered NIM model to a serverless GPU prediction environment.
+"""Create a NIM custom model + version from a NIM container template.
 
-Prereq: the NIM registered model already exists (created via the NGC gallery
-import in the DataRobot UI — that step is not SDK-scriptable) and its model
-version is bound to a GPU resource bundle.
+REST: POST /api/v2/customModels/fromModelTemplate/  (requires feature flag NIM_MODELS).
+Returns {"customModelId": ..., "customModelVersionId": ...}. The NGC API key must
+already be stored as a secureConfig and passed as secret_config_id.
 
 Usage:
-    python deploy_registered_nim.py --model-package-id <id> --label <name> \
-        --prediction-environment-id <pe_id>
+    python create_nim_from_template.py --template-id <id> --resource-bundle-id <id> \
+        [--secret-config-id <id>] [--container-tag-override <tag>]
 """
 import argparse
 import os
 import sys
 
 
-def deploy_kwargs(model_package_id: str, label: str, prediction_environment_id: str) -> dict:
-    if not prediction_environment_id:
-        raise ValueError("a serverless GPU prediction_environment_id is required for NIM")
-    return {
-        "model_package_id": model_package_id,
-        "label": label,
-        "prediction_environment_id": prediction_environment_id,
-    }
+def build_nim_create_payload(template_id, resource_bundle_id,
+                             secret_config_id=None, container_tag_override=None) -> dict:
+    if not template_id or not resource_bundle_id:
+        raise ValueError("template_id and resource_bundle_id are required")
+    body = {"templateId": template_id, "resourceBundleId": resource_bundle_id}
+    if secret_config_id:
+        body["secretConfigId"] = secret_config_id
+    if container_tag_override:
+        body["nimContainerTagOverride"] = container_tag_override
+    return body
 
 
 def main(argv: list[str]) -> int:
     import datarobot as dr
 
     p = argparse.ArgumentParser()
-    p.add_argument("--model-package-id", required=True)
-    p.add_argument("--label", required=True)
-    p.add_argument("--prediction-environment-id", required=True)
+    p.add_argument("--template-id", required=True)
+    p.add_argument("--resource-bundle-id", required=True)
+    p.add_argument("--secret-config-id")
+    p.add_argument("--container-tag-override")
     args = p.parse_args(argv[1:])
 
-    dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
-              endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
-    kwargs = deploy_kwargs(args.model_package_id, args.label, args.prediction_environment_id)
-    deployment = dr.Deployment.create_from_registered_model_version(**kwargs)
-    print(f"Deployed NIM as deployment {deployment.id}. "
-          "Next: run datarobot-register-mcp-tool to expose it (NIM auto-detects as chat).")
+    client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
+                       endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
+    body = build_nim_create_payload(args.template_id, args.resource_bundle_id,
+                                    args.secret_config_id, args.container_tag_override)
+    resp = client.post("customModels/fromModelTemplate/", data=body)
+    out = resp.json()
+    print(f"customModelId={out.get('customModelId')} "
+          f"customModelVersionId={out.get('customModelVersionId')}")
+    print("Next: register + deploy with deploy_nim.py")
     return 0
 
 
@@ -990,41 +1046,56 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
 ```
 
-- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_deploy_registered_nim.py -v`. Expected: 2 passed.
+- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_create_nim_from_template.py -v`. Expected: 3 passed.
 
-- [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/deploy_registered_nim.py skills/datarobot-deploy-nim/scripts/test_deploy_registered_nim.py && git commit -m "feat(deploy-nim): deploy registered NIM to serverless GPU PE"`.
+- [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/create_nim_from_template.py skills/datarobot-deploy-nim/scripts/test_create_nim_from_template.py && git commit -m "feat(deploy-nim): create NIM model from template via REST"`.
 
-### Task C3: REST escape hatch to bind a resource bundle (`bind_resource_bundle.py`)
+### Task C3: Register + deploy the NIM (`deploy_nim.py`)
 
 **Files:**
-- Create: `skills/datarobot-deploy-nim/scripts/bind_resource_bundle.py`
-- Test: `skills/datarobot-deploy-nim/scripts/test_bind_resource_bundle.py`
+- Create: `skills/datarobot-deploy-nim/scripts/deploy_nim.py`
+- Test: `skills/datarobot-deploy-nim/scripts/test_deploy_nim.py`
 
 **Interfaces:**
-- Produces: `bind_payload(base_environment_id: str, resource_bundle_id: str) -> dict` — the body for `POST /customModels/{id}/versions/` that creates a new version carrying `resourceBundleId` (SDK omits this field, so we post raw).
-
-> **Contract note:** the exact request key and required co-fields come from `docs/superpowers/research/nim-rest-contract.md`. The code below is the starting shape; reconcile field names + required co-fields with that contract when implementing.
+- Consumes: a `custom_model_version_id` from C2.
+- Produces:
+  - `pick_serverless_pe(pes: list[dict]) -> dict | None` — choose the serverless PE: prefer `platform == "datarobot"` (case-insensitive), else the one whose `name` contains "serverless"; None if list empty.
+  - `build_deploy_payload(model_package_id: str, label: str, prediction_environment_id: str) -> dict` — body for `POST /deployments/fromModelPackage/`; raises `ValueError` if `prediction_environment_id` is missing; never includes `defaultPredictionServerId`.
 
 - [ ] **Step 1: Write failing tests.**
 
 ```python
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from bind_resource_bundle import bind_payload
+import pytest
+from deploy_nim import pick_serverless_pe, build_deploy_payload
 
 
-def test_payload_carries_resource_bundle_id():
-    body = bind_payload("env1", "bundleG")
-    assert body["resourceBundleId"] == "bundleG"
-    assert body["baseEnvironmentId"] == "env1"
+def test_pick_serverless_prefers_datarobot_platform():
+    pes = [{"id": "pe1", "platform": "aws", "name": "ext"},
+           {"id": "pe2", "platform": "datarobot", "name": "Serverless"}]
+    assert pick_serverless_pe(pes)["id"] == "pe2"
 
 
-def test_payload_marks_major_update():
-    body = bind_payload("env1", "bundleG")
-    assert body["isMajorUpdate"] is True
+def test_pick_serverless_falls_back_to_name():
+    pes = [{"id": "pe1", "platform": "aws", "name": "my serverless env"}]
+    assert pick_serverless_pe(pes)["id"] == "pe1"
+
+
+def test_pick_serverless_empty_none():
+    assert pick_serverless_pe([]) is None
+
+
+def test_deploy_payload_shape_and_pe_required():
+    body = build_deploy_payload("pkg1", "my-nim", "pe2")
+    assert body == {"modelPackageId": "pkg1", "label": "my-nim",
+                    "predictionEnvironmentId": "pe2"}
+    assert "defaultPredictionServerId" not in body
+    with pytest.raises(ValueError):
+        build_deploy_payload("pkg1", "my-nim", "")
 ```
 
-- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_bind_resource_bundle.py -v`. Expected: FAIL.
+- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_deploy_nim.py -v`. Expected: FAIL.
 
 - [ ] **Step 3: Implement.**
 
@@ -1032,43 +1103,73 @@ def test_payload_marks_major_update():
 #!/usr/bin/env python3
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Bind a GPU resource bundle to a custom model version via the REST API.
+"""Register a NIM custom model version and deploy it to a serverless GPU PE.
 
-The public SDK's CustomModelVersion.create_* paths do not send resourceBundleId,
-so this posts the raw API call. Confirm the request shape against your tenant.
+REST:
+  POST /api/v2/modelPackages/fromCustomModelVersion/  {customModelVersionId, name}
+  GET  /api/v2/predictionEnvironments/                 (pick the serverless PE)
+  POST /api/v2/deployments/fromModelPackage/           {modelPackageId, label, predictionEnvironmentId}
 
 Usage:
-    python bind_resource_bundle.py --custom-model-id <id> \
-        --base-environment-id <env> --resource-bundle-id <bundle>
+    python deploy_nim.py --custom-model-version-id <id> --label <name> \
+        [--prediction-environment-id <id>]
 """
 import argparse
 import os
 import sys
 
 
-def bind_payload(base_environment_id: str, resource_bundle_id: str) -> dict:
-    return {
-        "isMajorUpdate": True,
-        "baseEnvironmentId": base_environment_id,
-        "resourceBundleId": resource_bundle_id,
-    }
+def pick_serverless_pe(pes: list[dict]) -> dict | None:
+    if not pes:
+        return None
+    for pe in pes:
+        if (pe.get("platform") or "").lower() == "datarobot":
+            return pe
+    for pe in pes:
+        if "serverless" in (pe.get("name") or "").lower():
+            return pe
+    return None
+
+
+def build_deploy_payload(model_package_id: str, label: str,
+                         prediction_environment_id: str) -> dict:
+    if not prediction_environment_id:
+        raise ValueError("a serverless GPU prediction_environment_id is required")
+    return {"modelPackageId": model_package_id, "label": label,
+            "predictionEnvironmentId": prediction_environment_id}
 
 
 def main(argv: list[str]) -> int:
     import datarobot as dr
 
     p = argparse.ArgumentParser()
-    p.add_argument("--custom-model-id", required=True)
-    p.add_argument("--base-environment-id", required=True)
-    p.add_argument("--resource-bundle-id", required=True)
+    p.add_argument("--custom-model-version-id", required=True)
+    p.add_argument("--label", required=True)
+    p.add_argument("--prediction-environment-id")
     args = p.parse_args(argv[1:])
 
     client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
                        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
-    body = bind_payload(args.base_environment_id, args.resource_bundle_id)
-    resp = client.post(f"customModels/{args.custom_model_id}/versions/", data=body)
-    print(f"Created version with resource bundle {args.resource_bundle_id} "
-          f"(status {resp.status_code}).")
+
+    pkg = client.post("modelPackages/fromCustomModelVersion/",
+                      data={"customModelVersionId": args.custom_model_version_id,
+                            "name": args.label}).json()
+    model_package_id = pkg["id"]
+
+    pe_id = args.prediction_environment_id
+    if not pe_id:
+        pes = client.get("predictionEnvironments/").json().get("data", [])
+        chosen = pick_serverless_pe(pes)
+        if not chosen:
+            print("No serverless prediction environment found; pass --prediction-environment-id.")
+            return 1
+        pe_id = chosen["id"]
+
+    body = build_deploy_payload(model_package_id, args.label, pe_id)
+    resp = client.post("deployments/fromModelPackage/", data=body)
+    out = resp.json()
+    print(f"Deployment created: {out.get('id')} (status {resp.status_code}).")
+    print("Next: expose it with datarobot-register-mcp-tool (NIM auto-detects as chat).")
     return 0
 
 
@@ -1076,56 +1177,58 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
 ```
 
-- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_bind_resource_bundle.py -v`. Expected: 2 passed.
+- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-deploy-nim/scripts && uv run pytest test_deploy_nim.py -v`. Expected: 4 passed.
 
-- [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/bind_resource_bundle.py skills/datarobot-deploy-nim/scripts/test_bind_resource_bundle.py && git commit -m "feat(deploy-nim): REST resource-bundle binding escape hatch"`.
+- [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/deploy_nim.py skills/datarobot-deploy-nim/scripts/test_deploy_nim.py && git commit -m "feat(deploy-nim): register + deploy NIM to serverless GPU PE"`.
 
 ### Task C4: Author `SKILL.md` (full prose)
 
 **Files:**
 - Create: `skills/datarobot-deploy-nim/SKILL.md`
-- Test: `tests/integration/test_skills.py`
+- Modify: `gemini-extension.json`
+- Test: `tests/integration/test_skills.py`, `tests/integration/test_plugins.py`
 
-- [ ] **Step 1: Confirm the REST shapes from the source-grounded contract** captured in `docs/superpowers/research/nim-rest-contract.md` (produced by the controller's investigation of the DataRobot API route handlers). Reconcile C2/C3 code + tests with that contract; if the contract proves a step is genuinely not REST-scriptable, the SKILL.md must say so plainly and route the user to the UI step.
-
-- [ ] **Step 2: Author the full SKILL.md** (complete prose under every heading; replace the `<!-- -->` notes with real content).
+- [ ] **Step 1: Author the full SKILL.md** (complete prose under every heading; replace the `<!-- -->` notes with real content). Ground every REST detail in `docs/superpowers/research/nim-rest-contract.md`.
 
 ```markdown
 ---
 name: datarobot-deploy-nim
-description: Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and expose it as an MCP tool. Use when someone wants to stand up a NIM (e.g. a CoPilot model) and call it as a tool from an assistant, including selecting GPU resources.
+description: Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and expose it as an MCP tool. Use when someone wants to stand up a NIM (e.g. a CoPilot model) and call it as a tool from an assistant, including choosing GPU resources.
 ---
 
 # DataRobot Deploy NIM Skill
 
 ## Quick Start
-<!-- maintainer: NGC import (UI) -> pick GPU bundle -> deploy to serverless GPU PE -> expose via register-mcp-tool -->
+<!-- discover (C1) -> create from template (C2) -> register+deploy (C3) -> expose via register-mcp-tool -->
 
-## Step 1 — Import the NIM (UI, required)
-<!-- maintainer: Registry > Models > Import from NVIDIA NGC; prereqs: GenAI/GPU entitlement + org NGC API key; why this step is manual -->
+## Prerequisites
+<!-- feature flags NIM_MODELS + MLOPS_RESOURCE_REQUEST_BUNDLES; NGC API key stored as a secureConfig (secretConfigId); how to check each -->
 
-## Step 2 — Choose a GPU resource bundle
-<!-- maintainer: list_gpu_bundles.py; bundles are operator-defined; cluster GPU capacity is an infra concern (no public quota API) -->
+## Step 1 — Discover the NIM template + GPU bundle
+<!-- discover_nim_options.py; explain templateSubType=NIM_CONTAINERS and customModel GPU bundles -->
 
-## Step 3 — Deploy to a serverless GPU prediction environment
-<!-- maintainer: deploy_registered_nim.py; bind_resource_bundle.py if needed -->
+## Step 2 — Create the NIM model
+<!-- create_nim_from_template.py; POST customModels/fromModelTemplate/; returns customModelId + customModelVersionId -->
+
+## Step 3 — Register + deploy to a serverless GPU PE
+<!-- deploy_nim.py; modelPackages/fromCustomModelVersion -> deployments/fromModelPackage; serverless PE selection -->
 
 ## Step 4 — Expose as a tool
-<!-- maintainer: hand off to datarobot-register-mcp-tool; NIM auto-detects as chat, no schema authoring -->
+<!-- hand off to datarobot-register-mcp-tool; NIM auto-detects as chat, no schema authoring -->
 
 ## Scripts
-- `scripts/list_gpu_bundles.py` — list GPU resource bundles for custom models
-- `scripts/deploy_registered_nim.py` — deploy a registered NIM to a serverless GPU PE
-- `scripts/bind_resource_bundle.py` — REST: bind a GPU bundle to a model version
+- `scripts/discover_nim_options.py` — list NIM templates + GPU resource bundles
+- `scripts/create_nim_from_template.py` — create the NIM model from a template (REST)
+- `scripts/deploy_nim.py` — register the version + deploy to a serverless GPU PE (REST)
 ```
 
 **Suggested trigger phrases:** "deploy a NIM on DataRobot and use it as a tool", "stand up CoPilot/an NVIDIA NIM with a GPU", "what GPU bundle do I need for this NIM", "expose my NIM to Claude over MCP".
 
-- [ ] **Step 3: Verify structural tests.** Run: `uv run pytest tests/integration/test_skills.py -k deploy_nim -v`. Expected: PASS.
+- [ ] **Step 2: Add the gemini-extension.json entry** for `datarobot-deploy-nim` (`path` = `skills/datarobot-deploy-nim/SKILL.md`), matching the format of existing entries.
 
-- [ ] **Step 4: Commit.** `git add skills/datarobot-deploy-nim/SKILL.md skills/datarobot-deploy-nim/scripts/ && git commit -m "docs(deploy-nim): author SKILL.md"`.
+- [ ] **Step 3: Verify structural + plugin tests.** Run: `uv run pytest tests/integration/test_skills.py tests/integration/test_plugins.py -k "deploy_nim or all_skills_included" -v`. Expected: PASS. (Skip the `*_validate` CLI tests.)
 
----
+- [ ] **Step 4: Commit.** `git add skills/datarobot-deploy-nim/SKILL.md skills/datarobot-deploy-nim/scripts/ gemini-extension.json && git commit -m "docs(deploy-nim): author SKILL.md + gemini entry"`.
 
 ## Final verification
 
