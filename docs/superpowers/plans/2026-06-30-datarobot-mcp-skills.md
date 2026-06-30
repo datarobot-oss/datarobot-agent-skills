@@ -22,7 +22,7 @@
 - Deployment-as-tool selection = tag `tool` with value `tool`.
 - Hosted MCP endpoint: `https://<host>/api/v2/genai/globalmcp/mcp`. Self-hosted: `https://<host>/deployments/<id>/directAccess/mcp/`.
 - Feature flag `ENABLE_MCP_TOOLS_GALLERY_SUPPORT` (hosted only): readable via `POST /api/v2/entitlements/evaluate/`; NO public write.
-- **SKILL.md prose is authored by the human maintainer** (per `CLAUDE.md`). Plan tasks provide the frontmatter + section skeleton + trigger phrases; the human fills prose. Scripts/tests/references are agent-built.
+- **SKILL.md is fully authored by the implementer** (complete prose, not a skeleton). The maintainer explicitly overrode `CLAUDE.md`'s human-written preference. Each SKILL.md must read as a finished, self-contained skill: real prose under every heading, concrete commands, and trigger phrases woven into the `description` and Quick Start. Stay under the 6700-token error threshold; aim under 3300.
 - Version bump: `1.3.2` → `1.4.0` (minor: new skills) in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`. Add `CHANGELOG.md` entries under `[Unreleased]`.
 
 ---
@@ -216,7 +216,7 @@ git add skills/datarobot-define-tool-schema/scripts/
 git commit -m "feat(define-tool-schema): add inputSchema validator with unit tests"
 ```
 
-### Task A2: Author `SKILL.md` (HUMAN-AUTHORED prose)
+### Task A2: Author `SKILL.md` (full prose)
 
 **Files:**
 - Create: `skills/datarobot-define-tool-schema/SKILL.md`
@@ -225,7 +225,7 @@ git commit -m "feat(define-tool-schema): add inputSchema validator with unit tes
 **Interfaces:**
 - Consumes: `scripts/validate_tool_schema.py` (referenced in prose).
 
-- [ ] **Step 1: Drop in this frontmatter + section skeleton** (the maintainer writes the prose under each heading):
+- [ ] **Step 1: Author the full SKILL.md.** Use this frontmatter and these sections, writing complete prose under every heading (the `<!-- -->` notes say what each section must cover — replace them with real content, don't leave comments in the file):
 
 ```markdown
 ---
@@ -258,7 +258,7 @@ description: Author and validate the model-metadata.yaml inputSchema that makes 
 
 - [ ] **Step 2: Verify structural tests pass.** Run: `uv run pytest tests/integration/test_skills.py -k define_tool_schema -v`. Expected: name-matches-folder, description-has-"Use when", and token-count assertions PASS.
 
-- [ ] **Step 3: Commit** (maintainer commits their prose). `git add skills/datarobot-define-tool-schema/SKILL.md && git commit -m "docs(define-tool-schema): author SKILL.md"`.
+- [ ] **Step 3: Commit.** `git add skills/datarobot-define-tool-schema/SKILL.md && git commit -m "docs(define-tool-schema): author SKILL.md"`.
 
 ---
 
@@ -711,13 +711,13 @@ if __name__ == "__main__":
 
 - [ ] **Step 5: Commit.** `git add skills/datarobot-register-mcp-tool/scripts/verify_mcp_tool.py skills/datarobot-register-mcp-tool/scripts/test_verify_mcp_tool.py && git commit -m "feat(register-mcp-tool): tool-presence verification (matching logic + live wrapper)"`.
 
-### Task B5: Author `SKILL.md` (HUMAN-AUTHORED prose)
+### Task B5: Author `SKILL.md` (full prose)
 
 **Files:**
 - Create: `skills/datarobot-register-mcp-tool/SKILL.md`
 - Test: `tests/integration/test_skills.py`, `tests/e2e/test_skills_e2e.py`
 
-- [ ] **Step 1: Drop in frontmatter + skeleton.**
+- [ ] **Step 1: Author the full SKILL.md** (complete prose under every heading; replace the `<!-- -->` notes with real content, don't leave comments in the file).
 
 ```markdown
 ---
@@ -756,7 +756,7 @@ description: Register an existing DataRobot deployment (predictive, agent, or NI
 
 - [ ] **Step 2: Verify structural tests.** Run: `uv run pytest tests/integration/test_skills.py -k register_mcp_tool -v`. Expected: PASS.
 
-- [ ] **Step 3: Commit** (maintainer). `git add skills/datarobot-register-mcp-tool/SKILL.md && git commit -m "docs(register-mcp-tool): author SKILL.md"`.
+- [ ] **Step 3: Commit.** `git add skills/datarobot-register-mcp-tool/SKILL.md && git commit -m "docs(register-mcp-tool): author SKILL.md"`.
 
 ### Task B6: Real-deployment e2e test
 
@@ -824,7 +824,7 @@ def test_tag_and_surface_real_deployment():
 
 ## Phase C — `datarobot-deploy-nim`
 
-> **Reality (from research):** the NGC gallery import that creates the NIM registered model is **UI-only**, and binding `resourceBundleId` to a model version is **REST-only** (not in the SDK). This skill orchestrates a guided UI step + SDK/REST steps; it is correctness-and-guidance, not full headless automation. The REST shapes below MUST be confirmed against a live tenant during Task C4.
+> **Reality (from research):** the NGC gallery import that creates the NIM registered model is **UI-only**, and binding `resourceBundleId` to a model version is **REST-only** (not in the SDK). This skill orchestrates a guided UI step + SDK/REST steps; it is correctness-and-guidance, not full headless automation. The exact REST contract is captured in `docs/superpowers/research/nim-rest-contract.md` (source-grounded from the API route handlers); C3 implements against it.
 
 ### Task C1: GPU bundle discovery (`list_gpu_bundles.py`)
 
@@ -1003,7 +1003,7 @@ if __name__ == "__main__":
 **Interfaces:**
 - Produces: `bind_payload(base_environment_id: str, resource_bundle_id: str) -> dict` — the body for `POST /customModels/{id}/versions/` that creates a new version carrying `resourceBundleId` (SDK omits this field, so we post raw).
 
-> **Live-API note:** confirm the exact request key (`resourceBundleId`) and whether a new version requires `baseEnvironmentId`/`isMajorUpdate` against the tenant in Task C4 before relying on this in prose.
+> **Contract note:** the exact request key and required co-fields come from `docs/superpowers/research/nim-rest-contract.md`. The code below is the starting shape; reconcile field names + required co-fields with that contract when implementing.
 
 - [ ] **Step 1: Write failing tests.**
 
@@ -1080,15 +1080,15 @@ if __name__ == "__main__":
 
 - [ ] **Step 5: Commit.** `git add skills/datarobot-deploy-nim/scripts/bind_resource_bundle.py skills/datarobot-deploy-nim/scripts/test_bind_resource_bundle.py && git commit -m "feat(deploy-nim): REST resource-bundle binding escape hatch"`.
 
-### Task C4: Author `SKILL.md` (HUMAN-AUTHORED prose) + live validation
+### Task C4: Author `SKILL.md` (full prose)
 
 **Files:**
 - Create: `skills/datarobot-deploy-nim/SKILL.md`
 - Test: `tests/integration/test_skills.py`
 
-- [ ] **Step 1: Live-validate the REST shapes.** Against a real tenant with NIM access, confirm: (a) `ResourceBundle.list(use_cases=["customModel"])` returns GPU bundles; (b) the `POST customModels/{id}/versions/` body key is `resourceBundleId`; (c) `create_from_registered_model_version` deploys to a serverless GPU PE. Adjust C2/C3 code + tests to match reality. Capture the working command output.
+- [ ] **Step 1: Confirm the REST shapes from the source-grounded contract** captured in `docs/superpowers/research/nim-rest-contract.md` (produced by the controller's investigation of the DataRobot API route handlers). Reconcile C2/C3 code + tests with that contract; if the contract proves a step is genuinely not REST-scriptable, the SKILL.md must say so plainly and route the user to the UI step.
 
-- [ ] **Step 2: Drop in frontmatter + skeleton.**
+- [ ] **Step 2: Author the full SKILL.md** (complete prose under every heading; replace the `<!-- -->` notes with real content).
 
 ```markdown
 ---
@@ -1123,7 +1123,7 @@ description: Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and ex
 
 - [ ] **Step 3: Verify structural tests.** Run: `uv run pytest tests/integration/test_skills.py -k deploy_nim -v`. Expected: PASS.
 
-- [ ] **Step 4: Commit** (maintainer). `git add skills/datarobot-deploy-nim/SKILL.md skills/datarobot-deploy-nim/scripts/ && git commit -m "docs(deploy-nim): author SKILL.md + live-validated REST shapes"`.
+- [ ] **Step 4: Commit.** `git add skills/datarobot-deploy-nim/SKILL.md skills/datarobot-deploy-nim/scripts/ && git commit -m "docs(deploy-nim): author SKILL.md"`.
 
 ---
 
