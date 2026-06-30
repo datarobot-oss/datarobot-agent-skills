@@ -7,12 +7,15 @@ Usage:
     python emit_client_config.py --host https://app.datarobot.com --hosted
     python emit_client_config.py --host https://app.datarobot.com --deployment-id dep123 --self-hosted
 """
+
 import argparse
 import json
 import sys
 
 
-def build_client_config(host: str, deployment_id: str | None, hosted: bool, client: str) -> dict:
+def build_client_config(
+    host: str, deployment_id: str | None, hosted: bool, client: str
+) -> dict:
     # client param (claude/cursor) is accepted for forward-compatibility; currently emitted config is identical
     host = host.rstrip("/")
     if hosted:

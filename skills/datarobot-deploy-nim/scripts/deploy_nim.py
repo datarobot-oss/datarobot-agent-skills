@@ -12,6 +12,7 @@ Usage:
     python deploy_nim.py --custom-model-version-id <id> --label <name> \
         [--prediction-environment-id <id>]
 """
+
 import argparse
 import os
 import sys
@@ -29,12 +30,16 @@ def pick_serverless_pe(pes: list[dict]) -> dict | None:
     return None
 
 
-def build_deploy_payload(model_package_id: str, label: str,
-                         prediction_environment_id: str) -> dict:
+def build_deploy_payload(
+    model_package_id: str, label: str, prediction_environment_id: str
+) -> dict:
     if not prediction_environment_id:
         raise ValueError("a serverless GPU prediction_environment_id is required")
-    return {"modelPackageId": model_package_id, "label": label,
-            "predictionEnvironmentId": prediction_environment_id}
+    return {
+        "modelPackageId": model_package_id,
+        "label": label,
+        "predictionEnvironmentId": prediction_environment_id,
+    }
 
 
 def main(argv: list[str]) -> int:
@@ -46,12 +51,15 @@ def main(argv: list[str]) -> int:
     p.add_argument("--prediction-environment-id")
     args = p.parse_args(argv[1:])
 
-    client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
-                       endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
+    client = dr.Client(
+        token=os.getenv("DATAROBOT_API_TOKEN"),
+        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
+    )
 
-    reg_resp = client.post("modelPackages/fromCustomModelVersion/",
-                           data={"customModelVersionId": args.custom_model_version_id,
-                                 "name": args.label})
+    reg_resp = client.post(
+        "modelPackages/fromCustomModelVersion/",
+        data={"customModelVersionId": args.custom_model_version_id, "name": args.label},
+    )
     reg_resp.raise_for_status()
     pkg = reg_resp.json()
     model_package_id = pkg.get("id")
@@ -64,7 +72,9 @@ def main(argv: list[str]) -> int:
         pes = client.get("predictionEnvironments/").json().get("data", [])
         chosen = pick_serverless_pe(pes)
         if not chosen:
-            print("No serverless prediction environment found; pass --prediction-environment-id.")
+            print(
+                "No serverless prediction environment found; pass --prediction-environment-id."
+            )
             return 1
         pe_id = chosen["id"]
 
@@ -73,7 +83,9 @@ def main(argv: list[str]) -> int:
     resp.raise_for_status()
     out = resp.json()
     print(f"Deployment created: {out.get('id')} (status {resp.status_code}).")
-    print("Next: expose it with datarobot-register-mcp-tool (NIM auto-detects as chat).")
+    print(
+        "Next: expose it with datarobot-register-mcp-tool (NIM auto-detects as chat)."
+    )
     return 0
 
 

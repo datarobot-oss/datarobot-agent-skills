@@ -10,8 +10,9 @@ def test_minimal_payload():
 
 
 def test_optional_fields_included_when_set():
-    body = build_nim_create_payload("tpl1", "bundleG",
-                                    secret_config_id="sec1", container_tag_override="latest")
+    body = build_nim_create_payload(
+        "tpl1", "bundleG", secret_config_id="sec1", container_tag_override="latest"
+    )
     assert body["secretConfigId"] == "sec1"
     assert body["nimContainerTagOverride"] == "latest"
 

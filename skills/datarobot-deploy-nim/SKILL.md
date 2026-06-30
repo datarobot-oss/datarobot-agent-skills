@@ -66,7 +66,7 @@ GPU capacity is an infrastructure concern, not a quota you can query via API. Th
 
 For NIM templates it calls `GET /api/v2/customTemplates/?templateSubType=NIM_CONTAINERS`. Each template represents one NVIDIA NIM container image (e.g. `meta/llama-3-8b-instruct`, `nvidia/mistral-7b-instruct`). The response includes the `templateId`, the container image name, a human-readable display name, and the minimum GPU memory the NIM requires. Pass `--name <substr>` to filter by display name substring.
 
-For GPU resource bundles it calls `GET /api/v2/mlops/compute/bundles/?useCases=customModel`. This returns only bundles whose `useCases` field includes `customModel` — these are the bundles you can attach to a custom model version. Each bundle has an `id`, a `name` (e.g. "GPU - 1x A100 40GB"), and a `memoryGb` value. Match the NIM's minimum GPU memory requirement to a bundle with sufficient `memoryGb`.
+For GPU resource bundles the script calls `ResourceBundle.list(use_cases=["customModel"])` (SDK equivalent of `GET /api/v2/mlops/compute/bundles/?useCases=customModel`). This returns only bundles whose `useCases` field includes `customModel` — these are the bundles you can attach to a custom model version. Each bundle is printed with its `id`, `gpu_count`, and `gpu_memory_bytes` (GPU memory in bytes). Match the NIM's minimum GPU memory requirement to a bundle with sufficient `gpu_memory_bytes`.
 
 There is no platform API to check real-time GPU availability. If a deployment later fails with an insufficient-capacity error, work with your cluster operator to either scale GPU nodes or choose a smaller NIM.
 

@@ -18,8 +18,13 @@ class _Client:
 
     def post(self, url, data=None, **kwargs):
         self.last = (url, data)
-        return _Resp({"entitlements": [{"name": "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
-                                        "value": self._value}]})
+        return _Resp(
+            {
+                "entitlements": [
+                    {"name": "ENABLE_MCP_TOOLS_GALLERY_SUPPORT", "value": self._value}
+                ]
+            }
+        )
 
 
 def test_returns_true_when_entitled():

@@ -28,6 +28,9 @@ def test_tag_not_duplicated_when_present():
 
 def test_self_hosted_register_url():
     url = self_hosted_register_url(
-        "https://app.datarobot.com/deployments/dep1/directAccess/mcp/", "dep1")
-    assert url == ("https://app.datarobot.com/deployments/dep1/directAccess/mcp/"
-                   "registeredDeployments/dep1")
+        "https://app.datarobot.com/deployments/dep1/directAccess/mcp/", "dep1"
+    )
+    assert url == (
+        "https://app.datarobot.com/deployments/dep1/directAccess/mcp/"
+        "registeredDeployments/dep1"
+    )

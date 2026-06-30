@@ -11,13 +11,15 @@ Usage:
     python create_nim_from_template.py --template-id <id> --resource-bundle-id <id> \
         [--secret-config-id <id>] [--container-tag-override <tag>]
 """
+
 import argparse
 import os
 import sys
 
 
-def build_nim_create_payload(template_id, resource_bundle_id,
-                             secret_config_id=None, container_tag_override=None) -> dict:
+def build_nim_create_payload(
+    template_id, resource_bundle_id, secret_config_id=None, container_tag_override=None
+) -> dict:
     if not template_id or not resource_bundle_id:
         raise ValueError("template_id and resource_bundle_id are required")
     body = {"templateId": template_id, "resourceBundleId": resource_bundle_id}
@@ -38,14 +40,22 @@ def main(argv: list[str]) -> int:
     p.add_argument("--container-tag-override")
     args = p.parse_args(argv[1:])
 
-    client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
-                       endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
-    body = build_nim_create_payload(args.template_id, args.resource_bundle_id,
-                                    args.secret_config_id, args.container_tag_override)
+    client = dr.Client(
+        token=os.getenv("DATAROBOT_API_TOKEN"),
+        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
+    )
+    body = build_nim_create_payload(
+        args.template_id,
+        args.resource_bundle_id,
+        args.secret_config_id,
+        args.container_tag_override,
+    )
     resp = client.post("customModels/fromModelTemplate/", data=body)
     out = resp.json()
-    print(f"customModelId={out.get('customModelId')} "
-          f"customModelVersionId={out.get('customModelVersionId')}")
+    print(
+        f"customModelId={out.get('customModelId')} "
+        f"customModelVersionId={out.get('customModelVersionId')}"
+    )
     print("Next: register + deploy with deploy_nim.py")
     return 0
 

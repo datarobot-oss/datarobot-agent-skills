@@ -10,7 +10,7 @@ customer requests it from DataRobot (ref PBMP-7644). Self-hosted MCP ignores it.
 Usage:
     python check_tool_gallery_flag.py
 """
-import json
+
 import os
 import sys
 
@@ -20,7 +20,7 @@ FLAG = "ENABLE_MCP_TOOLS_GALLERY_SUPPORT"
 def is_tool_gallery_enabled(client) -> bool:
     resp = client.post(
         "entitlements/evaluate/",
-        data=json.dumps({"entitlements": [{"name": FLAG}]}),
+        data={"entitlements": [{"name": FLAG}]},
     )
     payload = resp.json()
     for ent in payload.get("entitlements", []):

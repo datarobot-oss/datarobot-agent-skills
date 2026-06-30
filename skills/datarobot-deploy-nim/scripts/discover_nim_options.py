@@ -9,6 +9,7 @@ and GPU resource bundles (ResourceBundle.list(use_cases=["customModel"])).
 Usage:
     python discover_nim_options.py [--name <template name substring>]
 """
+
 import argparse
 import os
 import sys
@@ -16,10 +17,15 @@ import sys
 
 def filter_gpu_bundles(bundles: list) -> list:
     gpu = [b for b in bundles if getattr(b, "has_gpu", False)]
-    return sorted(gpu, key=lambda b: (getattr(b, "gpu_count", 0), getattr(b, "gpu_memory_bytes", 0)))
+    return sorted(
+        gpu,
+        key=lambda b: (getattr(b, "gpu_count", 0), getattr(b, "gpu_memory_bytes", 0)),
+    )
 
 
-def pick_nim_template(templates: list[dict], name_substr: str | None = None) -> dict | None:
+def pick_nim_template(
+    templates: list[dict], name_substr: str | None = None
+) -> dict | None:
     if not templates:
         return None
     if name_substr is None:
@@ -39,8 +45,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--name", help="filter NIM template by name substring")
     args = p.parse_args(argv[1:])
 
-    client = dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
-                       endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
+    client = dr.Client(
+        token=os.getenv("DATAROBOT_API_TOKEN"),
+        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
+    )
     resp = client.get("customTemplates/", params={"templateSubType": "NIM_CONTAINERS"})
     templates = resp.json().get("data", [])
     chosen = pick_nim_template(templates, args.name)
@@ -50,11 +58,15 @@ def main(argv: list[str]) -> int:
         print(f"  {t.get('id')}\t{t.get('name')}{marker}")
 
     if chosen:
-        print(f"Chosen template id: {chosen.get('id')} (pass to create_nim_from_template.py --template-id)")
+        print(
+            f"Chosen template id: {chosen.get('id')} (pass to create_nim_from_template.py --template-id)"
+        )
 
     print("GPU resource bundles (use with --resource-bundle-id):")
     for b in filter_gpu_bundles(ResourceBundle.list(use_cases=["customModel"])):
-        print(f"  {b.id}\t{b.name}\tgpu_count={b.gpu_count}\tgpu_mem={b.gpu_memory_bytes}")
+        print(
+            f"  {b.id}\t{b.name}\tgpu_count={b.gpu_count}\tgpu_mem={b.gpu_memory_bytes}"
+        )
     return 0
 
 

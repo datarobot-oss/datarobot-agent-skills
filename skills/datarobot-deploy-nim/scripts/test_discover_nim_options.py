@@ -12,9 +12,14 @@ class _B:
 
 
 def test_filters_non_gpu_and_sorts():
-    out = filter_gpu_bundles([
-        _B("cpu", False), _B("g2", True, 2, 10),
-        _B("g1a", True, 1, 80), _B("g1b", True, 1, 40)])
+    out = filter_gpu_bundles(
+        [
+            _B("cpu", False),
+            _B("g2", True, 2, 10),
+            _B("g1a", True, 1, 80),
+            _B("g1b", True, 1, 40),
+        ]
+    )
     assert [b.id for b in out] == ["g1b", "g1a", "g2"]
 
 

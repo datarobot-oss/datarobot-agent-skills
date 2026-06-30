@@ -11,6 +11,7 @@ Usage:
     python register_deployment_tool.py <deployment_id>
     python register_deployment_tool.py <deployment_id> --self-hosted-mcp-url <url>
 """
+
 import argparse
 import os
 import sys
