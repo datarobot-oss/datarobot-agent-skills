@@ -23,13 +23,15 @@ If you are using a **self-hosted** MCP server, pass its URL so the script also r
 
 ```bash
 python scripts/register_deployment_tool.py <deployment_id> \
-  --self-hosted-mcp-url https://<host>/deployments/<id>/directAccess/mcp/
+  --self-hosted-mcp-url https://<host>/deployments/<mcp_server_deployment_id>/directAccess/mcp/
 ```
+
+Note: `<mcp_server_deployment_id>` is the ID of the running self-hosted MCP server deployment, not the `<deployment_id>` of the deployment you are exposing as a tool.
 
 **Step 2 — Surface the tool.** The mechanism differs by server target:
 
 - *Hosted global MCP server:* No server action needed. The server re-reads tagged deployments on every `tools/list` request. Reconnect your MCP client (Claude Desktop: quit and relaunch; Cursor: reload the MCP config) and the tool appears.
-- *Self-hosted user MCP:* Either restart the server (it discovers tagged deployments at startup when `MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP=true`) or call the runtime register API via the `--self-hosted-mcp-url` flag shown above — no restart required.
+- *Self-hosted user MCP:* If you passed `--self-hosted-mcp-url` in the tag step, the runtime registration already happened — nothing more is needed. Otherwise, restart the server (with `MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP=true`) or re-run the script with `--self-hosted-mcp-url`.
 
 **Step 3 — Verify.** Confirm the deployment appears in `tools/list`:
 
@@ -81,7 +83,7 @@ Tagging is necessary but not sufficient — the tool must also be surfaced to yo
 
 **Self-hosted user MCP:** The server discovers tagged deployments at startup when the environment variable `MCP_SERVER_REGISTER_DYNAMIC_TOOLS_ON_STARTUP=true` is set. For a deployment tagged after the server started, you have two options:
 
-1. Call the runtime registration endpoint: `PUT /registeredDeployments/<deployment_id>` on the self-hosted server's management API. The script handles this when you pass `--self-hosted-mcp-url`. No restart required.
+1. Pass `--self-hosted-mcp-url` to `register_deployment_tool.py` — the script builds and calls `PUT <self-hosted-mcp-url>registeredDeployments/<deployment_id>` for runtime registration without a restart. (Under the hood this is a `PUT` to the path `/registeredDeployments/<deployment_id>` relative to the self-hosted MCP server's `.../directAccess/mcp/` base URL.)
 2. Restart the server. It will discover all currently-tagged deployments on boot.
 
 Option 1 is preferred in production because it avoids downtime for other registered tools.
@@ -135,11 +137,11 @@ python scripts/emit_client_config.py --host <host> --hosted
 python scripts/emit_client_config.py --host <host> --self-hosted --deployment-id <deployment_id>
 ```
 
-For Claude Desktop, add the printed block to `~/.config/claude/claude_desktop_config.json` under the `mcpServers` key. For Cursor, paste it into Settings > MCP. All connections use `Authorization: Bearer <DATAROBOT_API_TOKEN>` over streamable-HTTP transport — no separate credential configuration is needed beyond your existing DataRobot API token.
+For Claude Desktop, add the printed block to `~/Library/Application Support/Claude/claude_desktop_config.json` under the `mcpServers` key (on Linux: `~/.config/claude/claude_desktop_config.json`). For Cursor, paste it into Settings > MCP. All connections use `Authorization: Bearer <DATAROBOT_API_TOKEN>` over streamable-HTTP transport — no separate credential configuration is needed beyond your existing DataRobot API token.
 
 ## Scripts
 
-- `scripts/register_deployment_tool.py` — tags the deployment with `tool=tool` via the DataRobot Python SDK; with `--self-hosted-mcp-url <url>` also calls `PUT /registeredDeployments/<deployment_id>` on the self-hosted server for runtime registration without a restart.
+- `scripts/register_deployment_tool.py` — tags the deployment with `tool=tool` via the DataRobot Python SDK; with `--self-hosted-mcp-url <url>` also calls `PUT <url>registeredDeployments/<deployment_id>` on the self-hosted server for runtime registration without a restart.
 - `scripts/check_tool_gallery_flag.py` — reads the `ENABLE_MCP_TOOLS_GALLERY_SUPPORT` feature flag from the hosted platform via `POST /api/v2/entitlements/evaluate/` and reports whether the hosted global MCP server will expose tagged deployments.
 - `scripts/verify_mcp_tool.py <deployment_id> --mcp-url <url>` — sends a `tools/list` request to the specified MCP server and confirms the given deployment appears; exits non-zero with the full response if it does not.
 - `scripts/emit_client_config.py --host <h> (--hosted | --self-hosted --deployment-id <id>)` — prints the MCP client configuration block (JSON) for Claude Desktop or Cursor; use `--hosted` for the platform-wide endpoint or `--self-hosted` with a deployment ID for the per-deployment endpoint.
