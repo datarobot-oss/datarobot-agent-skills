@@ -21,6 +21,8 @@ e2e = [
     "python-dotenv>=1.2.2",
     "pytest",
     "pytest-asyncio",
+    "fastmcp>=2",
+    "httpx>=0.27",
 ]
 
 [tool.pytest.ini_options]
