@@ -172,6 +172,18 @@
         "expose this deployment to Cursor over MCP",
         "I tagged my deployment but it's not showing up as a tool"
       ]
+    },
+    {
+      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:deploy-nim",
+      "displayName": "datarobot-deploy-nim",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-deploy-nim/SKILL.md",
+      "description": "Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and expose it as an MCP tool callable from Claude or any MCP client.",
+      "representativeQueries": [
+        "deploy a NIM on DataRobot and use it as a tool",
+        "stand up an NVIDIA NIM with a GPU on DataRobot",
+        "expose my NIM to Claude over MCP"
+      ]
     }
   ]
 }

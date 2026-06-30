@@ -73,6 +73,11 @@
       "name": "datarobot-register-mcp-tool",
       "description": "Register an existing DataRobot deployment (predictive, agent, or NIM) as an MCP tool so assistants call it natively instead of writing custom glue. Use when someone wants to use a DataRobot deployment as a tool in Claude/Cursor, expose a deployment to an MCP client, or asks why a tagged deployment isn't showing up.",
       "path": "skills/datarobot-register-mcp-tool/SKILL.md"
+    },
+    {
+      "name": "datarobot-deploy-nim",
+      "description": "Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and expose it as an MCP tool. Use when someone wants to stand up a NIM (e.g. a CoPilot model) and call it as a tool from an assistant, including choosing GPU resources.",
+      "path": "skills/datarobot-deploy-nim/SKILL.md"
     }
   ]
 }
