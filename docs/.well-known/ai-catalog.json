@@ -148,6 +148,18 @@
         "scale or debug a DataRobot workload",
         "manage autoscaling and replicas for a DataRobot workload"
       ]
+    },
+    {
+      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:define-tool-schema",
+      "displayName": "datarobot-define-tool-schema",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-define-tool-schema/SKILL.md",
+      "description": "Author and validate the model-metadata.yaml inputSchema that makes a custom DataRobot deployment callable as an MCP tool.",
+      "representativeQueries": [
+        "define the tool schema for my DataRobot deployment",
+        "validate my deployment's MCP tool interface",
+        "write the inputSchema for model-metadata.yaml"
+      ]
     }
   ]
 }
