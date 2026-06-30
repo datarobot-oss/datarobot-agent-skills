@@ -765,18 +765,216 @@ description: Register an existing DataRobot deployment (predictive, agent, or NI
 
 - [ ] **Step 4: Commit.** `git add skills/datarobot-register-mcp-tool/SKILL.md gemini-extension.json docs/.well-known/ai-catalog.json && git commit -m "docs(register-mcp-tool): author SKILL.md + gemini + catalog entries"`.
 
-### Task B6: Real-deployment e2e test
+### Task B6: Correct verify matching + live e2e test
+
+> **Correlation correction (source-grounded, from `datarobot-genai`):** B4's `verify_mcp_tool.py` matched on `meta.deployment_id`, which is WRONG. The real `tools/list` shape (verified in `global_mcp/providers/custom_model_tool_provider.py` + `dynamic_tools/deployment/config.py`):
+> - Tool **`name`** = the **slugified deployment label** via `_convert_tool_string`: strip `[...]`, replace spaces/hyphens with `_`, drop non-`[A-Za-z0-9_]`, lowercase, collapse repeated `_`, trim `_`. Precedence: `deployment.label` → metadata name → fallback `deployment_<id>`.
+> - **`title`** = the raw `deployment.label`.
+> - **`meta`** = exactly `{"tool_category": "USER_TOOL_DEPLOYMENT"}` — **no deployment id**.
+> - `annotations.deployment_id` is set in code but **not guaranteed** on the wire.
+> So a verifier must match by **slugified label** (scoped to `meta.tool_category == "USER_TOOL_DEPLOYMENT"`), with `title == label` and `annotations.deployment_id == id` as corroborating signals.
 
 **Files:**
+- Rewrite: `skills/datarobot-register-mcp-tool/scripts/verify_mcp_tool.py` (+ its test) — corrected matching + live `list_tools`.
 - Create: `tests/e2e/test_register_mcp_tool_live.py`
-- Modify: `.env.example` (document any new vars, e.g. `E2E_TEST_DEPLOYMENT_ID`)
+- Modify: `pyproject.toml` (add `fastmcp` + `httpx` to the `e2e` dependency group), `.env.example` (`E2E_TEST_DEPLOYMENT_ID`).
 
 **Interfaces:**
-- Consumes: `register_deployment_tool.tag_as_tool`, `verify_mcp_tool.list_tools`/`assert_tool_present`.
+- Produces:
+  - `slugify_tool_name(label: str) -> str` — mirrors `_convert_tool_string`.
+  - `expected_tool_name(label: str | None, deployment_id: str, metadata_name: str | None = None) -> str`.
+  - `find_deployment_tool(tools: list[dict], label: str | None, deployment_id: str, metadata_name: str | None = None) -> dict | None`.
+  - `assert_tool_present(tools, label, deployment_id, metadata_name=None) -> bool`.
+  - `list_tools(mcp_url: str, token: str) -> list[dict]` — live `tools/list` via `fastmcp.Client`; each dict has `name`, `title`, `meta`, `annotations`.
 
-> This is the one functional test that exercises a real deployment end-to-end. It is **skipped unless** `DATAROBOT_ENDPOINT`, `DATAROBOT_API_TOKEN`, and `E2E_TEST_DEPLOYMENT_ID` are set, so default CI/local runs stay green.
+- [ ] **Step 1: Rewrite the unit tests** (`test_verify_mcp_tool.py`) for the corrected matching.
 
-- [ ] **Step 1: Write the test.**
+```python
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+from verify_mcp_tool import (
+    slugify_tool_name, expected_tool_name, find_deployment_tool, assert_tool_present,
+)
+
+CAT = {"tool_category": "USER_TOOL_DEPLOYMENT"}
+
+
+def test_slugify_matches_convert_tool_string_rules():
+    assert slugify_tool_name("My NIM [prod]") == "my_nim"
+    assert slugify_tool_name("Sales-Predictor v2") == "sales_predictor_v2"
+
+
+def test_expected_name_prefers_label_then_fallback():
+    assert expected_tool_name("My NIM [prod]", "dep1") == "my_nim"
+    assert expected_tool_name(None, "dep1") == "deployment_dep1"
+
+
+def test_find_matches_by_slugified_label_scoped_to_category():
+    tools = [
+        {"name": "other", "title": "x", "meta": {"tool_category": "BUILTIN"}},
+        {"name": "my_nim", "title": "My NIM [prod]", "meta": CAT, "annotations": {}},
+    ]
+    assert find_deployment_tool(tools, "My NIM [prod]", "dep1")["name"] == "my_nim"
+
+
+def test_find_ignores_name_match_outside_deployment_category():
+    tools = [{"name": "my_nim", "title": "My NIM", "meta": {"tool_category": "BUILTIN"}}]
+    assert find_deployment_tool(tools, "My NIM", "dep1") is None
+
+
+def test_find_matches_by_title_when_name_differs():
+    tools = [{"name": "renamed", "title": "My NIM", "meta": CAT, "annotations": {}}]
+    assert find_deployment_tool(tools, "My NIM", "dep1")["name"] == "renamed"
+
+
+def test_find_matches_by_annotation_deployment_id_when_present():
+    tools = [{"name": "z", "title": "z", "meta": CAT, "annotations": {"deployment_id": "dep1"}}]
+    assert find_deployment_tool(tools, "unrelated label", "dep1")["name"] == "z"
+
+
+def test_assert_present_false_when_absent():
+    tools = [{"name": "a", "title": "a", "meta": CAT, "annotations": {}}]
+    assert assert_tool_present(tools, "My NIM", "depX") is False
+```
+
+- [ ] **Step 2: Run to verify failure.** Run: `cd skills/datarobot-register-mcp-tool/scripts && uv run pytest test_verify_mcp_tool.py -v`. Expected: FAIL (new functions not defined / old API).
+
+- [ ] **Step 3: Rewrite `verify_mcp_tool.py`.**
+
+```python
+#!/usr/bin/env python3
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Verify a tagged deployment shows up as an MCP tool.
+
+The MCP server names a deployment-tool after the SLUGIFIED deployment label
+(datarobot-genai's `_convert_tool_string`), not the deployment id. `meta` only
+carries `{"tool_category": "USER_TOOL_DEPLOYMENT"}`; the id may appear on
+`annotations.deployment_id` but is not guaranteed on the wire. We match by
+slugified label, scoped to that tool_category, with title/annotation corroboration.
+
+Usage:
+    python verify_mcp_tool.py <deployment_id> --mcp-url <url>
+"""
+import argparse
+import os
+import re
+import sys
+
+DEPLOYMENT_TOOL_CATEGORY = "USER_TOOL_DEPLOYMENT"
+
+
+def slugify_tool_name(label: str) -> str:
+    s = re.sub(r"\[.*?\]", "", label or "")
+    s = re.sub(r"[\s\-]+", "_", s)
+    s = re.sub(r"[^A-Za-z0-9_]", "", s)
+    s = s.lower()
+    s = re.sub(r"_+", "_", s)
+    return s.strip("_")
+
+
+def expected_tool_name(label, deployment_id: str, metadata_name=None) -> str:
+    base = label or metadata_name or f"deployment_{deployment_id}"
+    return slugify_tool_name(base) or f"deployment_{deployment_id}"
+
+
+def find_deployment_tool(tools, label, deployment_id: str, metadata_name=None):
+    want = expected_tool_name(label, deployment_id, metadata_name)
+    for tool in tools:
+        meta = tool.get("meta") or {}
+        if meta.get("tool_category") != DEPLOYMENT_TOOL_CATEGORY:
+            continue
+        ann = tool.get("annotations") or {}
+        if (
+            tool.get("name") == want
+            or (label and tool.get("title") == label)
+            or ann.get("deployment_id") == deployment_id
+        ):
+            return tool
+    return None
+
+
+def assert_tool_present(tools, label, deployment_id: str, metadata_name=None) -> bool:
+    return find_deployment_tool(tools, label, deployment_id, metadata_name) is not None
+
+
+def list_tools(mcp_url: str, token: str) -> list[dict]:
+    """Connect to the MCP server (streamable-HTTP) and return tools as dicts.
+
+    Uses fastmcp's high-level client. NOTE: confirm the installed fastmcp's
+    Client/transport API; this targets fastmcp>=2. Only invoked by the live
+    e2e test (skipped unless creds are set), so it is not unit-tested here.
+    """
+    import asyncio
+
+    from fastmcp import Client
+    from fastmcp.client.transports import StreamableHttpTransport
+
+    async def _run():
+        transport = StreamableHttpTransport(
+            mcp_url, headers={"Authorization": f"Bearer {token}"}
+        )
+        async with Client(transport) as client:
+            out = []
+            for t in await client.list_tools():
+                ann = getattr(t, "annotations", None)
+                ann_d = (
+                    ann.model_dump() if hasattr(ann, "model_dump")
+                    else (dict(ann) if isinstance(ann, dict) else {})
+                )
+                out.append({
+                    "name": t.name,
+                    "title": getattr(t, "title", None),
+                    "meta": getattr(t, "meta", None) or {},
+                    "annotations": ann_d or {},
+                })
+            return out
+
+    return asyncio.run(_run())
+
+
+def main(argv: list[str]) -> int:
+    import datarobot as dr
+
+    p = argparse.ArgumentParser()
+    p.add_argument("deployment_id")
+    p.add_argument("--mcp-url", required=True)
+    args = p.parse_args(argv[1:])
+
+    dr.Client(token=os.getenv("DATAROBOT_API_TOKEN"),
+              endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"))
+    deployment = dr.Deployment.get(args.deployment_id)
+    label = getattr(deployment, "label", None)
+    tools = list_tools(args.mcp_url, os.getenv("DATAROBOT_API_TOKEN"))
+    tool = find_deployment_tool(tools, label, args.deployment_id)
+    if tool:
+        print(f"OK: deployment {args.deployment_id} is exposed as tool '{tool['name']}'.")
+        return 0
+    print(f"NOT FOUND: deployment {args.deployment_id} is not in tools/list. "
+          "Hosted: reconnect client + check the feature flag. Self-hosted: register/restart.")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+```
+
+- [ ] **Step 4: Run to verify pass.** Run: `cd skills/datarobot-register-mcp-tool/scripts && uv run pytest test_verify_mcp_tool.py -v`. Expected: 7 passed.
+
+- [ ] **Step 5: Add `fastmcp` + `httpx` to the `e2e` dependency group** in `pyproject.toml` so the live test can import the client. The `e2e` group becomes:
+
+```toml
+e2e = [
+    "datarobot-agent-tester @ git+https://github.com/datarobot/datarobot-agent-tester@main",
+    "python-dotenv>=1.2.2",
+    "pytest",
+    "pytest-asyncio",
+    "fastmcp>=2",
+    "httpx>=0.27",
+]
+```
+
+- [ ] **Step 6: Write the gated live e2e test** (`tests/e2e/test_register_mcp_tool_live.py`).
 
 ```python
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
@@ -811,19 +1009,17 @@ def test_tag_and_surface_real_deployment():
 
     mcp_url = os.environ["DATAROBOT_ENDPOINT"].rstrip("/") + "/genai/globalmcp/mcp"
     tools = list_tools(mcp_url, os.environ["DATAROBOT_API_TOKEN"])
-    assert assert_tool_present(dep_id, tools), (
+    assert assert_tool_present(tools, getattr(deployment, "label", None), dep_id), (
         "deployment tagged but not present in tools/list — "
         "check ENABLE_MCP_TOOLS_GALLERY_SUPPORT and client/list caching"
     )
 ```
 
-- [ ] **Step 2: Implement `verify_mcp_tool.list_tools` against the live MCP client** (this is where the deferred B4 wiring lands). Confirm the deployment-id↔tool mapping shape; adjust `tool_name_for_deployment`'s `meta` key if the live payload differs, and update B4's unit tests to match the real shape.
+- [ ] **Step 7: Add `E2E_TEST_DEPLOYMENT_ID`** to `.env.example` with a one-line comment.
 
-- [ ] **Step 3: Run against a real deployment.** Run: `E2E_TEST_DEPLOYMENT_ID=<id> uv run --group e2e pytest tests/e2e/test_register_mcp_tool_live.py -v`. Expected: PASS (tool present). Capture output.
+- [ ] **Step 8: Confirm the live test skips cleanly without env.** Run: `uv run --group e2e pytest tests/e2e/test_register_mcp_tool_live.py -v`. Expected: SKIPPED (1 skipped). (A real run against a deployment requires the three env vars; capture that separately if creds are available.)
 
-- [ ] **Step 4: Confirm it skips cleanly without env.** Run: `uv run --group e2e pytest tests/e2e/test_register_mcp_tool_live.py -v`. Expected: SKIPPED.
-
-- [ ] **Step 5: Commit.** `git add tests/e2e/test_register_mcp_tool_live.py .env.example skills/datarobot-register-mcp-tool/scripts/verify_mcp_tool.py skills/datarobot-register-mcp-tool/scripts/test_verify_mcp_tool.py && git commit -m "test(register-mcp-tool): live deployment registration e2e"`.
+- [ ] **Step 9: Run `task lint`** from the repo root; confirm it passes (ruff/format on the rewritten script; integration suite still green). Commit: `git add skills/datarobot-register-mcp-tool/scripts/verify_mcp_tool.py skills/datarobot-register-mcp-tool/scripts/test_verify_mcp_tool.py tests/e2e/test_register_mcp_tool_live.py pyproject.toml .env.example && git commit -m "fix+test(register-mcp-tool): correct tool-name correlation + live e2e"`.
 
 **MILESTONE: skills #3 and #1 are shippable here.** Run `task lint && uv run pytest tests/integration -q` before opening the PR.
 
