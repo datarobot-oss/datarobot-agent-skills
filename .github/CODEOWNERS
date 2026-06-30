@@ -8,12 +8,15 @@
 
 # Skills owned by core-modeling
 /skills/datarobot-data-preparation/ @datarobot/core-modeling
+/skills/datarobot-define-tool-schema/ @datarobot/core-modeling
+/skills/datarobot-deploy-nim/ @datarobot/core-modeling
 /skills/datarobot-feature-engineering/ @datarobot/core-modeling
 /skills/datarobot-model-deployment/ @datarobot/core-modeling
 /skills/datarobot-model-explainability/ @datarobot/core-modeling
 /skills/datarobot-model-monitoring/ @datarobot/core-modeling
 /skills/datarobot-model-training/ @datarobot/core-modeling
 /skills/datarobot-predictions/ @datarobot/core-modeling
+/skills/datarobot-register-mcp-tool/ @datarobot/core-modeling
 
 # All App Framework skills are owned by the Applications team
 /skills/datarobot-app-framework-*/ @datarobot-oss/applications
