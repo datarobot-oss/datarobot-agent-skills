@@ -53,6 +53,8 @@ Both `path_params` and `query_params` are **flat objects**: their `properties` m
 
 `$ref` and `$defs` are supported across all four envelope properties for reuse. Inline the definitions inside the `inputSchema` block; do not reference external files.
 
+Do **not** put a `required` array at the envelope's top level. Declare `required` *inside* each envelope property (e.g. inside the `json` object) to mark the fields a caller must supply; the envelope keys themselves (`json`, `data`, …) are optional unless your scoring hook needs them.
+
 There is **no output schema**. The HTTP response body from your scoring hook is returned to the MCP client as-is. If your response shape needs documenting, put it in the skill's description or a separate doc.
 
 **Runtime requirement:** `datarobot-drum >= 1.17.2` must be present in the custom model's environment. Earlier versions do not surface the `inputSchema` field to `datarobot-genai`, so the tool will not be callable.
@@ -166,6 +168,8 @@ python scripts/validate_tool_schema.py model-metadata.yaml --allow-empty
 Fix every reported error before deploying. Common mistakes: using an unknown top-level key (e.g. `body` instead of `json`), nesting an object inside `query_params`, or referencing a `$ref` that is not defined in `$defs` within the same block.
 
 ## Scripts
+
+This script ships with this skill in its `scripts/` directory — run it from there; you do not need to write it. It is pure-Python and runs offline (only `pyyaml` for the file mode).
 
 - `scripts/validate_tool_schema.py` — validates an `inputSchema` dict against `datarobot-genai`'s structural rules; accepts a path to `model-metadata.yaml` and an optional `--allow-empty` flag; exits non-zero and prints error strings when validation fails.
 

@@ -143,6 +143,8 @@ For Claude Desktop, add the printed block to `~/Library/Application Support/Clau
 
 ## Scripts
 
+These scripts ship with this skill in its `scripts/` directory — run them from there; you do not need to write them. They require the `datarobot` SDK and `DATAROBOT_*` env vars (see Setup).
+
 - `scripts/register_deployment_tool.py` — tags the deployment with `tool=tool` via the DataRobot Python SDK; with `--self-hosted-mcp-url <url>` also calls `PUT <url>registeredDeployments/<deployment_id>` on the self-hosted server for runtime registration without a restart.
 - `scripts/check_tool_gallery_flag.py` — reads the `ENABLE_MCP_TOOLS_GALLERY_SUPPORT` feature flag from the hosted platform via `POST /api/v2/entitlements/evaluate/` and reports whether the hosted global MCP server will expose tagged deployments.
 - `scripts/verify_mcp_tool.py <deployment_id> --mcp-url <url>` — sends a `tools/list` request to the specified MCP server and confirms the given deployment appears; exits non-zero with the full response if it does not.

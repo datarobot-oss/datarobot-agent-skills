@@ -116,7 +116,7 @@ POST /api/v2/deployments/fromModelPackage/
 }
 ```
 
-This is equivalent to `dr.Deployment.create_from_registered_model_version(model_package_id, label, prediction_environment_id=pe_id)`. The API returns HTTP 202 with a `Location` header. The script polls the location URL until the deployment reaches a ready state, then prints the final `deploymentId`.
+This is equivalent to `dr.Deployment.create_from_registered_model_version(model_package_id, label, prediction_environment_id=pe_id)`. The script prints the new `deploymentId` from the response. Deployment provisioning is asynchronous — to confirm readiness, poll `GET /api/v2/deployments/<deploymentId>/` every ~30s until `status` is `active` (treat `errored` as terminal and surface `statusDetails`), or watch the deployment in the DataRobot UI. GPU-backed NIMs can take several minutes to reach `active`.
 
 **Prediction environment selection.** If you pass `--prediction-environment-id`, the script uses it directly. Otherwise the script calls `GET /api/v2/predictionEnvironments/` and picks the first serverless (DataRobot-managed) environment. On most clusters there is exactly one; if there are multiple, specify the ID explicitly. GPU sizing is carried by the version's `resourceBundleId` — you do not configure GPU resources on the prediction environment itself.
 
@@ -128,9 +128,11 @@ Once the deployment is live, expose it to MCP clients by tagging it and register
 
 NIM deployments automatically satisfy the chat detection check: `supports_chat_api` is set to `true` for NIM-backed deployments, so the MCP server routes calls through `/chat/completions` and generates a chat-style tool interface. You do not need to author an `inputSchema` or run the `datarobot-define-tool-schema` skill.
 
-After the `datarobot-register-mcp-tool` skill completes, your NIM is callable by Claude and any other MCP client using the standard OpenAI chat interface — system prompt, user message, temperature, and all. The deployment label becomes the tool name that the LLM sees.
+After the `datarobot-register-mcp-tool` skill completes, your NIM is callable by Claude and any other MCP client using the standard OpenAI chat interface — system prompt, user message, temperature, and all. The tool name the LLM sees is a **slugified** form of the deployment label (lowercased, spaces/hyphens → `_`, non-alphanumerics dropped), so give the deployment a clear label like `llama-3-8b-nim` to get a clean, predictable tool name.
 
 ## Scripts
+
+These scripts ship with this skill in its `scripts/` directory — run them from there; you do not need to write them. Run with the skill's Python environment (the `datarobot` SDK must be installed — see Prerequisites).
 
 - `scripts/discover_nim_options.py [--name <substr>]` — lists NIM templates from `GET /api/v2/customTemplates/?templateSubType=NIM_CONTAINERS` and GPU resource bundles from `GET /api/v2/mlops/compute/bundles/?useCases=customModel`; filters templates by display name substring when `--name` is given.
 - `scripts/create_nim_from_template.py --template-id <id> --resource-bundle-id <id> [--secret-config-id <id>] [--container-tag-override <tag>]` — calls `POST /api/v2/customModels/fromModelTemplate/` and prints `customModelId` and `customModelVersionId`.
