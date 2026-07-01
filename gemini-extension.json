@@ -63,6 +63,11 @@
       "name": "datarobot-workload-api",
       "description": "Create, configure, scale, debug, observe, and roll out container workloads on DataRobot's Workload API — covers deploying containers as managed services, replica/autoscaling settings, CPU/GPU compute bundles, DataRobot credential injection, diagnosing stuck or crash-looping workloads, pulling logs/traces/metrics/service stats, and zero-downtime artifact replacement",
       "path": "skills/datarobot-workload-api/SKILL.md"
+    },
+    {
+      "name": "datarobot-discover",
+      "description": "Discover DataRobot resources — skills, MCP servers, agents, and platform tools — by fetching the live catalog from datarobot.com and the user's own DataRobot instance",
+      "path": "skills/datarobot-discover/SKILL.md"
     }
   ]
 }

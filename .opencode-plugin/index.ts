@@ -6,7 +6,7 @@ import { fileURLToPath } from "url"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const BUNDLED_SKILLS = resolve(__dirname, "..", "skills")
-const BUNDLED_THEME = resolve(__dirname, "themes", "datarobot.json")
+const BUNDLED_THEMES_DIR = resolve(__dirname, "themes")
 
 function getConfigDir(): string {
   if (process.env.XDG_CONFIG_HOME) {
@@ -30,28 +30,28 @@ function installSkills(configDir: string): number {
   return installed
 }
 
-function installTheme(configDir: string): boolean {
-  if (!existsSync(BUNDLED_THEME)) {
-    return false
-  }
+function installThemes(configDir: string): number {
   const themesDir = join(configDir, "opencode", "themes")
-  const target = join(themesDir, "datarobot.json")
   mkdirSync(themesDir, { recursive: true })
-  cpSync(BUNDLED_THEME, target)
-  return true
+
+  const themes = readdirSync(BUNDLED_THEMES_DIR).filter((f) => f.endsWith(".json"))
+  for (const theme of themes) {
+    cpSync(join(BUNDLED_THEMES_DIR, theme), join(themesDir, theme))
+  }
+  return themes.length
 }
 
 export const DataRobotSkillsPlugin: Plugin = async ({ client }) => {
   const configDir = getConfigDir()
   const skillsInstalled = installSkills(configDir)
-  const themeInstalled = installTheme(configDir)
+  const themesInstalled = installThemes(configDir)
 
-  if (skillsInstalled > 0 || themeInstalled) {
+  if (skillsInstalled > 0 || themesInstalled > 0) {
     await client.app.log({
       body: {
         service: "opencode-datarobot-skills",
         level: "info",
-        message: `Installed ${skillsInstalled} skills${themeInstalled ? " and DataRobot theme" : ""}`,
+        message: `Installed ${skillsInstalled} skills${themesInstalled > 0 ? ` and ${themesInstalled} DataRobot theme(s)` : ""}`,
       },
     })
   }
