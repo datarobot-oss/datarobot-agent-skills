@@ -50,12 +50,15 @@ path to the script. If they skip, pass no context file.
 > "How many times should I attempt to fix a failing scenario before marking it unresolved?
 > Default is 3."
 
-**Question 4 — Evaluation mode:**
+**Question 4 — Model:**
+> "Which LLM should run the simulation? Default is anthropic/claude-sonnet-4-6. Say 'default' to keep it or paste a model ID from the LLM Gateway catalog."
+
+**Question 5 — Evaluation mode:**
 > "Standard breach detection (pass/fail) or scored evaluation using an LLM judge?
 > Default is standard."
 
 If `agent_config.yaml` already exists from a previous run, present the saved settings first:
-> "Last time: [user_type], [iterations] iterations, [judge_mode]. Same settings or change anything?"
+> "Last time: [user_type], [iterations] iterations, [llm_judge_model], [judge_mode]. Same settings or change anything?"
 
 ---
 
@@ -67,6 +70,7 @@ Run scenario generation:
 python <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
   --user-type <user_type> \
   --iterations <n> \
+  --model <model> \
   --judge-mode <standard|scored> \
   [--context user_context.txt] \
   --generate-only
@@ -93,6 +97,7 @@ Once the user confirms, run:
 python <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
   --user-type <user_type> \
   --iterations <n> \
+  --model <model> \
   --judge-mode <standard|scored> \
   [--context user_context.txt] \
   --criteria evaluation_criteria.md
