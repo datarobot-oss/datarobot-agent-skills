@@ -6,7 +6,19 @@
   },
   "entries": [
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:setup",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:discover",
+      "displayName": "datarobot-discover",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-discover/SKILL.md",
+      "description": "Discover all available DataRobot resources — skills, MCP servers, and agents — by fetching the live DataRobot catalog directly.",
+      "representativeQueries": [
+        "find DataRobot capabilities for my task",
+        "what DataRobot tools are available",
+        "discover DataRobot skills and MCP servers"
+      ]
+    },
+    {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:setup",
       "displayName": "datarobot-setup",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-setup/SKILL.md",
@@ -18,7 +30,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:model-training",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:model-training",
       "displayName": "datarobot-model-training",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-model-training/SKILL.md",
@@ -30,7 +42,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:model-deployment",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:model-deployment",
       "displayName": "datarobot-model-deployment",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-model-deployment/SKILL.md",
@@ -42,7 +54,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:predictions",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:predictions",
       "displayName": "datarobot-predictions",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-predictions/SKILL.md",
@@ -54,7 +66,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:feature-engineering",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:feature-engineering",
       "displayName": "datarobot-feature-engineering",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-feature-engineering/SKILL.md",
@@ -66,7 +78,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:model-monitoring",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:model-monitoring",
       "displayName": "datarobot-model-monitoring",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-model-monitoring/SKILL.md",
@@ -78,7 +90,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:model-explainability",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:model-explainability",
       "displayName": "datarobot-model-explainability",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-model-explainability/SKILL.md",
@@ -90,7 +102,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:data-preparation",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:data-preparation",
       "displayName": "datarobot-data-preparation",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-data-preparation/SKILL.md",
@@ -102,7 +114,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:app-framework-cicd",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:app-framework-cicd",
       "displayName": "datarobot-app-framework-cicd",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-app-framework-cicd/SKILL.md",
@@ -114,7 +126,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:external-agent-monitoring",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:external-agent-monitoring",
       "displayName": "datarobot-external-agent-monitoring",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-external-agent-monitoring/SKILL.md",
@@ -126,7 +138,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:agent-assist",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:agent-assist",
       "displayName": "datarobot-agent-assist",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-agent-assist/SKILL.md",
@@ -138,7 +150,7 @@
       ]
     },
     {
-      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:workload-api",
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:workload-api",
       "displayName": "datarobot-workload-api",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-workload-api/SKILL.md",

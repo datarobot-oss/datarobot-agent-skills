@@ -1,6 +1,6 @@
 ---
 name: datarobot-external-agent-monitoring
-description: Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance. Use when adding observability to external agents or sending telemetry data to DataRobot.
+description: Instrument any external or existing AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance. Use when the user says "add tracing/observability/monitoring to my agent", wants to instrument an existing agent project in their IDE, or wants to send agent traces, logs, or metrics to DataRobot.
 ---
 
 # DataRobot External Agent Monitoring Skill
@@ -9,22 +9,23 @@ This skill helps you instrument any AI agent — regardless of framework or depl
 
 ## Quick Start
 
-**Most common use case**: Instrument an existing agent project for DataRobot monitoring
+**Most common use case**: Instrument an existing agent project, regardless of whether it was built on DataRobot or elsewhere, with DataRobot monitoring
 
-1. Point the agent at your project directory
-2. The skill detects your framework and existing OTel setup
-3. It generates instrumentation code and creates a DataRobot shell deployment
-4. Your agent sends traces, logs, and metrics to DataRobot
+1. The user invokes the skill from inside their project — typically: "Add tracing to my agent"
+2. The skill resolves the target project (current IDE workspace / working directory if no path is given), then detects the framework and any existing OTel setup
+3. It resolves a **Use Case** as the telemetry target (asks for the user's Use Case ID, or offers to create one), generates instrumentation code, and wires it in
+4. The agent sends traces, logs, and metrics to DataRobot, where they appear under the Use Case's Tracing tab
 
-**Example**: "Instrument my agent in ./my_agent for DataRobot monitoring"
+**Examples**:
+- "Add tracing to my agent" (resolves to the current workspace)
+- "Instrument my agent in ./my_agent for DataRobot monitoring"
 
 ## When to use this skill
 
-Use this skill when you need to:
-- Monitor an external AI agent in DataRobot
+Use this skill when an existing DataRobot user has built an agent elsewhere and wants to bring it in for monitoring. Specifically:
+- Bring an externally-built (brownfield) agent into DataRobot for monitoring under a Use Case
 - Add OpenTelemetry tracing to an agent project
 - Send agent traces, logs, and metrics to DataRobot
-- Create a DataRobot deployment to receive external agent telemetry
 - Instrument a Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, or any Python agent
 
 ## Supported Frameworks
@@ -58,13 +59,17 @@ Follow these steps in order. Present the plan to the user and wait for approval 
 
 ### Step 2: Check Prerequisites
 
-1. Check if `DATAROBOT_API_TOKEN` env var is set. If not, ask the user to provide it.
+1. Ensure `DATAROBOT_API_TOKEN` is available **without having the user paste it into chat** (a pasted token would be logged in the transcript). Check the environment and the project `.env`. If the token is missing, create or update a project `.env` file with the DataRobot variables and have the user paste their Personal API key into **that file** directly (in their editor); read it from there. Ensure `.env` is gitignored. This skill targets existing DataRobot users: create a Personal API key at `<your DataRobot URL>/account/developer-tools` (Personal API keys tab; see the `datarobot-setup` skill). (No DataRobot account at all? https://www.datarobot.com/trial/.)
 2. Check if `DATAROBOT_ENDPOINT` env var is set. If not, ask the user (default: `https://app.datarobot.com/api/v2`).
 3. Derive `DATAROBOT_OTEL_ENDPOINT` automatically: if `DATAROBOT_ENDPOINT` ends with `/api/v2`, strip it and append `/otel` (e.g., `https://app.datarobot.com/api/v2` → `https://app.datarobot.com/otel`).
-4. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
-5. Check if OTel packages are already in the project's dependencies.
+4. **Determine the telemetry target (Use Case)** — this is the primary entity, and works the same whether the agent was built on DataRobot or elsewhere. Only **collect** the choice here; do **not** run any script or create/validate anything yet — that happens once in Step 4, after the user approves the plan (running it here risks creating a Use Case the user never approved, and a duplicate when Step 4 runs).
+   - Ask the user for their **Use Case ID**. DataRobot users typically already organize work in a Use Case.
+   - If they don't have one (a brand-new or externally-built project), **offer to create one**. Ask only for a name; the description is auto-generated.
+   - Record the choice (existing Use Case ID, or the name for a new one) to use in Step 4. The `create_use_case.py` helper will resolve it to an entity ID of the form `experiment_container-<use_case_id>` at execution time.
+5. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
+6. Check if OTel packages are already in the project's dependencies.
 
-**Security note:** Never echo API tokens or `.env` file contents into chat transcripts or logs. Use environment variables or CI secrets for credential management. If credentials are accidentally exposed, rotate them immediately.
+**Security note:** Never ask the user to paste an API token into chat, and never echo tokens or `.env` contents into transcripts or logs. Collect the token only via the project `.env` file (the user edits the file directly) and read it from there; keep `.env` gitignored. If credentials are accidentally exposed, rotate them immediately.
 
 ### Step 3: Present Plan
 
@@ -74,7 +79,7 @@ Tell the user what you detected and present the changes you will make:
 - New dependencies to add
 - New files to create (`dr_otel_config.py`, and optionally `dr_agent_metrics.py` for frameworks with custom metrics)
 - Existing files to modify (agent entrypoint, dependency file)
-- Shell deployment to create in DataRobot
+- Telemetry target: enter an existing Use Case ID, or if user does not have one, generate a net new Use Case container and ID for user. Only list a shell deployment in the plan if the user explicitly asked for deployment-level monitoring; if they chose a Use Case, do not mention or ask about a deployment.
 
 **Wait for user approval before executing.** If the user has already given explicit consent to implement or deploy, that counts as approval — no need to re-ask.
 
@@ -92,45 +97,62 @@ Tell the user what you detected and present the changes you will make:
 
 4. **Generate `dr_agent_metrics.py`** if the framework reference file specifies custom metrics callbacks.
 
-5. **Create shell deployment**: Run the helper script:
+5. **Resolve the Use Case telemetry target** (primary entity). This is the **only** place the helper script runs — once, here, using the choice collected in Step 2 (never during prerequisites). Validate the user's existing Use Case, or create a net new one if they have none:
+   ```bash
+   set -a; source .env; set +a   # load DATAROBOT_API_TOKEN etc. from .env (not the command line)
+   # Existing Use Case:
+   python <skill_scripts_dir>/create_use_case.py --use-case-id <use_case_id>
+   # No Use Case yet — create one (name only; description auto-generated):
+   python <skill_scripts_dir>/create_use_case.py --name "<project_name> Monitoring"
+   ```
+
+   It returns `entity_id` as `experiment_container-<use_case_id>` — this is the OTel entity used at runtime.
+
+6. **(Optional) Create shell deployment** — **only if the user explicitly asks** for deployment-level monitoring (drift, etc.). If the user chose a Use Case as the target, **do not ask about or prompt for a deployment ID** — the Use Case is the complete target on its own. Skip this step entirely unless the user raised it themselves.
    ```bash
    python <skill_scripts_dir>/create_shell_deployment.py \
      --name "<project_name> Monitoring" \
      --description "OTel telemetry sink for <framework> agent"
    ```
 
-   The script automatically enables **prediction row storage** and **automatic association ID generation** on the deployment.
+   The script automatically enables **prediction row storage** and **automatic association ID generation** on the deployment. If created, its `deployment-<id>` entity can be used as the target instead of the Use Case.
 
-6. **Report results**: Show the deployment ID and a copy-paste env var block for the user's runtime:
+7. **Report results**: Write the resolved non-secret runtime vars into the project `.env` — never print the token. Confirm the Use Case ID (and deployment ID, if created):
    ```bash
-   export DATAROBOT_API_TOKEN="<token>"
-   export DATAROBOT_ENTITY_ID="deployment-<id>"
-   export DATAROBOT_OTEL_ENDPOINT="<otel_endpoint>"
+   # appended to .env (DATAROBOT_API_TOKEN already present there; do not echo it):
+   DATAROBOT_ENTITY_ID=experiment_container-<use_case_id>
+   DATAROBOT_OTEL_ENDPOINT=<otel_endpoint>
    ```
 
 ### Step 5: Verify & Provide Runtime Instructions
 
-1. Optionally run the verification script:
+1. Optionally run the verification script (loads credentials from `.env`; don't put the token on the command line):
    ```bash
-   DATAROBOT_API_TOKEN=<token> \
-   DATAROBOT_ENTITY_ID=deployment-<id> \
-   DATAROBOT_OTEL_ENDPOINT=<endpoint>/otel \
+   set -a; source .env; set +a
    python <skill_scripts_dir>/verify_otel_connection.py
    ```
 
-2. Provide the user with the env vars to set in their deployment environment:
+2. Provide the user with the env vars to set in their runtime environment:
    - `DATAROBOT_API_TOKEN` — DataRobot API key
-   - `DATAROBOT_ENTITY_ID` — `deployment-<id>` (from shell deployment creation)
+   - `DATAROBOT_ENTITY_ID` — `experiment_container-<use_case_id>` (Use Case target; or `deployment-<id>` if a shell deployment was created instead)
    - `DATAROBOT_OTEL_ENDPOINT` — `{DATAROBOT_ENDPOINT}/otel`
 
-3. Explain what they'll see in DataRobot:
-   - **Data Exploration > Traces**: Span hierarchy (agent orchestration, LLM calls, tool calls)
-   - **Data Exploration > Logs**: Structured logs correlated with traces via traceId
-   - **Data Exploration > Metrics**: Custom metrics (request count, latency, LLM calls, tool calls)
+3. Explain how to view the telemetry. For a Use Case target, use the `dr` CLI's `xp`
+   plugin (works in a local terminal or DataRobot Codespaces); this is the `view_command`
+   returned by `create_use_case.py`:
+   ```bash
+   dr plugin install xp                                   # one-time
+   dr xp --entity-id <use_case_id> --enable-logs --enable-metrics
+   #     ^ the BARE use_case_id, NOT the experiment_container- prefixed form
+   ```
+   Then open the local panel at `http://127.0.0.1:8090`. You'll see:
+   - **Tracing**: Span hierarchy (agent orchestration, LLM calls, tool calls)
+   - **Logs**: Structured logs correlated with traces via traceId
+   - **Metrics**: Custom metrics (request count, latency, LLM calls, tool calls)
 
 ## Generic OTel Configuration Pattern
 
-This is the core `configure_otel()` function to generate for every project. Framework-specific files layer additional setup on top.
+Generate a `dr_otel_config.py` with a `configure_otel()` function that the project calls at startup, before any agent code runs. The **full annotated template lives in `reference/dr_otel_config.md` — read it before generating code.** Framework-specific files in `frameworks/` layer additional setup on top.
 
 **Critical rules:**
 1. Always pass `endpoint=` and `headers=` directly to exporters — NEVER use `OTEL_EXPORTER_OTLP_*` env vars (some frameworks detect these and create conflicting providers)
@@ -138,128 +160,7 @@ This is the core `configure_otel()` function to generate for every project. Fram
 3. Use `SimpleSpanProcessor` (not Batch) to avoid flush-before-shutdown issues
 4. Use DELTA temporality for metrics (required by DataRobot)
 
-**Generated `dr_otel_config.py` template:**
-
-```python
-"""DataRobot OpenTelemetry configuration.
-
-Configures traces, logs, and metrics export to DataRobot's OTel endpoint.
-Call configure_otel() at application startup, before any agent code runs.
-
-Required env vars at runtime:
-    DATAROBOT_API_TOKEN      - DataRobot API key
-    DATAROBOT_ENTITY_ID      - deployment-<deployment_id>
-    DATAROBOT_OTEL_ENDPOINT  - https://<your-instance>.datarobot.com/otel
-"""
-
-import logging
-import os
-
-from opentelemetry import metrics, trace
-from opentelemetry._logs import set_logger_provider
-from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import SimpleLogRecordProcessor
-from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider, ObservableCounter
-from opentelemetry.sdk.metrics.export import (
-    AggregationTemporality,
-    PeriodicExportingMetricReader,
-)
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-
-
-def _build_dr_headers():
-    """Build DataRobot authentication headers for OTel exporters."""
-    api_key = os.environ.get("DATAROBOT_API_TOKEN", "")
-    entity_id = os.environ.get("DATAROBOT_ENTITY_ID", "")
-    if not api_key:
-        logging.warning("DATAROBOT_API_TOKEN not set — OTel export to DataRobot will fail")
-    if not entity_id:
-        logging.warning("DATAROBOT_ENTITY_ID not set — OTel export to DataRobot will fail")
-    return {
-        "X-DataRobot-Entity-Id": entity_id,
-        "X-DataRobot-Api-Key": api_key,
-    }
-
-
-def _get_endpoint():
-    """Get DataRobot OTel endpoint, auto-deriving from DATAROBOT_ENDPOINT if needed."""
-    endpoint = os.environ.get("DATAROBOT_OTEL_ENDPOINT", "")
-    if endpoint:
-        return endpoint.rstrip("/")
-    # Auto-derive from DATAROBOT_ENDPOINT (e.g. https://app.datarobot.com/api/v2 → .../otel)
-    api_endpoint = os.environ.get("DATAROBOT_ENDPOINT", "")
-    if api_endpoint:
-        base = api_endpoint.rstrip("/")
-        if base.endswith("/api/v2"):
-            base = base[: -len("/api/v2")]
-        return f"{base}/otel"
-    return ""
-
-
-def configure_otel():
-    """Configure OpenTelemetry to export traces, logs, and metrics to DataRobot.
-
-    This function is additive — it adds DataRobot as an additional exporter
-    alongside any existing OTel setup. It does not replace existing providers.
-    """
-    headers = _build_dr_headers()
-    endpoint = _get_endpoint()
-    if not endpoint:
-        logging.warning("DATAROBOT_OTEL_ENDPOINT not set — skipping OTel configuration")
-        return
-    resource = Resource.create()
-
-    # --- Traces ---
-    dr_span_processor = SimpleSpanProcessor(
-        OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces", headers=headers)
-    )
-    existing_provider = trace.get_tracer_provider()
-    if hasattr(existing_provider, "add_span_processor"):
-        existing_provider.add_span_processor(dr_span_processor)
-    else:
-        provider = TracerProvider(resource=resource)
-        provider.add_span_processor(dr_span_processor)
-        trace.set_tracer_provider(provider)
-
-    # --- Logs ---
-    log_exporter = OTLPLogExporter(endpoint=f"{endpoint}/v1/logs", headers=headers)
-    logger_provider = LoggerProvider(resource=resource)
-    set_logger_provider(logger_provider)
-    logger_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
-    handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-    # Custom formatter ensures OTLP log bodies are never empty
-    # (some libraries emit records with empty getMessage())
-    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
-    logging.getLogger().addHandler(handler)
-
-    # --- Metrics ---
-    preferred_temporality = {
-        Counter: AggregationTemporality.DELTA,
-        Histogram: AggregationTemporality.DELTA,
-        ObservableCounter: AggregationTemporality.DELTA,
-    }
-    metric_exporter = OTLPMetricExporter(
-        endpoint=f"{endpoint}/v1/metrics",
-        headers=headers,
-        preferred_temporality=preferred_temporality,
-    )
-    meter_provider = MeterProvider(
-        metric_readers=[PeriodicExportingMetricReader(metric_exporter)],
-        resource=resource,
-    )
-    metrics.set_meter_provider(meter_provider)
-```
-
-**OTel provider initialization order warning:**
-
-Some frameworks override the global TracerProvider at startup (notably Google ADK). When this happens, the standard trace setup above will lose the DataRobot exporter. The framework reference files document which frameworks have this issue and provide alternative patterns (e.g., lazy injection via callbacks). Always check the framework reference file.
-
-Existing OTel setups (e.g., exporters to Jaeger, Datadog, Google Cloud Trace) are preserved when possible — DataRobot is added alongside, not replacing. However, note that OTel has a single global provider per signal. Whoever calls `set_tracer_provider()` last wins. The additive pattern above avoids calling `set_tracer_provider()` when a provider already exists, instead adding a processor to the existing one.
+**Provider initialization order:** some frameworks override the global TracerProvider at startup (notably Google ADK), which drops the DataRobot exporter. The additive pattern and per-framework workarounds (e.g. lazy injection via callbacks) are covered in `reference/dr_otel_config.md` and the framework reference files — always check them.
 
 ## DataRobot Tracing Table — Span Attribute Mapping
 
@@ -291,9 +192,32 @@ DataRobot's tracing UI (Data Exploration > Traces) maps specific span attributes
 
 ## Helper Scripts
 
+### create_use_case.py
+
+Resolves the **primary** telemetry target: validates an existing Use Case, or creates a net new one when the user has none.
+
+```bash
+# Existing Use Case:
+python <scripts_dir>/create_use_case.py --use-case-id <use_case_id>
+# Create new (name only; description auto-generated):
+python <scripts_dir>/create_use_case.py --name "My Agent Monitoring"
+```
+
+Requires env vars: `DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`
+
+Returns JSON:
+```json
+{
+  "use_case_id": "6123abc",
+  "entity_id": "experiment_container-6123abc",
+  "otel_endpoint": "https://app.datarobot.com/otel",
+  "view_command": "dr xp --entity-id 6123abc --enable-logs --enable-metrics"
+}
+```
+
 ### create_shell_deployment.py
 
-Creates a shell deployment in DataRobot as a telemetry routing target.
+**Optional.** Creates a shell deployment in DataRobot as a telemetry routing target, for users who also want deployment-level monitoring.
 
 ```bash
 python <scripts_dir>/create_shell_deployment.py \
@@ -364,7 +288,7 @@ Common errors and solutions:
 | 401 Unauthorized from OTel endpoint | Invalid API token | Verify `DATAROBOT_API_TOKEN` is correct |
 | 404 from OTel endpoint | Wrong endpoint URL | Ensure `DATAROBOT_OTEL_ENDPOINT` ends with `/otel` |
 | Metrics not appearing | `OTEL_EXPORTER_OTLP_*` env vars set | Remove env vars, use direct exporter config |
-| `DATAROBOT_ENTITY_ID` format error | Missing `deployment-` prefix | Must be `deployment-<id>`, not just `<id>` |
+| `DATAROBOT_ENTITY_ID` format error | Missing entity-type prefix | Must be `experiment_container-<use_case_id>` (Use Case) or `deployment-<id>`, not just `<id>` |
 
 ## Resources
 

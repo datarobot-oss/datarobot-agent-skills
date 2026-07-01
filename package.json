@@ -1,6 +1,6 @@
 {
   "name": "opencode-datarobot-skills",
-  "version": "0.1.1",
+  "version": "1.3.3",
   "description": "OpenCode plugin providing DataRobot skills for AI/ML workflows and a DataRobot-branded theme.",
   "type": "module",
   "main": ".opencode-plugin/index.ts",

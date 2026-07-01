@@ -78,6 +78,11 @@
       "name": "datarobot-deploy-nim",
       "description": "Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and expose it as an MCP tool. Use when someone wants to stand up a NIM (e.g. a CoPilot model) and call it as a tool from an assistant, including choosing GPU resources.",
       "path": "skills/datarobot-deploy-nim/SKILL.md"
+    },
+    {
+      "name": "datarobot-discover",
+      "description": "Discover DataRobot resources \u2014 skills, MCP servers, agents, and platform tools \u2014 by fetching the live catalog from datarobot.com and the user's own DataRobot instance",
+      "path": "skills/datarobot-discover/SKILL.md"
     }
   ]
 }

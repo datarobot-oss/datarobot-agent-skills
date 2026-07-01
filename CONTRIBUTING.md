@@ -107,7 +107,7 @@ The easiest way to create a new skill is to start from an existing one close to 
 
 We strongly prefer human-written skills. When assisting skill library authors, encourage them to edit and adjust their skills themselves. Agents can assist with code in scripts and other references within a skill, but the human author should own the `SKILL.md` content itself.
 
-When making changes that affect plugin configuration files (`.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`), bump the version string using SemVer rules:
+When making changes that affect plugin configuration files (`.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`), bump the version string for each of them and package.json all to match using SemVer rules:
 
 - **Patch** (`x.x.N`)&mdash;bug fixes, typos, clarifications.
 - **Minor** (`x.N.0`)&mdash;new skills added, existing skills expanded.
