@@ -7,6 +7,8 @@ description: Register an existing DataRobot deployment (predictive, agent, or NI
 
 This skill walks you through tagging a DataRobot deployment so that MCP clients — Claude, Cursor, or any other Model Context Protocol consumer — can discover and call it as a native tool. Registration is a single deployment tag. Everything else in this skill explains how to surface that tool to your client and verify it works.
 
+**Setup.** `DATAROBOT_ENDPOINT` (ending in `/api/v2`) and `DATAROBOT_API_TOKEN` must be set, and the `datarobot` Python SDK must be installed. If either is missing, run the `datarobot-setup` skill first — it installs the SDK, configures credentials, and validates authentication. Do this before the steps below.
+
 ## Quick Start
 
 These four steps take a deployment from unregistered to callable in Claude or Cursor.
@@ -145,3 +147,9 @@ For Claude Desktop, add the printed block to `~/Library/Application Support/Clau
 - `scripts/check_tool_gallery_flag.py` — reads the `ENABLE_MCP_TOOLS_GALLERY_SUPPORT` feature flag from the hosted platform via `POST /api/v2/entitlements/evaluate/` and reports whether the hosted global MCP server will expose tagged deployments.
 - `scripts/verify_mcp_tool.py <deployment_id> --mcp-url <url>` — sends a `tools/list` request to the specified MCP server and confirms the given deployment appears; exits non-zero with the full response if it does not.
 - `scripts/emit_client_config.py --host <h> (--hosted | --self-hosted --deployment-id <id>)` — prints the MCP client configuration block (JSON) for Claude Desktop or Cursor; use `--hosted` for the platform-wide endpoint or `--self-hosted` with a deployment ID for the per-deployment endpoint.
+
+## Related skills
+
+- `datarobot-setup` — install the SDK, configure authentication, set env vars (run first if credentials are missing)
+- `datarobot-define-tool-schema` — author the `inputSchema` for custom (non-chat) deployments before registering them
+- `datarobot-deploy-nim` — deploy an NVIDIA NIM, then register it as a tool with this skill

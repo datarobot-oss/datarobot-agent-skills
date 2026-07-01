@@ -50,7 +50,9 @@ Pass `--prediction-environment-id <id>` to target a specific serverless GPU pred
 
 ## Prerequisites
 
-Three things must be in place before running any script. Two are cluster-level feature flags that a DataRobot operator must enable; the third is your NGC API key stored as a DataRobot secureConfig.
+**DataRobot access.** `DATAROBOT_ENDPOINT` (ending in `/api/v2`) and `DATAROBOT_API_TOKEN` must be set, and the `datarobot` Python SDK installed. Run the `datarobot-setup` skill first if not — it installs the SDK, configures credentials, and validates authentication.
+
+Beyond access, three things must be in place before running any script. Two are cluster-level feature flags that a DataRobot operator must enable; the third is your NGC API key stored as a DataRobot secureConfig.
 
 **Feature flag `NIM_MODELS`.** This flag gates the `POST /api/v2/customModels/fromModelTemplate/` route. Without it, the create-from-template call returns a 403 with the message "User is not allowed to create from template". Contact your DataRobot platform administrator or DataRobot support to enable this flag.
 
@@ -133,3 +135,8 @@ After the `datarobot-register-mcp-tool` skill completes, your NIM is callable by
 - `scripts/discover_nim_options.py [--name <substr>]` — lists NIM templates from `GET /api/v2/customTemplates/?templateSubType=NIM_CONTAINERS` and GPU resource bundles from `GET /api/v2/mlops/compute/bundles/?useCases=customModel`; filters templates by display name substring when `--name` is given.
 - `scripts/create_nim_from_template.py --template-id <id> --resource-bundle-id <id> [--secret-config-id <id>] [--container-tag-override <tag>]` — calls `POST /api/v2/customModels/fromModelTemplate/` and prints `customModelId` and `customModelVersionId`.
 - `scripts/deploy_nim.py --custom-model-version-id <id> --label <name> [--prediction-environment-id <id>]` — registers the version via `POST /api/v2/modelPackages/fromCustomModelVersion/`, creates the deployment via `POST /api/v2/deployments/fromModelPackage/`, polls until ready, and prints the deployment ID.
+
+## Related skills
+
+- `datarobot-setup` — install the SDK, configure authentication, set env vars (run first if credentials are missing)
+- `datarobot-register-mcp-tool` — expose the deployed NIM as an MCP tool (this skill hands off to it in step 4)

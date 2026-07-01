@@ -7,6 +7,8 @@ description: Author and validate the model-metadata.yaml inputSchema that makes 
 
 This skill walks you through authoring and validating the `inputSchema` field in a custom model's `model-metadata.yaml`. The schema is read by `datarobot-genai` at registration time to generate the MCP tool's callable interface. Getting it right up front prevents registration errors and malformed tool calls at runtime.
 
+**Setup.** The validator runs entirely offline — no credentials needed. Deploying the custom model whose schema you author does require DataRobot access, so run the `datarobot-setup` skill first if `DATAROBOT_ENDPOINT` / `DATAROBOT_API_TOKEN` aren't configured or the `datarobot` SDK isn't installed.
+
 ## Quick Start
 
 Three steps to a working tool schema:
@@ -166,3 +168,8 @@ Fix every reported error before deploying. Common mistakes: using an unknown top
 ## Scripts
 
 - `scripts/validate_tool_schema.py` — validates an `inputSchema` dict against `datarobot-genai`'s structural rules; accepts a path to `model-metadata.yaml` and an optional `--allow-empty` flag; exits non-zero and prints error strings when validation fails.
+
+## Related skills
+
+- `datarobot-register-mcp-tool` — register the deployment as an MCP tool once its `inputSchema` is set
+- `datarobot-setup` — install the SDK and configure credentials (needed to deploy the model)
