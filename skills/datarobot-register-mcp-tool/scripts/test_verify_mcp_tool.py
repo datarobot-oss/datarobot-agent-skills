@@ -31,7 +31,9 @@ def test_as_dict_normalizes_model_and_none():
 
 def test_find_handles_non_dict_meta_without_crashing():
     # meta arrives as a model object, not a dict — must not raise
-    tools = [{"name": "my_nim", "title": "My NIM", "meta": _Model(CAT), "annotations": {}}]
+    tools = [
+        {"name": "my_nim", "title": "My NIM", "meta": _Model(CAT), "annotations": {}}
+    ]
     assert find_deployment_tool(tools, "My NIM", "dep1")["name"] == "my_nim"
 
 

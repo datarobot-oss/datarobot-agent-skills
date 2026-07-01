@@ -4,30 +4,55 @@ from validate_tool_schema import main, validate_tool_schema
 
 
 def test_data_nested_string_leaves_pass():
-    schema = {"type": "object", "properties": {"data": {"type": "object",
-        "properties": {"payload": {"type": "object",
-            "properties": {"csv": {"type": "string"}}}}}}}
+    schema = {
+        "type": "object",
+        "properties": {
+            "data": {
+                "type": "object",
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {"csv": {"type": "string"}},
+                    }
+                },
+            }
+        },
+    }
     assert validate_tool_schema(schema) == []
 
 
 def test_data_non_string_leaf_rejected():
-    schema = {"type": "object", "properties": {"data": {"type": "object",
-        "properties": {"count": {"type": "integer"}}}}}
+    schema = {
+        "type": "object",
+        "properties": {
+            "data": {"type": "object", "properties": {"count": {"type": "integer"}}}
+        },
+    }
     errors = validate_tool_schema(schema)
     assert any("must be type 'string'" in e for e in errors)
 
 
 def test_data_array_rejected():
-    schema = {"type": "object", "properties": {"data": {"type": "object",
-        "properties": {"rows": {"type": "array", "items": {"type": "string"}}}}}}
+    schema = {
+        "type": "object",
+        "properties": {
+            "data": {
+                "type": "object",
+                "properties": {"rows": {"type": "array", "items": {"type": "string"}}},
+            }
+        },
+    }
     errors = validate_tool_schema(schema)
     assert any("must not contain arrays" in e for e in errors)
 
 
 def test_data_top_level_string_ok():
     # the predictive CSV fallback: data is a plain string
-    schema = {"type": "object", "properties": {"data": {"type": "string"}},
-              "required": ["data"]}
+    schema = {
+        "type": "object",
+        "properties": {"data": {"type": "string"}},
+        "required": ["data"],
+    }
     assert validate_tool_schema(schema) == []
 
 

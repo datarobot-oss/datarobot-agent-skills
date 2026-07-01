@@ -30,8 +30,7 @@ def _has_tool_tag(tags) -> bool:
 def _already_tagged_error(exc: Exception) -> bool:
     """True if the error means the tool tag already exists (idempotent success)."""
     return (
-        getattr(exc, "status_code", None) == 409
-        or "already in use" in str(exc).lower()
+        getattr(exc, "status_code", None) == 409 or "already in use" in str(exc).lower()
     )
 
 
