@@ -21,6 +21,23 @@ import sys
 DEPLOYMENT_TOOL_CATEGORY = "USER_TOOL_DEPLOYMENT"
 
 
+def _as_dict(obj) -> dict:
+    """Normalize meta/annotations to a plain dict (fastmcp may return a model)."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "model_dump"):
+        try:
+            return obj.model_dump()
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        return dict(obj)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def slugify_tool_name(label: str) -> str:
     s = re.sub(r"\[.*?\]", "", label or "")
     s = re.sub(r"[\s\-]+", "_", s)
@@ -44,17 +61,24 @@ def find_deployment_tool(
     metadata_name: str | None = None,
 ) -> dict | None:
     want = expected_tool_name(label, deployment_id, metadata_name)
-    for tool in tools:
-        meta = tool.get("meta") or {}
-        if meta.get("tool_category") != DEPLOYMENT_TOOL_CATEGORY:
-            continue
-        ann = tool.get("annotations") or {}
-        if (
-            tool.get("name") == want
-            or (label and tool.get("title") == label)
-            or ann.get("deployment_id") == deployment_id
+    dep_tools = [
+        t
+        for t in tools
+        if _as_dict(t.get("meta")).get("tool_category") == DEPLOYMENT_TOOL_CATEGORY
+    ]
+    # Authoritative match: the slugified name, or an explicit annotations.deployment_id.
+    for tool in dep_tools:
+        ann = _as_dict(tool.get("annotations"))
+        if tool.get("name") == want or (
+            deployment_id and ann.get("deployment_id") == deployment_id
         ):
             return tool
+    # Fallback corroboration: exact title == label. Labels are not guaranteed unique,
+    # so this only runs when no authoritative match was found.
+    if label:
+        for tool in dep_tools:
+            if tool.get("title") == label:
+                return tool
     return None
 
 
@@ -86,18 +110,12 @@ def list_tools(mcp_url: str, token: str) -> list[dict]:
         async with Client(transport) as client:
             out = []
             for t in await client.list_tools():
-                ann = getattr(t, "annotations", None)
-                ann_d = (
-                    ann.model_dump()
-                    if hasattr(ann, "model_dump")
-                    else (dict(ann) if isinstance(ann, dict) else {})
-                )
                 out.append(
                     {
                         "name": t.name,
                         "title": getattr(t, "title", None),
-                        "meta": getattr(t, "meta", None) or {},
-                        "annotations": ann_d or {},
+                        "meta": _as_dict(getattr(t, "meta", None)),
+                        "annotations": _as_dict(getattr(t, "annotations", None)),
                     }
                 )
             return out
@@ -130,6 +148,14 @@ def main(argv: list[str]) -> int:
         f"NOT FOUND: deployment {args.deployment_id} is not in tools/list. "
         "Hosted: reconnect client + check the feature flag. Self-hosted: register/restart."
     )
+    # Print what tools/list actually returned, to help diagnose the mismatch.
+    print(f"tools/list returned {len(tools)} tool(s):", file=sys.stderr)
+    for t in tools:
+        cat = _as_dict(t.get("meta")).get("tool_category")
+        print(
+            f"  - {t.get('name')} (title={t.get('title')!r}, category={cat})",
+            file=sys.stderr,
+        )
     return 1
 
 

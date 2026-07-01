@@ -33,7 +33,10 @@ def test_tag_and_surface_real_deployment():
     deployment = dr.Deployment.get(dep_id)
     tag_as_tool(deployment)
 
-    mcp_url = os.environ["DATAROBOT_ENDPOINT"].rstrip("/") + "/genai/globalmcp/mcp"
+    endpoint = os.environ["DATAROBOT_ENDPOINT"].rstrip("/")
+    if not endpoint.endswith("/api/v2"):
+        endpoint += "/api/v2"
+    mcp_url = endpoint + "/genai/globalmcp/mcp"
     tools = list_tools(mcp_url, os.environ["DATAROBOT_API_TOKEN"])
     assert assert_tool_present(tools, getattr(deployment, "label", None), dep_id), (
         "deployment tagged but not present in tools/list — "

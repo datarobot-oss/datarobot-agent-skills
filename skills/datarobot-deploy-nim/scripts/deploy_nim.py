@@ -16,6 +16,18 @@ Usage:
 import argparse
 import os
 import sys
+import time
+
+READY_STATUSES = {"active"}
+FAILED_STATUSES = {"errored", "error", "failed", "inactive"}
+
+
+def deployment_ready(status: str | None) -> bool:
+    return (status or "").lower() in READY_STATUSES
+
+
+def deployment_failed(status: str | None) -> bool:
+    return (status or "").lower() in FAILED_STATUSES
 
 
 def pick_serverless_pe(pes: list[dict]) -> dict | None:
@@ -49,6 +61,11 @@ def main(argv: list[str]) -> int:
     p.add_argument("--custom-model-version-id", required=True)
     p.add_argument("--label", required=True)
     p.add_argument("--prediction-environment-id")
+    p.add_argument("--no-wait", action="store_true", help="don't poll for readiness")
+    p.add_argument(
+        "--timeout", type=int, default=900, help="seconds to wait for active"
+    )
+    p.add_argument("--poll-interval", type=int, default=15)
     args = p.parse_args(argv[1:])
 
     client = dr.Client(
@@ -82,7 +99,35 @@ def main(argv: list[str]) -> int:
     resp = client.post("deployments/fromModelPackage/", data=body)
     resp.raise_for_status()
     out = resp.json()
-    print(f"Deployment created: {out.get('id')} (status {resp.status_code}).")
+    dep_id = out.get("id")
+    print(f"Deployment {dep_id} created (HTTP {resp.status_code}).")
+    if not dep_id:
+        print(f"No deployment id in response: {out}", file=sys.stderr)
+        return 1
+
+    # Provisioning is async (fromModelPackage returns before the deployment is live).
+    # Poll status until active, unless --no-wait.
+    if not args.no_wait:
+        deadline = time.time() + args.timeout
+        status = None
+        while time.time() < deadline:
+            status = client.get(f"deployments/{dep_id}/").json().get("status")
+            if deployment_ready(status):
+                print(f"Deployment {dep_id} is active.")
+                break
+            if deployment_failed(status):
+                print(f"Deployment {dep_id} failed (status={status}).", file=sys.stderr)
+                return 1
+            print(f"  ...status={status}; waiting {args.poll_interval}s")
+            time.sleep(args.poll_interval)
+        else:
+            print(
+                f"Timed out after {args.timeout}s (last status={status}). "
+                f"Check the deployment in DataRobot.",
+                file=sys.stderr,
+            )
+            return 1
+
     print(
         "Next: expose it with datarobot-register-mcp-tool (NIM auto-detects as chat)."
     )

@@ -5,9 +5,44 @@ from verify_mcp_tool import (
     expected_tool_name,
     find_deployment_tool,
     assert_tool_present,
+    _as_dict,
 )
 
 CAT = {"tool_category": "USER_TOOL_DEPLOYMENT"}
+
+
+class _Model:
+    """Stand-in for a pydantic-style meta object (non-dict)."""
+
+    def __init__(self, d):
+        self._d = d
+
+    def model_dump(self):
+        return self._d
+
+
+def test_as_dict_normalizes_model_and_none():
+    assert _as_dict(None) == {}
+    assert _as_dict({"a": 1}) == {"a": 1}
+    assert _as_dict(_Model({"tool_category": "USER_TOOL_DEPLOYMENT"})) == {
+        "tool_category": "USER_TOOL_DEPLOYMENT"
+    }
+
+
+def test_find_handles_non_dict_meta_without_crashing():
+    # meta arrives as a model object, not a dict — must not raise
+    tools = [{"name": "my_nim", "title": "My NIM", "meta": _Model(CAT), "annotations": {}}]
+    assert find_deployment_tool(tools, "My NIM", "dep1")["name"] == "my_nim"
+
+
+def test_title_match_does_not_shadow_authoritative_name_match():
+    # a wrong tool sharing the title must not be returned when another tool
+    # matches the slugified name authoritatively
+    tools = [
+        {"name": "unrelated", "title": "My NIM", "meta": CAT, "annotations": {}},
+        {"name": "my_nim", "title": "different", "meta": CAT, "annotations": {}},
+    ]
+    assert find_deployment_tool(tools, "My NIM", "dep1")["name"] == "my_nim"
 
 
 def test_slugify_matches_convert_tool_string_rules():

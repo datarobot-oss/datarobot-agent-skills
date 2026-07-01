@@ -44,7 +44,7 @@ python scripts/deploy_nim.py \
   --label "my-nim-deployment"
 ```
 
-Pass `--prediction-environment-id <id>` to target a specific serverless GPU prediction environment if your cluster has more than one. The script prints the deployment ID when the async job completes.
+Pass `--prediction-environment-id <id>` to target a specific serverless GPU prediction environment if your cluster has more than one. Deployment provisioning is asynchronous, so the script polls the deployment's status until it is `active` (a GPU NIM can take several minutes), then prints the deployment ID. Pass `--no-wait` to return immediately after the create call instead of polling.
 
 **Step 4 — Expose as a tool.** Invoke the `datarobot-register-mcp-tool` skill to tag the deployment `tool=tool` and surface it in your MCP client. Because NIM deployments auto-detect as chat models (`supports_chat_api = true`), no `inputSchema` authoring is needed — the MCP server generates the chat interface automatically.
 
@@ -136,7 +136,7 @@ These scripts ship with this skill in its `scripts/` directory — run them from
 
 - `scripts/discover_nim_options.py [--name <substr>]` — lists NIM templates from `GET /api/v2/customTemplates/?templateSubType=NIM_CONTAINERS` and GPU resource bundles from `GET /api/v2/mlops/compute/bundles/?useCases=customModel`; filters templates by display name substring when `--name` is given.
 - `scripts/create_nim_from_template.py --template-id <id> --resource-bundle-id <id> [--secret-config-id <id>] [--container-tag-override <tag>]` — calls `POST /api/v2/customModels/fromModelTemplate/` and prints `customModelId` and `customModelVersionId`.
-- `scripts/deploy_nim.py --custom-model-version-id <id> --label <name> [--prediction-environment-id <id>]` — registers the version via `POST /api/v2/modelPackages/fromCustomModelVersion/`, creates the deployment via `POST /api/v2/deployments/fromModelPackage/`, polls until ready, and prints the deployment ID.
+- `scripts/deploy_nim.py --custom-model-version-id <id> --label <name> [--prediction-environment-id <id>]` — registers the version via `POST /api/v2/modelPackages/fromCustomModelVersion/`, creates the deployment via `POST /api/v2/deployments/fromModelPackage/`, polls the deployment status until `active` (`--no-wait` to skip), and prints the deployment ID.
 
 ## Related skills
 

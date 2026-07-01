@@ -1,7 +1,22 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import pytest
-from deploy_nim import pick_serverless_pe, build_deploy_payload
+from deploy_nim import (
+    pick_serverless_pe,
+    build_deploy_payload,
+    deployment_ready,
+    deployment_failed,
+)
+
+
+def test_deployment_ready_and_failed():
+    assert deployment_ready("active") is True
+    assert deployment_ready("ACTIVE") is True
+    assert deployment_ready("launching") is False
+    assert deployment_ready(None) is False
+    assert deployment_failed("errored") is True
+    assert deployment_failed("inactive") is True
+    assert deployment_failed("active") is False
 
 
 def test_pick_serverless_prefers_datarobot_platform():

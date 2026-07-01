@@ -26,6 +26,23 @@ def _is_flat_object(prop: dict) -> bool:
     return True
 
 
+def _data_leaf_errors(prop: dict, path: str = "data") -> list[str]:
+    """`data` (form/raw body) allows nested objects, but every leaf must be a
+    string and arrays are not allowed (form encoding does not preserve types)."""
+    errors: list[str] = []
+    ptype = prop.get("type")
+    if ptype == "array":
+        errors.append(f"'{path}' must not contain arrays ('data' is form-encoded)")
+        return errors
+    if ptype == "object":
+        for name, sub in (prop.get("properties") or {}).items():
+            errors.extend(_data_leaf_errors(sub, f"{path}.{name}"))
+        return errors
+    if ptype is not None and ptype != "string":
+        errors.append(f"'{path}' leaf values must be type 'string' (found '{ptype}')")
+    return errors
+
+
 def validate_tool_schema(schema: dict, allow_empty: bool = False) -> list[str]:
     errors: list[str] = []
     if not isinstance(schema, dict):
@@ -48,6 +65,8 @@ def validate_tool_schema(schema: dict, allow_empty: bool = False) -> list[str]:
             errors.append(
                 f"'{key}' must be a flat object (primitive properties only, no nested object/array)"
             )
+        if key == "data":
+            errors.extend(_data_leaf_errors(prop))
     return errors
 
 

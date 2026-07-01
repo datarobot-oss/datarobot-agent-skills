@@ -51,11 +51,13 @@ def main(argv: list[str]) -> int:
         args.container_tag_override,
     )
     resp = client.post("customModels/fromModelTemplate/", data=body)
+    resp.raise_for_status()  # 403 if NIM_MODELS disabled — surface, don't print None ids
     out = resp.json()
-    print(
-        f"customModelId={out.get('customModelId')} "
-        f"customModelVersionId={out.get('customModelVersionId')}"
-    )
+    cm_id, cmv_id = out.get("customModelId"), out.get("customModelVersionId")
+    if not cm_id or not cmv_id:
+        print(f"Unexpected response (missing ids): {out}", file=sys.stderr)
+        return 1
+    print(f"customModelId={cm_id} customModelVersionId={cmv_id}")
     print("Next: register + deploy with deploy_nim.py")
     return 0
 
