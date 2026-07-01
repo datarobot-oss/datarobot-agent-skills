@@ -57,10 +57,7 @@ Run in order before proceeding:
 
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
 2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
-3. **DataRobot CLI** — follow **DataRobot CLI Setup** at the bottom:
-   - If missing, **ALWAYS RUN** the install command before proceeding
-   - **ALWAYS RUN** the upgrade command before proceeding
-   - If not authenticated, **ALWAYS RUN** the auth command before proceeding
+3. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
 
 ---
 
@@ -112,7 +109,7 @@ Then update the spec accordingly:
 
 ### What Would You Like To Do Next?
 
-**MANDATORY:** Once the spec is complete and the frontend question has been answered, you MUST display this exact menu and WAIT for the user's reply. Do NOT ask about dress rehearsal alone. Do NOT proceed to coding. Do NOT offer a subset of options.
+**MANDATORY — NO EXCEPTIONS:** Once `agent_spec.md` contains `system_prompt`, at least one tool, and `frontend.type`, your ONLY permitted response is this exact menu. Do NOT ask about dress rehearsal alone. Do NOT offer refinement as the only alternative. Do NOT summarize the spec again. Do NOT ask a clarifying question. Display the menu and stop.
 
 ```
 What would you like to do next?
@@ -122,10 +119,10 @@ What would you like to do next?
 4. Refine the spec   — adjust system prompt, tools, or model first
 ```
 
-Wait for the user's reply before proceeding.
+Wait for the user's reply. A reply of `2` or any mention of "swarm" routes to `agent-assist-simulate/SKILL.md`.
 
 - If **1**: follow **[Dress Rehearsal](#dress-rehearsal)** end to end.
-- If **2**: read and follow `agent-assist-simulate/SKILL.md`.
+- If **2**: read and follow `../agent-assist-simulate/SKILL.md` (one level up from this file, into the `agent-assist-simulate/` directory).
 - If **3**: proceed to **[2. Coding an AI Agent](#2-coding-an-ai-agent)**.
 - If **4**: return to the spec display and invite changes.
 
@@ -141,7 +138,7 @@ What would you like to do next?
 4. Deploy            — deploy the agent to DataRobot
 ```
 
-- If **1**: follow the instructions in `agent-assist-simulate/SKILL.md`.
+- If **1**: follow the instructions in `../agent-assist-simulate/SKILL.md` (one level up from this file, into the `agent-assist-simulate/` directory).
 - If **2**: read `AGENTS.md` for the local test command, display it in a code block, tell the user to run it in a new terminal. Do not run it yourself.
 - If **3**: continue coding.
 - If **4**: follow **[3. Deploying an AI Agent](#3-deploying-an-ai-agent)**.
@@ -452,58 +449,3 @@ Claude's built-in tools replace the plugin's custom Python tools:
 - During **coding**: keep responses to 1–3 sentences; no introductions or conclusions
 - During **design**: be conversational and thorough
 
----
-
-## DataRobot CLI Setup
-
-The DataRobot CLI (`dr`) is required for managing DataRobot custom applications.
-
-### Verify Installation
-
-Check if the CLI is installed:
-
-```bash
-dr --version
-```
-
-Expected output: `DataRobot CLI version: v0.2.66` (or similar)
-
-### Install DataRobot CLI
-
-If not installed, run:
-
-**macOS/Linux:**
-```bash
-curl https://cli.datarobot.com/install | sh
-```
-
-**Windows:**
-```powershell
-irm https://cli.datarobot.com/winstall | iex
-```
-
-### Upgrade CLI
-
-If the CLI version is too old, run to upgrade:
-
-```bash
-dr self update --force
-```
-
-### Check Authentication Status
-
-Verify the CLI is authenticated:
-
-```bash
-dr auth check
-```
-
-### Authenticate
-
-If not authenticated, run:
-
-```bash
-dr auth login
-```
-
-This will guide the user through the authentication process interactively.

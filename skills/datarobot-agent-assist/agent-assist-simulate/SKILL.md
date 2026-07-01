@@ -12,9 +12,28 @@ before anything runs.
 
 Before invoking the simulation script, resolve `<skill_scripts_dir>` once for the session:
 
-- `<skill_scripts_dir>` is the `scripts/` subdirectory of the directory containing this `SKILL.md`.
-- Confirm it exists with `ls <path_to_this_skill_dir>/scripts/`. If missing, tell the user the
-  skill installation is incomplete and stop.
+- This `SKILL.md` file was loaded from a known path. Take that path, strip the filename, and that directory is `<this_skill_dir>`.
+- `<skill_scripts_dir>` is `<this_skill_dir>/scripts/`.
+- Confirm it exists: run `ls <this_skill_dir>/scripts/`. If missing, tell the user the skill installation is incomplete and stop.
+- Use the resolved absolute path for every `<skill_scripts_dir>/...` reference in this skill.
+
+**Python and dependency check (run once before the first script call):**
+
+Resolve the Python binary to use — in order of preference:
+1. If a `.venv/` directory exists in the working directory, use `.venv/bin/python3`
+2. Otherwise use `python3`
+
+Store the resolved binary as `<python>` and use it for all script calls.
+
+Then confirm `pydantic_ai` is available:
+```bash
+<python> -c "import pydantic_ai, yaml" 2>/dev/null \
+  || uv pip install pydantic-ai pyyaml 2>/dev/null \
+  || <python> -m pip install pydantic-ai pyyaml 2>/dev/null \
+  || pip3 install pydantic-ai pyyaml
+```
+
+Try `uv pip install` first (works in venv environments without pip). If all options fail, tell the user to run `pip install pydantic-ai pyyaml` in their terminal and stop.
 
 ---
 
@@ -24,6 +43,11 @@ Before invoking the simulation script, resolve `<skill_scripts_dir>` once for th
    this workflow requires a completed spec. Offer to switch to `agent-assist-main` to build one.
 2. Confirm the spec has `system_prompt` and at least one tool defined. If either is missing,
    surface the gap and stop.
+3. Confirm `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT` are set:
+   ```bash
+   env | grep -E "DATAROBOT_API_TOKEN|DATAROBOT_ENDPOINT"
+   ```
+   If either is missing, invoke the `datarobot-setup` skill before continuing. Do not print manual export instructions.
 
 ---
 
@@ -38,6 +62,8 @@ Save answers to `agent_config.yaml` automatically after collection.
 > 2. External customers
 > 3. API consumers
 > 4. Mixed"
+
+Map the reply to the script value: `1` → `internal`, `2` → `external`, `3` → `api`, `4` → `mixed`. Always pass the short form to `--user-type`.
 
 **Question 2 — Grounding context (optional):**
 > "Want to ground the behavior scenarios in real user data? Paste customer tickets, support logs,

@@ -51,7 +51,7 @@ When the user wants to build a new agent or has no `agent_spec.md` yet:
 
 ## Standalone simulation
 
-If the user already has an `agent_spec.md` and only wants to test or harden it — skip `agent-assist-main` entirely and go directly to `agent-assist-simulate`. Trigger phrases: "simulate my agent", "run adversarial testing", "harden my agent", "test my spec".
+If the user already has an `agent_spec.md` and only wants to test or harden it — skip `agent-assist-main` entirely and go directly to `agent-assist-simulate`. Trigger phrases: "simulate my agent", "swarm simulation", "run swarm", "run adversarial testing", "harden my agent", "test my spec", "test my agent".
 
 ---
 
