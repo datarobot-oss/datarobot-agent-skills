@@ -175,15 +175,28 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
 ### Pre-coding Checklist
 
 1. **Read `agent_spec.md`** — it must exist (see gate above).
-2. Check if `AGENTS.md` exists in the template directory (default: current working directory).
-3. If `AGENTS.md` does **not** exist, prepare the template with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the template is properly set up and avoiding wasted effort coding on a broken foundation.
-   a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding.
-   b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
-   c. **Clone the template**: Run the helper script:
+2. **Classify the working directory state** (default target: current working directory) using all checks below, in order:
+  a. Is it a git repository?
+  b. If git repo: does `git remote get-url origin` match `https://github.com/datarobot-community/datarobot-agent-application.git`?
+  c. Is `AGENTS.md` present?
+  d. If not a git repo: is the directory empty, or does it contain only `agent_spec.md`?
+3. **Decide action by state**:
+  - **Clean Workspace**: Empty directory, not a git repo → proceed with clone + setup.
+  - **Spec-Only Workspace**: Non-empty directory, not a git repo, contains only `agent_spec.md` → proceed with clone + setup.
+  - **Non-Template Workspace**: Non-empty directory, not a git repo, contains files other than `agent_spec.md` → **STOP** and ask user to use a new empty directory.
+  - **Existing Template Workspace**: Git repo is the correct template repo and `AGENTS.md` is present → skip clone; detect whether framework and setup were already completed, then only run missing steps.
+  - **Wrong Repository Workspace**: Git repo is not the correct template repo → **STOP** and ask user to use a new empty directory.
+4. **If Existing Template Workspace**, detect initialization markers before running any setup actions:
+  a. Framework configured marker: `.datarobot/answers/agent-agent.yml` exists and contains `agent_template_framework`.
+  b. Prior setup marker: `.env` exists.
+  c. If both markers are present and `dr dependency check` passes, treat template as already initialized: skip framework selection and `setup_template.py`, then continue to TODO creation.
+5. **If clone is required** (Clean Workspace or Spec-Only Workspace), prepare the template with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the template is properly set up and avoiding wasted effort coding on a broken foundation.
+  a. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
+  b. **Clone the template**: Run the helper script:
    ```
    python <skill_scripts_dir>/clone_template.py
    ```
-   d. **Select the agentic framework**:
+6. **If framework is not already configured, select the agentic framework**:
 
    **STOP. Do NOT proceed until the user has replied with their framework choice.**
 
@@ -202,18 +215,18 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
      --framework <value>
    ```
 
-   e. **Validate the template**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
-   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
+7. **Validate the template**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
+8. **If setup is not already complete, run setup**: Use the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
    ```
    python <skill_scripts_dir>/setup_template.py \
      --llm-model <model-name> \
      --target-dir .
    ```
 
-   **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
+**CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
 
-   g. **Re-read `AGENTS.md`** now that the template is ready.
-4. Recreate the TODO list based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
+9. **Re-read `AGENTS.md`** now that the template is ready.
+10. Recreate the TODO list based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
 
 
 ### Coding Rules
@@ -386,6 +399,7 @@ Claude's built-in tools replace the plugin's custom Python tools:
 - If it is unclear whether the request falls into one of the three categories, ask a clarifying question
 - If the user insists on a task outside these three categories, politely decline
 - If a user asks to code before designing, strongly encourage designing first
+- Before running any CLI command or helper script, provide a clear explanation in 2-5 sentences. The explanation must include  why this specific command is needed now, what it will check/change/create.
 - After the user declines dress rehearsal, always show **[Post-design next steps](#post-design-next-steps)** — never skip to framework selection
 - During **rehearsal turns**: display only the `output_file` contents — never add performance commentary or replace the script's bottom decoration / DONE hint
 - During **coding**: keep responses to 1–3 sentences; no introductions or conclusions
