@@ -159,8 +159,8 @@ When `dr-agent --help` fails, the assistant must stop and ask the user to choose
 Would you like me to install it using uv now?
 
 Choose one option:
-1) Project-only install (adds dependency to this repository):
-   `uv add datarobot-agent-tester`
+1) Project dependency group (adds to skill-assessment group in this repository):
+   `uv add --group skill-assessment datarobot-agent-tester`
 
 2) Global tool install (available system-wide):
    `uv tool install datarobot-agent-tester`
@@ -174,7 +174,7 @@ Rules:
 - Do not run any install command before the user explicitly chooses.
 - If user replies `"1"`, run:
   ```bash
-  uv add datarobot-agent-tester
+  uv add --group skill-assessment datarobot-agent-tester
   ```
 - If user replies `"2"`, run:
   ```bash
@@ -182,10 +182,10 @@ Rules:
   ```
 - If user replies `"no"`, stop and return `NEEDS WORK` with remediation steps.
 
-After install, re-check:
-```bash
-dr-agent --help >/dev/null
-```
+After install, re-check based on install method:
+- If installed with dependency group: `uv run --group skill-assessment dr-agent --help >/dev/null`
+- If installed as global tool: `dr-agent --help >/dev/null`
+
 If still failing, return `NEEDS WORK` with command output.
 
 ### 4.5) Set command timeouts
@@ -194,8 +194,13 @@ Use `timeout` command (GNU coreutils) to enforce limits:
 - Test command: 300 seconds (5 minutes)
 - Improve command: 600 seconds (10 minutes)
 
-Example:
+Example (adjust command based on installation method):
 ```bash
+# For dependency group installation:
+timeout 300 uv run --group skill-assessment dr-agent skills test --skill "${TARGET_SKILL_DIR}"
+EXIT_CODE=$?
+
+# For global tool installation:
 timeout 300 dr-agent skills test --skill "${TARGET_SKILL_DIR}"
 EXIT_CODE=$?
 ```
@@ -212,8 +217,14 @@ If `timeout` command not available (e.g., macOS without GNU coreutils):
 
 ### 5) Run skill test
 
-Run exactly:
+Run based on installation method:
 
+If installed with dependency group:
+```bash
+uv run --group skill-assessment dr-agent skills test --skill "${TARGET_SKILL_DIR}"
+```
+
+If installed as global tool or already installed:
 ```bash
 dr-agent skills test --skill "${TARGET_SKILL_DIR}"
 ```
@@ -288,15 +299,28 @@ Before running improve:
 - Store path to initial report as `INITIAL_REPORT`
 - Note initial test results (pass/fail counts, scores if present)
 
-Run:
+Run based on installation method:
+
+If installed with dependency group:
+```bash
+uv run --group skill-assessment dr-agent skills improve --skill "${TARGET_SKILL_DIR}"
+```
+
+If installed as global tool or already installed:
 ```bash
 dr-agent skills improve --skill "${TARGET_SKILL_DIR}"
 ```
 
 Capture exit code. If non-zero, include error in output but continue to retest if requested.
 
-If `retest_after_improve=true`, run:
+If `retest_after_improve=true`, run based on installation method:
 
+If installed with dependency group:
+```bash
+uv run --group skill-assessment dr-agent skills test --skill "${TARGET_SKILL_DIR}"
+```
+
+If installed as global tool or already installed:
 ```bash
 dr-agent skills test --skill "${TARGET_SKILL_DIR}"
 ```
@@ -360,7 +384,7 @@ Return all of the following sections:
    When in doubt (e.g., test passed but report shows warnings), default to `PASS` and include warnings in Summary.
 
 2. **Install Mode**
-   - `already-installed` | `uv-add` | `uv-tool-install` | `not-installed (user-declined)`
+   - `already-installed` | `uv-add-group-skill-assessment` | `uv-tool-install` | `not-installed (user-declined)`
 
 3. **Commands Run**
    - Exact commands executed, in order
@@ -415,6 +439,7 @@ High-priority fixes:
 ## Troubleshooting
 
 **"Command not found: dr-agent" after installation**
+- If installed with dependency group: use `uv run --group skill-assessment dr-agent --help`
 - If installed with `uv tool install`, ensure `~/.local/bin` is in PATH
 - Try: `uv tool run dr-agent --help`
 
