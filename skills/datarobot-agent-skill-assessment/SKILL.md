@@ -53,6 +53,14 @@ User: "Assess and improve skills/data-processor"
 3. `datarobot-agent-tester` is installed and `dr-agent` CLI is available (or can be installed with user permission via `uv`).
 4. Commands should be executed from the repository root directory (parent of `skills/`).
    If current directory is not repository root, `cd` to it first.
+5. Target skill directory must contain at minimum:
+   - A markdown file (`.md`) with skill instructions
+   - OR a `skill.yaml` / `skill.json` configuration file
+   
+   If directory exists but contains no recognizable skill files:
+   - Status: `NEEDS WORK`
+   - Error: `Directory exists but does not appear to contain a valid skill`
+   - List directory contents for debugging
 
 If any precondition fails, stop and return a clear error with remediation steps.
 
@@ -60,7 +68,32 @@ If any precondition fails, stop and return a clear error with remediation steps.
 
 ## Execution Steps
 
-### 1) Normalize target path
+### 1) Verify and set working directory
+
+Check if current directory is repository root:
+```bash
+if [ -d "skills" ]; then
+  echo "Already in repository root"
+else
+  # Attempt to find repository root
+  if [ -d "../skills" ]; then
+    cd ..
+  elif [ -d "../../skills" ]; then
+    cd ../..
+  else
+    # Return error
+    echo "Cannot locate repository root (no skills/ directory found)"
+    exit 1
+  fi
+fi
+```
+
+If `skills/` directory not found after navigation:
+- Status: `NEEDS WORK`
+- Error: `Cannot locate repository root. Please run from a directory containing skills/`
+- Stop execution
+
+### 1.1) Normalize target path
 
 - If input is `my-skill`, normalize to `skills/my-skill`.
 - If input already starts with `skills/`, keep as-is.
@@ -155,16 +188,27 @@ dr-agent --help >/dev/null
 ```
 If still failing, return `NEEDS WORK` with command output.
 
-### 4.5) Set reasonable timeouts
+### 4.5) Set command timeouts
 
-Testing may take time for complex skills. Set timeouts:
-- Test command: 5 minutes
-- Improve command: 10 minutes
+Use `timeout` command (GNU coreutils) to enforce limits:
+- Test command: 300 seconds (5 minutes)
+- Improve command: 600 seconds (10 minutes)
 
-If timeout exceeded:
-- Kill process
-- Return partial results with timeout note
+Example:
+```bash
+timeout 300 dr-agent skills test --skill "${TARGET_SKILL_DIR}"
+EXIT_CODE=$?
+```
+
+If exit code is 124 (timeout):
 - Status: `NEEDS WORK`
+- Error: `Command exceeded timeout limit`
+- Include partial output if available
+- Stop execution
+
+If `timeout` command not available (e.g., macOS without GNU coreutils):
+- Log warning: "Timeout enforcement unavailable, commands may run indefinitely"
+- Continue without timeout
 
 ### 5) Run skill test
 
@@ -184,17 +228,19 @@ If exit code is non-zero:
 
 ### 6) Locate generated report
 
-The tester writes reports to the current working directory with pattern:
-`<skill-name>.skill-report.md` or timestamped variants.
-
-Search for reports:
+Extract skill name from `TARGET_SKILL_DIR`:
 ```bash
-find . -maxdepth 2 -name "*skill-report.md" -type f
+SKILL_NAME=$(basename "${TARGET_SKILL_DIR}")
 ```
 
-Identify the newest file by modification time:
+Search for reports matching this skill:
 ```bash
-ls -t *skill-report.md | head -n1
+find . -maxdepth 2 -name "${SKILL_NAME}*.skill-report.md" -o -name "*${SKILL_NAME}*skill-report.md" | head -n1
+```
+
+If multiple matches found, select newest by modification time:
+```bash
+ls -t ${SKILL_NAME}*.skill-report.md 2>/dev/null | head -n1
 ```
 
 If no report found, check:
@@ -203,13 +249,19 @@ If no report found, check:
 
 Store path as `REPORT_FILE`.
 
-Parse the report to extract:
-- Overall test result (pass/fail)
-- Number of test cases run
-- List of failing test cases (if any)
-- Key recommendations or issues
+Parse the report using these strategies:
+- Look for markdown headers like `## Summary`, `## Test Results`, `## Issues`
+- Extract pass/fail counts from lines matching patterns like:
+  - `Passed: X/Y tests`
+  - `✓ X passed, ✗ Y failed`
+- Identify failing tests from bullet lists or tables under "Failed Tests" or "Issues" sections
+- If report format is unclear, include the first 50 lines of the report in output for user review
 
-Store these for the Summary section.
+Store extracted data as:
+- `TOTAL_TESTS=<number>`
+- `PASSED_TESTS=<number>`
+- `FAILED_TESTS=<number>`
+- `FAILING_TEST_NAMES=<list>`
 
 ### 7) Optional improve flow
 
@@ -217,10 +269,20 @@ If `improve=true`:
 
 **Note**: The `improve` command will modify skill files in-place based on test findings.
 
-Before running, inform the user:
-"About to run improvement on ${TARGET_SKILL_DIR}. This will modify files. Continue? (yes/no)"
+Before running improve:
+- Inform user: "About to run improvement on ${TARGET_SKILL_DIR}. This will modify files in-place. Continue?"
+- Wait for explicit response
 
-If user declines, skip to output and note improvement was skipped.
+If user responds with "no", "n", "skip", or declines:
+- Skip improvement step
+- Jump to Output Contract
+- In Summary section, note: "Improvement skipped by user request"
+
+If user responds with "yes", "y", or confirms:
+- Proceed with improve command
+
+If response is unclear:
+- Ask again: "Please respond 'yes' to continue or 'no' to skip improvement"
 
 Before running improve:
 - Store path to initial report as `INITIAL_REPORT`
@@ -241,11 +303,34 @@ dr-agent skills test --skill "${TARGET_SKILL_DIR}"
 
 After retest:
 - Store path to new report as `IMPROVED_REPORT`
-- Compare:
-  - Number of passing vs failing test cases
-  - Specific issues resolved (diff the "Issues" sections)
-  - New issues introduced
-  - Overall score changes (if reports include numeric scores)
+
+Generate Before/After comparison:
+
+1. **Test counts comparison:**
+   ```
+   Before: X passed, Y failed (Z total)
+   After:  A passed, B failed (C total)
+   Delta:  +/- N passing
+   ```
+
+2. **Issue-level diff:**
+   - Extract issue lists from both reports (look for bullet points under "Issues" or "Failures")
+   - Identify resolved issues (present in INITIAL_REPORT but not IMPROVED_REPORT)
+   - Identify new issues (present in IMPROVED_REPORT but not INITIAL_REPORT)
+   - Identify persistent issues (present in both)
+
+3. **File changes:**
+   ```bash
+   git diff --stat "${TARGET_SKILL_DIR}" 2>/dev/null || echo "Git not available for diff"
+   ```
+
+If retest shows degradation (more failures after improve):
+- Highlight this prominently in Summary: "⚠️ Improvement resulted in MORE failing tests"
+- List newly introduced failures
+- Suggest: "Consider reverting changes and reviewing improve command output for errors"
+- Status should be `NEEDS WORK`
+
+Include all three sections in "Before/After Comparison" output.
 
 ---
 
@@ -257,10 +342,22 @@ Return all of the following sections:
    - `PASS`: Test completed successfully, report generated, no critical errors
    - `NEEDS WORK`: Test failed, CLI unavailable, preconditions not met, or critical issues found in report
    
-   Base status on:
-   - Whether all commands executed successfully
-   - Whether report was generated
-   - Severity of issues in report (if it includes severity ratings)
+   **Status determination logic:**
+
+   Set `NEEDS WORK` if ANY of:
+   - Target skill directory not found
+   - DATAROBOT_API_TOKEN not set
+   - CLI installation failed or was declined
+   - Test command exited with non-zero code AND no report generated
+   - Report contains issues marked "critical" or "high severity" (if severity ratings present)
+   - Command timeout occurred
+
+   Set `PASS` if ALL of:
+   - All commands executed successfully (exit code 0)
+   - Report was generated
+   - No critical/high-severity issues (or report doesn't include severity ratings)
+
+   When in doubt (e.g., test passed but report shows warnings), default to `PASS` and include warnings in Summary.
 
 2. **Install Mode**
    - `already-installed` | `uv-add` | `uv-tool-install` | `not-installed (user-declined)`
@@ -281,6 +378,58 @@ Return all of the following sections:
    - What changed
    - What improved
    - Remaining gaps
+
+---
+
+## Example Output
+
+**Scenario: Test-only run with issues found**
+
+```
+**Status**: NEEDS WORK
+
+**Install Mode**: already-installed
+
+**Commands Run**:
+1. `dr-agent skills test --skill "skills/my-skill"`
+
+**Artifacts**:
+- Report: `./my-skill.skill-report.md`
+
+**Summary**:
+Test completed but found 3 failing test cases:
+- `test_input_validation`: Missing required field validation
+- `test_error_handling`: Unhandled exception for null inputs
+- `test_output_format`: Output missing 'timestamp' field
+
+High-priority fixes:
+1. Add input validation for required fields (line 45)
+2. Wrap processing logic in try-catch (line 78)
+3. Include timestamp in output schema (line 120)
+
+**Before/After Comparison**: N/A (improve not run)
+```
+
+---
+
+## Troubleshooting
+
+**"Command not found: dr-agent" after installation**
+- If installed with `uv tool install`, ensure `~/.local/bin` is in PATH
+- Try: `uv tool run dr-agent --help`
+
+**"Report not found" after successful test**
+- Check current directory: `pwd`
+- List all .md files: `find . -name "*.md"`
+- Report may have unexpected name; include find output in error message
+
+**Timeout on large skills**
+- Increase timeout values in Step 4.5
+- Or run test command manually without timeout to see full execution time
+
+**Token authentication fails**
+- Verify token format (should be alphanumeric string)
+- Test token: `curl -H "Authorization: Bearer $DATAROBOT_API_TOKEN" <api-endpoint>`
 
 ---
 
