@@ -11,7 +11,11 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
-## [1.3.4] - 2028-07-01
+## [1.4.4] - 2026-07-07
+
+- `datarobot-agent-skill-assessment`: Added skill to allow to assess and improve any skill using the `datarobot-agent-tester` open source DataRobot LLM as a judge. It does require a `DATAROBOT_API_TOKEN`. Use when you want to get a specific skill reviewed and improved in your own repo, fork or before creating a PR to contribute to this repo.
+
+## [1.3.4] - 2026-07-01
 
 - `datarobot-agent-assist`: Improved rehearsal flow to properly handle missing LLM model cases and improved user-facing messaging; refactored Dress Rehearsal instructions into separate `references/dress-rehearsal.md` file to reduce SKILL.md token count while preserving all behavior and control-flow reliability.
 - `datarobot-discover`: New skill for discovering DataRobot resources — fetches the live catalog from `datarobot.com` and, if set, from `$DATAROBOT_ENDPOINT` to surface skills, MCP servers, agents, and platform resources without search index dependency.
