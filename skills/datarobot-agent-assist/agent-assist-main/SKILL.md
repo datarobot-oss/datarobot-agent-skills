@@ -109,22 +109,18 @@ Then update the spec accordingly:
 
 ### What Would You Like To Do Next?
 
-**MANDATORY — NO EXCEPTIONS:** Once `agent_spec.md` contains `system_prompt`, at least one tool, and `frontend.type`, your ONLY permitted response is this exact menu. Do NOT ask about dress rehearsal alone. Do NOT offer refinement as the only alternative. Do NOT summarize the spec again. Do NOT ask a clarifying question. Display the menu and stop.
+**MANDATORY — NO EXCEPTIONS:** Once `agent_spec.md` contains `system_prompt`, at least one tool, and `frontend.type`, your ONLY permitted response is this exact 3-option menu. Do NOT ask about dress rehearsal alone. Do NOT offer refinement as the only alternative. Do NOT summarize the spec again. Do NOT ask a clarifying question. Display the menu and stop.
 
 ```
 What would you like to do next?
 1. Dress rehearsal   — simulate the agent interactively before coding
-2. Swarm simulation  — automated adversarial and edge case testing against the spec
-3. Code the agent    — implement using the DataRobot template
-4. Refine the spec   — adjust system prompt, tools, or model first
+2. Code the agent    — implement using the DataRobot template
+3. Refine the spec   — adjust system prompt, tools, or model first
 ```
 
-Wait for the user's reply. A reply of `2` or any mention of "swarm" routes to `agent-assist-simulate/SKILL.md`.
-
 - If **1**: follow **[Dress Rehearsal](#dress-rehearsal)** end to end.
-- If **2**: read and follow `../agent-assist-simulate/SKILL.md` (one level up from this file, into the `agent-assist-simulate/` directory).
-- If **3**: proceed to **[2. Coding an AI Agent](#2-coding-an-ai-agent)**.
-- If **4**: return to the spec display and invite changes.
+- If **2**: proceed to **[2. Coding an AI Agent](#2-coding-an-ai-agent)**.
+- If **3**: return to the spec display and invite changes.
 
 ### After Coding
 
