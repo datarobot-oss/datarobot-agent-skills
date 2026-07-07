@@ -68,6 +68,11 @@
       "name": "datarobot-discover",
       "description": "Discover DataRobot resources — skills, MCP servers, agents, and platform tools — by fetching the live catalog from datarobot.com and the user's own DataRobot instance",
       "path": "skills/datarobot-discover/SKILL.md"
+    },
+    {
+      "name": "datarobot-agent-skill-assessment",
+      "description": "Evaluate, assess and improve a skill using datarobot. It requires DATAROBOT_API_TOKEN.",
+      "path": "skills/datarobot-agent-skill-assessment/SKILL.md"
     }
   ]
 }

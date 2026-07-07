@@ -160,6 +160,18 @@
         "scale or debug a DataRobot workload",
         "manage autoscaling and replicas for a DataRobot workload"
       ]
+    },
+    {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:skill-assessment",
+      "displayName": "datarobot-agent-skill-assessment",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-agent-skill-assessment/SKILL.md",
+      "description": "Evaluate and improve a skill using datarobot-agent-tester in a local skill. It requires DATAROBOT_API_TOKEN.",
+      "representativeQueries": [
+        "Assess and improve a skill using datarobot skills",
+        "evalute a skill using datarobot skills",
+        "improve a skill using datarobot skills"
+      ]
     }
   ]
 }
