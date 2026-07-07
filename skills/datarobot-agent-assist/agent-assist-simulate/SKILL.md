@@ -57,13 +57,16 @@ Ask the following questions in sequence. Do not run the simulation until all ans
 Save answers to `agent_config.yaml` automatically after collection.
 
 **Question 1 — User type:**
+
+Before asking, read `agent_spec.md` and derive 2–4 user personas specific to this agent's purpose and domain. Present them as numbered options. For example:
+
 > "Who are the primary users of this agent?
 > 1. Internal team
 > 2. External customers
 > 3. API consumers
 > 4. Mixed"
 
-Map the reply to the script value: `1` → `internal`, `2` → `external`, `3` → `api`, `4` → `mixed`. Always pass the short form to `--user-type`.
+Replace these with personas that match the agent — a legal review agent might offer "paralegals", "outside counsel", "clients". Pass the full persona description of the selected option to `--user-type` when invoking the script.
 
 **Question 2 — Grounding context (optional):**
 > "Want to ground the behavior scenarios in real user data? Paste customer tickets, support logs,

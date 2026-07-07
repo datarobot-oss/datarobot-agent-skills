@@ -186,12 +186,7 @@ async def generate_behavior_scenarios(
     user_type: str,
     user_context: str | None = None,
 ) -> list[Scenario]:
-    user_type_desc = {
-        "internal": "employees who know the system but may make mistakes or push boundaries",
-        "external": "customers who may be confused or have incorrect expectations",
-        "api": "developers calling via API who may send malformed or edge-case inputs",
-        "mixed": "combination of internal employees, external customers, and API developers",
-    }.get(user_type, user_type)
+    user_type_desc = user_type
 
     agent: Agent[None, ScenarioList] = Agent(
         model=model,
@@ -814,7 +809,7 @@ async def _async_main(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Adversarial swarm simulation for DataRobot agents")
     parser.add_argument("spec", help="Path to agent_spec.md")
-    parser.add_argument("--user-type", required=True, choices=["internal", "external", "api", "mixed"])
+    parser.add_argument("--user-type", required=True, help="User persona description for behavior scenario generation")
     parser.add_argument("--iterations", type=int, default=3, help="Max convergence iterations per failing scenario")
     parser.add_argument("--model", default="anthropic/claude-sonnet-4-6", help="LLM Gateway model ID for simulation")
     parser.add_argument("--judge-mode", choices=["standard", "scored"], default="standard")
