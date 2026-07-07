@@ -530,13 +530,13 @@ async def run_convergence_loop(
             fix = await _generate_fix(cluster, current_prompt, model)
             label = ", ".join(fix.addresses_scenarios)
             reason_summary = cluster[0].breach_reason or "(no reason)"
-            print(f"\n{'─' * 45}")
-            print(f"Fixing: {label}")
-            print(f"Reason: {reason_summary}")
+            print(f"\n{'─' * 45}", flush=True)
+            print(f"Fixing: {label}", flush=True)
+            print(f"Reason: {reason_summary}", flush=True)
             patch_preview = fix.system_prompt_patch[:120]
             if len(fix.system_prompt_patch) > 120:
                 patch_preview += "..."
-            print(f"Patch: {patch_preview}")
+            print(f"Patch: {patch_preview}", flush=True)
             current_prompt = current_prompt + "\n" + fix.system_prompt_patch
             patches_applied.append(fix)
 
@@ -726,11 +726,16 @@ async def _async_main(args: argparse.Namespace) -> None:
             user_context = ctx_path.read_text(encoding="utf-8")
 
     # --- Generate scenarios ---
-    print("Generating scenarios...")
+    async def _tracked(coro, label):
+        result = await coro
+        print(f"  ✓ {len(result)} {label} scenarios", flush=True)
+        return result
+
+    print("Generating scenarios...", flush=True)
     attack, behavior, persistence = await asyncio.gather(
-        generate_attack_scenarios(spec, model),
-        generate_behavior_scenarios(spec, model, args.user_type, user_context),
-        generate_persistence_scenarios(spec, model),
+        _tracked(generate_attack_scenarios(spec, model), "attack"),
+        _tracked(generate_behavior_scenarios(spec, model, args.user_type, user_context), "behavior"),
+        _tracked(generate_persistence_scenarios(spec, model), "persistence"),
     )
     all_scenarios = attack + behavior + persistence
 
@@ -765,12 +770,14 @@ async def _async_main(args: argparse.Namespace) -> None:
     save_config(args.user_type, args.iterations, args.judge_mode, args.model)
 
     # --- Run simulation ---
-    print(f"\nRunning {len(all_scenarios)} scenarios...\n")
-    results = await run_simulation(all_scenarios, spec, model)
-
-    for sr in results:
+    print(f"\nRunning {len(all_scenarios)} scenarios...\n", flush=True)
+    tasks = [asyncio.create_task(_run_scenario(s, spec, model)) for s in all_scenarios]
+    results = []
+    for fut in asyncio.as_completed(tasks):
+        sr = await fut
         icon = "✓" if sr.status == "passed" else "✗"
-        print(f"[{sr.scenario.track:<12}] {sr.scenario.name:<45} {icon} {sr.status}")
+        print(f"[{sr.scenario.track:<12}] {sr.scenario.name:<45} {icon} {sr.status}", flush=True)
+        results.append(sr)
 
     failed = [r for r in results if r.breach_detected]
 

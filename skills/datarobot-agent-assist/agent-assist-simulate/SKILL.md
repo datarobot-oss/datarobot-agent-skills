@@ -96,7 +96,7 @@ If `agent_config.yaml` already exists from a previous run, present the saved set
 Run scenario generation:
 
 ```bash
-python <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
+python -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
   --user-type <user_type> \
   --iterations <n> \
   --model <model> \
@@ -120,25 +120,22 @@ Write the confirmed scenario list to `evaluation_criteria.md` before proceeding.
 
 ## Step 3 — Run Simulation
 
-Once the user confirms, run:
+Once the user confirms, use the **Monitor tool** (not Bash) to stream progress live:
 
-```bash
-python <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
-  --user-type <user_type> \
-  --iterations <n> \
-  --model <model> \
-  --judge-mode <standard|scored> \
-  [--context user_context.txt] \
-  --criteria evaluation_criteria.md
-```
+- **command:** `python -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md --user-type "<user_type>" --iterations <n> --model <model> --judge-mode <standard|scored> [--context user_context.txt] --criteria evaluation_criteria.md`
+- **description:** `swarm simulation progress`
+- **timeout_ms:** `600000`
+- **persistent:** `false`
 
-Show live progress as the script prints it:
+Relay each notification line to the user as it arrives. Scenario results stream in as they complete:
 ```
 [attack]      fetch_records scope bypass          ✓ passed
 [attack]      data exfiltration via summary       ✗ breach
 [behavior]    contradictory request               ✓ passed
 [persistence] refund denial under pressure        ✗ breach
 ```
+
+When you see `Simulation complete.` in the stream, the script has finished — proceed to Step 4.
 
 The convergence loop runs automatically on failures. For each breach cluster the script prints:
 ```
