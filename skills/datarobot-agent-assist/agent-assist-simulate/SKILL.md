@@ -120,7 +120,7 @@ Write the confirmed scenario list to `evaluation_criteria.md` before proceeding.
 
 ## Step 3 — Run Simulation
 
-Once the user confirms, use the **Monitor tool** (not Bash) to stream progress live:
+Once the user confirms, use the **Monitor tool** to stream progress live (fall back to Bash if Monitor is unavailable):
 
 - **command:** `python -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md --user-type "<user_type>" --iterations <n> --model <model> --judge-mode <standard|scored> [--context user_context.txt] --criteria evaluation_criteria.md`
 - **description:** `swarm simulation progress`
