@@ -25,7 +25,7 @@ from typing import Optional
 
 REPO_URL = "https://github.com/datarobot-community/datarobot-agent-application.git"
 BRANCH: str | None = None
-TAG: str | None = "11.9.2"
+TAG: str | None = "11.10.7"
 
 
 def cleanup_git_dir(target_dir: Path) -> None:

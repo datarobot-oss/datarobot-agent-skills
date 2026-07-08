@@ -11,6 +11,10 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.3.5] - 2028-07-08
+
+- `datarobot-agent-assist`: Bumped application template version to 11.10.7.
+
 ## [1.3.4] - 2028-07-01
 
 - `datarobot-agent-assist`: Improved rehearsal flow to properly handle missing LLM model cases and improved user-facing messaging; refactored Dress Rehearsal instructions into separate `references/dress-rehearsal.md` file to reduce SKILL.md token count while preserving all behavior and control-flow reliability.
