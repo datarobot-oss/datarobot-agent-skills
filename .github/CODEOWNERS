@@ -24,5 +24,6 @@
 # Individual Contributor skills
 /skills/datarobot-discover/ @datarobot-oss/agent-skills-maintainers
 /skills/datarobot-external-agent-monitoring/ @vitali93
+/skills/datarobot-llm-gateway/ @datarobot-oss/agent-skills-maintainers
 /skills/datarobot-setup/ @amberb617
 /skills/datarobot-workload-api/ @ahamino
