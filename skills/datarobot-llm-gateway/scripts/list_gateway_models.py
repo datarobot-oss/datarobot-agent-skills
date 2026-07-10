@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 DataRobot, Inc.
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """List active LLM Gateway models as JSON.
 
