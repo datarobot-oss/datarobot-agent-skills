@@ -14,15 +14,7 @@ description: >-
 
 ## On Activation
 
-First, check whether the user's message already implies a clear intent:
-
-**If intent is clear** — route directly without showing the menu. Clear intents:
-- Design / build / create an agent → read `agent-assist-main/SKILL.md`, jump to Clarification Phase
-- Code / implement an agent → read `agent-assist-main/SKILL.md`, jump to 2. Coding an AI Agent
-- Battle-test / simulate / swarm / harden / test my agent → read `agent-assist-simulate/SKILL.md`, jump to Pre-flight Check
-- Deploy an agent → read `agent-assist-main/SKILL.md`, jump to 3. Deploying an AI Agent
-
-**If intent is unclear** (e.g. bare `/datarobot-agent-assist` with no context, or a vague message like "help" or "get started") — present this menu before reading any sub-skill file:
+Always present this menu first — before reading any sub-skill file, regardless of what the user said to trigger the skill:
 
 ```
 Welcome! I help you design, build, and deploy AI agents on DataRobot.
@@ -34,9 +26,14 @@ What would you like to do?
   4. Deploy                 — deploy your agent to DataRobot
 ```
 
-Once the user selects an option, route using the same table above.
+Once the user selects an option, read the relevant sub-skill file and jump directly to the corresponding section — **skip the sub-skill's own On Activation menu**:
 
-In both cases — **skip the sub-skill's own On Activation menu**. The user has already expressed or selected their intent.
+| Choice | Sub-skill file | Jump to |
+|---|---|---|
+| 1 — Design | `agent-assist-main/SKILL.md` | Clarification Phase |
+| 2 — Code | `agent-assist-main/SKILL.md` | 2. Coding an AI Agent |
+| 3 — Battle-test | `agent-assist-simulate/SKILL.md` | Pre-flight Check |
+| 4 — Deploy | `agent-assist-main/SKILL.md` | 3. Deploying an AI Agent |
 
 ---
 
