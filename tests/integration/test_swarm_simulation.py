@@ -39,6 +39,24 @@ def scenario_data() -> dict[str, object]:
     }
 
 
+def scenario_result(
+    name: str,
+    status: str,
+    *,
+    breach_detected: bool = False,
+    reason: str | None = None,
+) -> object:
+    scenario = swarm.Scenario.model_validate({**scenario_data(), "name": name})
+    return swarm.ScenarioResult(
+        scenario=scenario,
+        status=status,
+        breach_detected=breach_detected,
+        breach_reason=reason,
+        transcript=[{"role": "assistant", "content": "test response"}],
+        turns_run=1,
+    )
+
+
 def test_load_criteria_requires_existing_file(tmp_path: Path) -> None:
     with pytest.raises(swarm.CriteriaError, match="could not read"):
         swarm.load_criteria(tmp_path / "missing.md")
@@ -119,3 +137,103 @@ def test_confirmed_criteria_skip_generation(
     asyncio.run(swarm._async_main(args))
 
     assert executed == ["confirmed scenario"]
+
+
+def test_convergence_rerun_error_is_not_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initial_breach = scenario_result(
+        "rerun error", "breach", breach_detected=True, reason="unsafe response"
+    )
+    rerun_error = scenario_result("rerun error", "error", reason="gateway timeout")
+
+    async def generate_fix(*args: object, **kwargs: object) -> object:
+        return swarm.Fix(
+            scenario_name="rerun error",
+            description="Add a restriction",
+            system_prompt_patch="Never return unsafe data.",
+            reasoning="Prevents the breach.",
+            addresses_scenarios=["rerun error"],
+        )
+
+    async def rerun(*args: object, **kwargs: object) -> list[object]:
+        return [rerun_error]
+
+    monkeypatch.setattr(swarm, "_generate_fix", generate_fix)
+    monkeypatch.setattr(swarm, "run_simulation", rerun)
+
+    result = asyncio.run(
+        swarm.run_convergence_loop(
+            [initial_breach],
+            swarm.AgentSpec(system_prompt="Be helpful."),
+            object(),
+            1,
+        )
+    )
+
+    assert result.resolved == []
+    assert result.errors == [rerun_error]
+
+
+def test_report_uses_resolved_final_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    initial_breach = scenario_result(
+        "resolved breach", "breach", breach_detected=True, reason="unsafe response"
+    )
+    resolved = scenario_result("resolved breach", "passed")
+    convergence = swarm.ConvergenceResult(
+        resolved=[resolved],
+        final_system_prompt="Be safe.",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    report_path = swarm.write_report(
+        [initial_breach], convergence, "system_prompt: Be safe.", 3
+    )
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "- Passed: 1" in report
+    assert "- Unresolved breaches: 0" in report
+    assert "Breach resolved during convergence" in report
+    assert "All scenarios passed. Your agent is ready to deploy." in report
+
+
+def test_report_marks_errors_as_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    error = scenario_result("failed execution", "error", reason="gateway timeout")
+    convergence = swarm.ConvergenceResult(
+        errors=[error],
+        final_system_prompt="Be safe.",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    report_path = swarm.write_report([error], convergence, "system_prompt: Be safe.", 3)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "- Errored: 1" in report
+    assert "Evaluation incomplete" in report
+    assert "All scenarios passed" not in report
+
+
+def test_report_marks_exhausted_breach_as_unresolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    breach = scenario_result(
+        "persistent breach", "breach", breach_detected=True, reason="unsafe response"
+    )
+    convergence = swarm.ConvergenceResult(
+        exhausted=[breach],
+        final_system_prompt="Be safe.",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    report_path = swarm.write_report(
+        [breach], convergence, "system_prompt: Be safe.", 3
+    )
+    report = report_path.read_text(encoding="utf-8")
+
+    assert "- Unresolved breaches: 1" in report
+    assert "require structural changes" in report
+    assert "All scenarios passed" not in report

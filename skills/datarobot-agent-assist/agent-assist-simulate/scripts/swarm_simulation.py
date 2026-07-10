@@ -140,6 +140,7 @@ class Fix:
 class ConvergenceResult:
     resolved: list[ScenarioResult] = field(default_factory=list)
     exhausted: list[ScenarioResult] = field(default_factory=list)
+    errors: list[ScenarioResult] = field(default_factory=list)
     patches_applied: list[Fix] = field(default_factory=list)
     final_system_prompt: str = ""
 
@@ -595,6 +596,7 @@ async def run_convergence_loop(
     patches_applied: list[Fix] = []
     resolved: list[ScenarioResult] = []
     exhausted: list[ScenarioResult] = []
+    errors: list[ScenarioResult] = []
     current_prompt = spec.system_prompt or ""
     iteration_counts: dict[str, int] = {r.scenario.name: 0 for r in failed}
     remaining = list(failed)
@@ -643,14 +645,17 @@ async def run_convergence_loop(
         new_results = await run_simulation([r.scenario for r in active], spec, model)
         remaining = []
         for result in new_results:
-            if result.status == "passed" or not result.breach_detected:
+            if result.status == "passed":
                 resolved.append(result)
+            elif result.status == "error":
+                errors.append(result)
             else:
                 remaining.append(result)
 
     return ConvergenceResult(
         resolved=resolved,
         exhausted=exhausted,
+        errors=errors,
         patches_applied=patches_applied,
         final_system_prompt=current_prompt,
     )
@@ -659,6 +664,26 @@ async def run_convergence_loop(
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
+
+
+def final_results(
+    initial_results: list[ScenarioResult],
+    convergence: ConvergenceResult,
+) -> list[ScenarioResult]:
+    """Return one authoritative final result per scenario in initial-run order."""
+    replacements = {
+        result.scenario.name: result
+        for result in convergence.resolved + convergence.errors
+    }
+    replacements.update(
+        {
+            result.scenario.name: result.model_copy(update={"status": "exhausted"})
+            for result in convergence.exhausted
+        }
+    )
+    return [
+        replacements.get(result.scenario.name, result) for result in initial_results
+    ]
 
 
 def write_report(
@@ -684,9 +709,11 @@ def write_report(
                 report_path.rename(archive)
                 break
 
-    passed = sum(1 for r in results if r.status == "passed")
-    breached = sum(1 for r in results if r.status == "breach")
-    errored = sum(1 for r in results if r.status == "error")
+    outcomes = final_results(results, convergence)
+    passed = sum(1 for r in outcomes if r.status == "passed")
+    unresolved = sum(1 for r in outcomes if r.status in {"breach", "exhausted"})
+    errored = sum(1 for r in outcomes if r.status == "error")
+    outcome_by_name = {result.scenario.name: result for result in outcomes}
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     lines: list[str] = [
@@ -698,10 +725,9 @@ def write_report(
         "## Summary",
         f"- Total scenarios: {len(results)}",
         f"- Passed: {passed}",
-        f"- Breached: {breached}",
+        f"- Unresolved breaches: {unresolved}",
         f"- Errored: {errored}",
         f"- Patches applied: {len(convergence.patches_applied)}",
-        f"- Unresolved: {len(convergence.exhausted)}",
         "",
         "## Results by Scenario",
         "",
@@ -711,13 +737,25 @@ def write_report(
         track = sr.scenario.track
         name = sr.scenario.name
         cap = sr.scenario.capability_targeted or "N/A"
-        lines.append(f"### [{track}] {name} — {sr.status.upper()}")
+        outcome = outcome_by_name[name]
+        lines.append(f"### [{track}] {name} — {outcome.status.upper()}")
         lines.append(f"**Capability targeted:** {cap}")
-        lines.append(f"**Turns run:** {sr.turns_run}")
-        if sr.breach_reason:
-            lines.append(f"**Breach reason:** {sr.breach_reason}")
-            lines.append("**Transcript:**")
+        lines.append(f"**Turns run:** {outcome.turns_run}")
+        if sr.status == "breach" and outcome.status == "passed":
+            lines.append("**Initial result:** Breach resolved during convergence")
+            lines.append(f"**Initial breach reason:** {sr.breach_reason or '(none)'}")
+            lines.append("**Initial breach transcript:**")
             for t in sr.transcript:
+                lines.append(f"> {t['role'].capitalize()}: {t['content']}")
+        elif outcome.breach_reason:
+            reason_label = (
+                "Execution error"
+                if outcome.status == "error"
+                else "Final breach reason"
+            )
+            lines.append(f"**{reason_label}:** {outcome.breach_reason}")
+            lines.append("**Transcript:**")
+            for t in outcome.transcript:
                 lines.append(f"> {t['role'].capitalize()}: {t['content']}")
         lines.append("")
 
@@ -756,7 +794,23 @@ def write_report(
         lines += ["No unresolved scenarios.", ""]
 
     lines += ["## Next Steps", ""]
-    if convergence.exhausted:
+    error_results = [result for result in outcomes if result.status == "error"]
+    if error_results:
+        names = ", ".join(result.scenario.name for result in error_results)
+        lines += [
+            f"Evaluation incomplete — the following scenarios errored: {names}",
+            "Review the execution errors and rerun them before relying on this evaluation.",
+            "",
+        ]
+        if convergence.exhausted:
+            unresolved_names = ", ".join(
+                result.scenario.name for result in convergence.exhausted
+            )
+            lines += [
+                f"These scenarios also require structural changes: {unresolved_names}",
+                "",
+            ]
+    elif convergence.exhausted:
         names = ", ".join(sr.scenario.name for sr in convergence.exhausted)
         lines += [
             f"The following require structural changes beyond system prompt patching: {names}",
@@ -922,8 +976,9 @@ async def _async_main(args: argparse.Namespace) -> None:
         convergence = await run_convergence_loop(failed, spec, model, args.iterations)
     else:
         convergence = ConvergenceResult(
-            resolved=results,
+            resolved=[result for result in results if result.status == "passed"],
             exhausted=[],
+            errors=[result for result in results if result.status == "error"],
             patches_applied=[],
             final_system_prompt=spec.system_prompt or "",
         )
@@ -943,8 +998,14 @@ async def _async_main(args: argparse.Namespace) -> None:
         )
         print(f"\n{len(convergence.patches_applied)} patch(es) applied to {spec_path}")
 
-    passed_count = sum(1 for r in results if r.status == "passed")
-    print(f"\nSimulation complete. {passed_count}/{len(results)} scenarios passed.")
+    outcomes = final_results(results, convergence)
+    passed_count = sum(1 for result in outcomes if result.status == "passed")
+    error_count = sum(1 for result in outcomes if result.status == "error")
+    print(f"\nSimulation complete. {passed_count}/{len(outcomes)} scenarios passed.")
+    if error_count:
+        print(
+            f"{error_count} scenario(s) errored — evaluation incomplete; review and rerun.",
+        )
     if convergence.exhausted:
         print(
             f"{len(convergence.exhausted)} scenario(s) unresolved — structural changes needed."

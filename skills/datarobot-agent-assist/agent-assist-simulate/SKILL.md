@@ -172,6 +172,7 @@ Present the summary to the user:
 - How many scenarios passed / total
 - How many patches were applied
 - How many scenarios remain unresolved (if any), with the structural recommendation for each
+- How many scenarios errored (if any), with the execution error and a warning that the evaluation is incomplete
 
 If patches were applied, `agent_spec.md` has been updated in-place with the hardened system prompt.
 Tell the user: *"Your agent_spec.md has been updated with [N] system prompt patches. Full record in eval_report.md."*
@@ -213,6 +214,10 @@ Surface these gaps to the user if relevant.
 
 ## After Simulation
 
+If any scenarios errored or remain unresolved, state that the evaluation did not fully pass before
+offering next steps. Keep Deploy available, but warn that the agent still has incomplete or failing
+evaluation coverage.
+
 Offer next steps:
 
 ```
@@ -226,4 +231,7 @@ What would you like to do next?
 - If **1**: read `eval_report.md` and present a structured summary to the user.
 - If **2**: return to Step 1 to re-collect configuration (or reuse saved settings) and re-run.
 - If **3**: read `AGENTS.md` for the local test command, display it in a code block, tell the user to run it in a new terminal. Do not run it yourself.
-- If **4**: follow the deploy instructions in `agent-assist-build/SKILL.md`.
+- If **4** and scenarios errored or remain unresolved: repeat the warning and ask whether the user
+  wants to deploy anyway. Stop and wait for confirmation.
+- If **4** and the user confirms, or all scenarios passed: follow the deploy instructions in
+  `agent-assist-build/SKILL.md`.
