@@ -12,8 +12,9 @@ Use this workflow to adversarially test an implemented agent before deployment.
 
 This workflow reads `agent_spec.md` and any generated code (`tools.py`, `agent.py`) to run three
 tracks of automated simulation, then iteratively hardens the agent through a convergence loop —
-patching the system prompt automatically and applying structural code fixes where prompt patching
-isn't sufficient. All configuration is collected through conversation before anything runs.
+patching the system prompt automatically and, where prompt patching isn't sufficient, diagnosing
+structural issues and offering targeted code fixes for user approval. All configuration is
+collected through conversation before anything runs.
 
 ---
 
@@ -53,8 +54,8 @@ Try `uv pip install` first (works in venv environments without pip). If all opti
 2. Confirm the spec has `system_prompt` and at least one tool defined. If either is missing,
    surface the gap and stop.
 3. Check for generated code files: look for `tools.py` and `agent.py` in the working directory.
-   Note which exist — these are the targets for structural code fixes if unresolved scenarios
-   require it after simulation.
+   Note which exist — these are potential targets for structural code fixes if unresolved
+   scenarios require them and the user approves the changes after simulation.
 4. Confirm `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT` are set:
    ```bash
    env | grep -E "DATAROBOT_API_TOKEN|DATAROBOT_ENDPOINT"
@@ -163,7 +164,7 @@ Patches are applied automatically without per-breach approval. Present the outpu
 
 ---
 
-## Step 4 — Report, Spec Update, and Code Fixes
+## Step 4 — Report, Spec Update, and Optional Structural Fixes
 
 When the script finishes it prints a summary line and the path to `eval_report.md`.
 
@@ -175,21 +176,26 @@ Present the summary to the user:
 If patches were applied, `agent_spec.md` has been updated in-place with the hardened system prompt.
 Tell the user: *"Your agent_spec.md has been updated with [N] system prompt patches. Full record in eval_report.md."*
 
-If unresolved scenarios remain, attempt structural code fixes:
+If unresolved scenarios remain, prepare optional structural code fixes:
 
 1. For each unresolved scenario, read its `**Recommendation:**` line from `eval_report.md`. The function to fix is embedded as `Function to fix: <name>` at the end of that line — extract it.
 2. If a `function_hint` is present, search for it in `tools.py` first, then `agent.py`:
    ```bash
-   grep -n "<function_hint>" tools.py agent.py 2>/dev/null
+   rg -n "<function_hint>" tools.py agent.py
    ```
-3. Read the relevant section of the file and apply a targeted fix using the Edit tool.
-4. Tell the user: *"Applied structural fix to `<file>:<function>` for [scenario name]. Reason: [recommendation]."*
+3. Present each unresolved scenario with its remaining risk, structural recommendation, and likely
+   `<file>:<function>` target. Do not edit any implementation file yet.
+4. Ask: *"Would you like me to implement these structural fixes?"* Stop and wait for explicit approval.
+5. If approved, read the relevant sections and apply targeted fixes using the Edit tool. After each
+   change, tell the user: *"Applied structural fix to `<file>:<function>` for [scenario name].
+   Reason: [recommendation]."*
+6. If declined, leave all implementation files unchanged.
 
-After all code fixes are applied, offer to re-run the simulation to verify:
+After approved code fixes are applied, offer to re-run the simulation to verify:
 > "Code fixes applied to [list of files]. Want me to re-run the simulation to confirm these scenarios now pass?"
 
 If no `function_hint` is available for an unresolved scenario, surface the structural recommendation
-to the user and explain it requires a manual code change.
+to the user and explain that it requires a manually identified code change.
 
 ---
 
