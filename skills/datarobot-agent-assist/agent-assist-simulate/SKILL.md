@@ -1,10 +1,11 @@
 # Agent Assist — Simulate
 
-Use this workflow to adversarially test an existing `agent_spec.md` before deployment.
+Use this workflow to adversarially test an existing agent before deployment.
 
-This workflow runs three tracks of automated simulation, then iteratively hardens the agent's
-system prompt through a convergence loop. All configuration is collected through conversation
-before anything runs.
+This workflow reads `agent_spec.md` and any generated code (`tools.py`, `agent.py`) to run three
+tracks of automated simulation, then iteratively hardens the agent through a convergence loop —
+patching the system prompt automatically and applying structural code fixes where prompt patching
+isn't sufficient. All configuration is collected through conversation before anything runs.
 
 ---
 
@@ -43,7 +44,10 @@ Try `uv pip install` first (works in venv environments without pip). If all opti
    this workflow requires a completed spec. Offer to switch to `agent-assist-main` to build one.
 2. Confirm the spec has `system_prompt` and at least one tool defined. If either is missing,
    surface the gap and stop.
-3. Confirm `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT` are set:
+3. Check for generated code files: look for `tools.py` and `agent.py` in the working directory.
+   Note which exist — these are the targets for structural code fixes if unresolved scenarios
+   require it after simulation.
+4. Confirm `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT` are set:
    ```bash
    env | grep -E "DATAROBOT_API_TOKEN|DATAROBOT_ENDPOINT"
    ```
@@ -149,7 +153,7 @@ Patches are applied automatically without per-breach approval. Present the outpu
 
 ---
 
-## Step 4 — Report and Spec Update
+## Step 4 — Report, Spec Update, and Code Fixes
 
 When the script finishes it prints a summary line and the path to `eval_report.md`.
 
@@ -161,8 +165,21 @@ Present the summary to the user:
 If patches were applied, `agent_spec.md` has been updated in-place with the hardened system prompt.
 Tell the user: *"Your agent_spec.md has been updated with [N] system prompt patches. Full record in eval_report.md."*
 
-If unresolved scenarios remain, name them explicitly and explain why prompt patching couldn't fix
-them (the script includes a structural diagnosis per unresolved scenario).
+If unresolved scenarios remain, attempt structural code fixes:
+
+1. For each unresolved scenario, read its structural recommendation and `function_hint` from `eval_report.md`.
+2. If a `function_hint` is present, search for it in `tools.py` first, then `agent.py`:
+   ```bash
+   grep -n "<function_hint>" tools.py agent.py 2>/dev/null
+   ```
+3. Read the relevant section of the file and apply a targeted fix using the Edit tool.
+4. Tell the user: *"Applied structural fix to `<file>:<function>` for [scenario name]. Reason: [recommendation]."*
+
+After all code fixes are applied, offer to re-run the simulation to verify:
+> "Code fixes applied to [list of files]. Want me to re-run the simulation to confirm these scenarios now pass?"
+
+If no `function_hint` is available for an unresolved scenario, surface the structural recommendation
+to the user and explain it requires a manual code change.
 
 ---
 
