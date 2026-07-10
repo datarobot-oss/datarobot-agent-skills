@@ -12,51 +12,49 @@ description: >-
 
 # DataRobot Agent Assist
 
-This skill contains two workflows. Read this file first, then follow the instructions in the
-relevant sub-skill file based on what the user wants to do.
+## On Activation
 
-## Workflows
+First, check whether the user's message already implies a clear intent:
 
-### 1. `agent-assist-main` — Build or modify an agent
+**If intent is clear** — route directly without showing the menu. Clear intents:
+- Design / build / create an agent → read `agent-assist-main/SKILL.md`, jump to Clarification Phase
+- Code / implement an agent → read `agent-assist-main/SKILL.md`, jump to 2. Coding an AI Agent
+- Battle-test / simulate / swarm / harden / test my agent → read `agent-assist-simulate/SKILL.md`, jump to Pre-flight Check
+- Deploy an agent → read `agent-assist-main/SKILL.md`, jump to 3. Deploying an AI Agent
 
-Use when the user wants to:
-- Design a new AI agent
-- Create or update `agent_spec.md`
-- Run dress rehearsal simulation (interactive, pre-coding)
-- Write or modify agent code using the DataRobot template
-- Deploy an agent to DataRobot
+**If intent is unclear** (e.g. bare `/datarobot-agent-assist` with no context, or a vague message like "help" or "get started") — present this menu before reading any sub-skill file:
 
-**→ Read and follow `agent-assist-main/SKILL.md`**
+```
+Welcome! I help you design, build, and deploy AI agents on DataRobot.
 
-### 2. `agent-assist-simulate` — Test an existing agent
+What would you like to do?
+  1. Design an agent        — describe your idea and build agent_spec.md
+  2. Code the agent         — implement an existing agent_spec.md
+  3. Battle-test the agent  — adversarial and edge case testing before deploying
+  4. Deploy                 — deploy your agent to DataRobot
+```
 
-Use when the user wants to:
-- Run adversarial swarm simulation against an existing `agent_spec.md`
-- Automatically test for security breaches, behavioral edge cases, and restriction violations
-- Harden the agent's system prompt through the convergence loop
-- Get a simulation report (`eval_report.md`) before deploying
+Once the user selects an option, route using the same table above.
 
-**→ Read and follow `agent-assist-simulate/SKILL.md`**
+In both cases — **skip the sub-skill's own On Activation menu**. The user has already expressed or selected their intent.
 
 ---
 
-## Default workflow
+## Workflows
 
-When the user wants to build a new agent or has no `agent_spec.md` yet:
+### `agent-assist-main` — Design, code, and deploy
 
-1. Follow `agent-assist-main` to design the agent and build `agent_spec.md`.
-2. After the spec is complete, `agent-assist-main` will present next steps — swarm simulation is always one of them, before and after coding.
-3. If the user chooses swarm simulation at any point, follow `agent-assist-simulate`.
-4. After simulation, return to `agent-assist-main` for coding or deployment.
+Read `agent-assist-main/SKILL.md` for options 1, 2, and 4.
 
-## Standalone simulation
+### `agent-assist-simulate` — Battle-test an existing agent
 
-If the user already has an `agent_spec.md` and only wants to test or harden it — skip `agent-assist-main` entirely and go directly to `agent-assist-simulate`. Trigger phrases: "simulate my agent", "swarm simulation", "run swarm", "run adversarial testing", "harden my agent", "test my spec", "test my agent".
+Read `agent-assist-simulate/SKILL.md` for option 3. Also use directly when the user says
+"simulate my agent", "run swarm", "adversarial testing", "harden my agent", or "test my spec" —
+in these cases skip the menu above and go straight to the Pre-flight Check.
 
 ---
 
 ## Important
 
-Do not assume sub-skill instructions are automatically loaded by the harness. This file is the
-routing and composition layer. Always read the relevant sub-skill SKILL.md before proceeding with
-that workflow.
+Do not assume sub-skill instructions are automatically loaded by the harness. Always read the
+relevant sub-skill SKILL.md before proceeding with that workflow.

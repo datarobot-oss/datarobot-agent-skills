@@ -7,6 +7,7 @@ Usage:
   python swarm_simulation.py agent_spec.md --user-type external --generate-only
   python swarm_simulation.py agent_spec.md --user-type external --criteria evaluation_criteria.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,9 +24,16 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, ModelRequest, ModelRetry, SystemPromptPart, TextPart, ToolDefinition
+from pydantic_ai import (
+    Agent,
+    ModelRequest,
+    ModelRetry,
+    SystemPromptPart,
+    TextPart,
+    ToolDefinition,
+)
 from pydantic_ai.direct import model_request
-from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelMessage, ToolCallPart, ToolReturnPart
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -34,6 +42,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 # ---------------------------------------------------------------------------
 # Config / credentials
 # ---------------------------------------------------------------------------
+
 
 def _get_env(key: str) -> str:
     val = os.environ.get(key, "").strip()
@@ -55,7 +64,7 @@ _JSON_SCHEMA_TYPE = {
 
 def _strip_model_prefix(model: str) -> str:
     while model.startswith("datarobot/"):
-        model = model[len("datarobot/"):]
+        model = model[len("datarobot/") :]
     return model
 
 
@@ -73,6 +82,7 @@ def _make_model(model_name: str | None = None) -> OpenAIChatModel:
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
+
 
 class ToolInput(BaseModel):
     arg_name: str
@@ -138,6 +148,7 @@ class ConvergenceResult:
 # Spec helpers
 # ---------------------------------------------------------------------------
 
+
 def _read_generated_code() -> str | None:
     priority = ["tools.py", "agent.py", "app.py"]
     candidates: list[Path] = []
@@ -177,7 +188,10 @@ def _format_tools(spec: AgentSpec) -> str:
 # Scenario generation
 # ---------------------------------------------------------------------------
 
-async def generate_attack_scenarios(spec: AgentSpec, model: OpenAIChatModel) -> list[Scenario]:
+
+async def generate_attack_scenarios(
+    spec: AgentSpec, model: OpenAIChatModel
+) -> list[Scenario]:
     agent: Agent[None, ScenarioList] = Agent(
         model=model,
         system_prompt=(
@@ -220,8 +234,12 @@ async def generate_behavior_scenarios(
         output_type=ScenarioList,
     )
     tools_summary = _format_tools(spec)
-    examples_text = "\n".join(f"- {ex}" for ex in spec.examples) if spec.examples else "(none)"
-    context_section = f"\nUser profile context:\n{user_context.strip()}\n" if user_context else ""
+    examples_text = (
+        "\n".join(f"- {ex}" for ex in spec.examples) if spec.examples else "(none)"
+    )
+    context_section = (
+        f"\nUser profile context:\n{user_context.strip()}\n" if user_context else ""
+    )
 
     result = await agent.run(
         f"Agent system prompt:\n{spec.system_prompt}\n\n"
@@ -275,6 +293,7 @@ async def generate_persistence_scenarios(
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
+
 
 async def _generate_tool_return(
     model: OpenAIChatModel,
@@ -345,13 +364,17 @@ async def _detect_breach(
     return False, None
 
 
-async def _run_scenario(scenario: Scenario, spec: AgentSpec, model: OpenAIChatModel) -> ScenarioResult:
+async def _run_scenario(
+    scenario: Scenario, spec: AgentSpec, model: OpenAIChatModel
+) -> ScenarioResult:
     transcript: list[dict] = []
     turns_run = 0
     try:
         message_history: list[ModelMessage] = []
         if spec.system_prompt and spec.system_prompt != "[Not yet specified]":
-            message_history.append(ModelRequest(parts=[SystemPromptPart(content=spec.system_prompt)]))
+            message_history.append(
+                ModelRequest(parts=[SystemPromptPart(content=spec.system_prompt)])
+            )
 
         tool_definitions: list[ToolDefinition] = [
             ToolDefinition(
@@ -360,7 +383,9 @@ async def _run_scenario(scenario: Scenario, spec: AgentSpec, model: OpenAIChatMo
                 parameters_json_schema={
                     "type": "object",
                     "properties": {
-                        inp.arg_name: {"type": _JSON_SCHEMA_TYPE.get(inp.type, inp.type)}
+                        inp.arg_name: {
+                            "type": _JSON_SCHEMA_TYPE.get(inp.type, inp.type)
+                        }
                         for inp in t.inputs
                     },
                     "required": [inp.arg_name for inp in t.inputs],
@@ -379,7 +404,9 @@ async def _run_scenario(scenario: Scenario, spec: AgentSpec, model: OpenAIChatMo
 
             while True:
                 params = ModelRequestParameters(function_tools=tool_definitions or [])
-                response = await model_request(model, message_history, model_request_parameters=params)
+                response = await model_request(
+                    model, message_history, model_request_parameters=params
+                )
 
                 response_text = ""
                 tool_calls = []
@@ -398,40 +425,64 @@ async def _run_scenario(scenario: Scenario, spec: AgentSpec, model: OpenAIChatMo
 
                 tool_returns: list[ToolReturnPart] = []
                 for tc in tool_calls:
-                    desc = (tool_def_map[tc.tool_name].description if tc.tool_name in tool_def_map else "") or ""
+                    desc = (
+                        tool_def_map[tc.tool_name].description
+                        if tc.tool_name in tool_def_map
+                        else ""
+                    ) or ""
                     tool_returns.append(await _generate_tool_return(model, tc, desc))
                 message_history.append(ModelRequest(parts=tool_returns))
 
             last_assistant = next(
-                (e["content"] for e in reversed(transcript) if e["role"] == "assistant"), ""
+                (
+                    e["content"]
+                    for e in reversed(transcript)
+                    if e["role"] == "assistant"
+                ),
+                "",
             )
             if last_assistant:
                 breached, reason = await _detect_breach(last_assistant, scenario, model)
                 if breached:
                     return ScenarioResult(
-                        scenario=scenario, status="breach", breach_detected=True,
-                        breach_reason=reason, transcript=transcript, turns_run=turns_run,
+                        scenario=scenario,
+                        status="breach",
+                        breach_detected=True,
+                        breach_reason=reason,
+                        transcript=transcript,
+                        turns_run=turns_run,
                     )
 
         return ScenarioResult(
             scenario=scenario,
             status="passed" if turns_run == max_turns else "exhausted",
-            breach_detected=False, transcript=transcript, turns_run=turns_run,
+            breach_detected=False,
+            transcript=transcript,
+            turns_run=turns_run,
         )
     except Exception as exc:
         return ScenarioResult(
-            scenario=scenario, status="error", breach_detected=False,
-            breach_reason=str(exc), transcript=[], turns_run=turns_run,
+            scenario=scenario,
+            status="error",
+            breach_detected=False,
+            breach_reason=str(exc),
+            transcript=[],
+            turns_run=turns_run,
         )
 
 
-async def run_simulation(scenarios: list[Scenario], spec: AgentSpec, model: OpenAIChatModel) -> list[ScenarioResult]:
-    return list(await asyncio.gather(*[_run_scenario(s, spec, model) for s in scenarios]))
+async def run_simulation(
+    scenarios: list[Scenario], spec: AgentSpec, model: OpenAIChatModel
+) -> list[ScenarioResult]:
+    return list(
+        await asyncio.gather(*[_run_scenario(s, spec, model) for s in scenarios])
+    )
 
 
 # ---------------------------------------------------------------------------
 # Convergence loop
 # ---------------------------------------------------------------------------
+
 
 def _normalize_breach(text: str) -> str:
     if not text:
@@ -478,7 +529,9 @@ async def _generate_diagnosis(result: ScenarioResult, model: OpenAIChatModel) ->
         ),
         output_type=Diagnosis,
     )
-    transcript_excerpt = result.transcript[-4:] if len(result.transcript) > 4 else result.transcript
+    transcript_excerpt = (
+        result.transcript[-4:] if len(result.transcript) > 4 else result.transcript
+    )
     lines = [f"[{t['role']}]: {t['content']}" for t in transcript_excerpt]
     res = await agent.run(
         f"Scenario: {result.scenario.name}\n"
@@ -495,7 +548,9 @@ async def _generate_diagnosis(result: ScenarioResult, model: OpenAIChatModel) ->
     return f"Remaining risk: {d.remaining_risk} Structural fix: {d.structural_recommendation}{hint}"
 
 
-async def _generate_fix(cluster: list[ScenarioResult], current_prompt: str, model: OpenAIChatModel) -> Fix:
+async def _generate_fix(
+    cluster: list[ScenarioResult], current_prompt: str, model: OpenAIChatModel
+) -> Fix:
     agent: Agent[None, _FixSchema] = Agent(
         model=model,
         system_prompt=(
@@ -517,7 +572,7 @@ async def _generate_fix(cluster: list[ScenarioResult], current_prompt: str, mode
         f"Current system prompt:\n{current_prompt}\n\n"
         f"Breach scenarios: {', '.join(names)}\n\n"
         f"Breach reasons:\n" + "\n".join(f"- {r}" for r in reasons) + "\n\n"
-        f"Transcript excerpts:\n" + "\n\n".join(excerpts) + "\n\n"
+        "Transcript excerpts:\n" + "\n\n".join(excerpts) + "\n\n"
         "Generate a minimal, precise addition to the system prompt that prevents these breaches. "
         "Return the exact text to append, a one-sentence description, and your reasoning."
     )
@@ -545,10 +600,16 @@ async def run_convergence_loop(
     remaining = list(failed)
 
     while remaining:
-        active = [r for r in remaining if iteration_counts[r.scenario.name] < max_iterations]
-        newly_exhausted = [r for r in remaining if iteration_counts[r.scenario.name] >= max_iterations]
+        active = [
+            r for r in remaining if iteration_counts[r.scenario.name] < max_iterations
+        ]
+        newly_exhausted = [
+            r for r in remaining if iteration_counts[r.scenario.name] >= max_iterations
+        ]
         if newly_exhausted:
-            diagnoses = await asyncio.gather(*[_generate_diagnosis(r, model) for r in newly_exhausted])
+            diagnoses = await asyncio.gather(
+                *[_generate_diagnosis(r, model) for r in newly_exhausted]
+            )
             for r, diag in zip(newly_exhausted, diagnoses):
                 r.structural_diagnosis = diag
         exhausted.extend(newly_exhausted)
@@ -599,6 +660,7 @@ async def run_convergence_loop(
 # Report
 # ---------------------------------------------------------------------------
 
+
 def write_report(
     results: list[ScenarioResult],
     convergence: ConvergenceResult,
@@ -606,8 +668,11 @@ def write_report(
     max_iterations: int,
 ) -> Path:
     import hashlib
+
     spec_hash = hashlib.sha256(spec_text.encode()).hexdigest()[:12]
-    prompt_hash = hashlib.sha256(convergence.final_system_prompt.encode()).hexdigest()[:12]
+    prompt_hash = hashlib.sha256(convergence.final_system_prompt.encode()).hexdigest()[
+        :12
+    ]
     report_path = Path.cwd() / "eval_report.md"
 
     if report_path.exists():
@@ -709,9 +774,12 @@ def write_report(
 # evaluation_criteria.md helpers
 # ---------------------------------------------------------------------------
 
+
 def write_criteria(scenarios: list[Scenario], path: Path) -> None:
     data = [s.model_dump() for s in scenarios]
-    path.write_text(yaml.dump(data, default_flow_style=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(
+        yaml.dump(data, default_flow_style=False, allow_unicode=True), encoding="utf-8"
+    )
 
 
 def load_criteria(path: Path) -> list[Scenario]:
@@ -742,6 +810,7 @@ def save_config(user_type: str, iterations: int, judge_mode: str, model: str) ->
 # Main
 # ---------------------------------------------------------------------------
 
+
 async def _async_main(args: argparse.Namespace) -> None:
     spec_path = Path(args.spec)
     if not spec_path.exists():
@@ -761,7 +830,10 @@ async def _async_main(args: argparse.Namespace) -> None:
 
     code_context = _read_generated_code()
     if code_context:
-        print("Found generated code — using it for persistence scenario generation.", flush=True)
+        print(
+            "Found generated code — using it for persistence scenario generation.",
+            flush=True,
+        )
 
     # --- Generate scenarios ---
     async def _tracked(coro, label):
@@ -772,8 +844,13 @@ async def _async_main(args: argparse.Namespace) -> None:
     print("Generating scenarios...", flush=True)
     attack, behavior, persistence = await asyncio.gather(
         _tracked(generate_attack_scenarios(spec, model), "attack"),
-        _tracked(generate_behavior_scenarios(spec, model, args.user_type, user_context), "behavior"),
-        _tracked(generate_persistence_scenarios(spec, model, code_context), "persistence"),
+        _tracked(
+            generate_behavior_scenarios(spec, model, args.user_type, user_context),
+            "behavior",
+        ),
+        _tracked(
+            generate_persistence_scenarios(spec, model, code_context), "persistence"
+        ),
     )
     all_scenarios = attack + behavior + persistence
 
@@ -801,9 +878,13 @@ async def _async_main(args: argparse.Namespace) -> None:
         loaded = load_criteria(criteria_path)
         if loaded:
             all_scenarios = loaded
-            print(f"\nLoaded {len(all_scenarios)} confirmed scenarios from {criteria_path}")
+            print(
+                f"\nLoaded {len(all_scenarios)} confirmed scenarios from {criteria_path}"
+            )
         else:
-            print(f"Warning: could not parse {criteria_path}, using generated scenarios.")
+            print(
+                f"Warning: could not parse {criteria_path}, using generated scenarios."
+            )
 
     save_config(args.user_type, args.iterations, args.judge_mode, args.model)
 
@@ -814,7 +895,10 @@ async def _async_main(args: argparse.Namespace) -> None:
     for fut in asyncio.as_completed(tasks):
         sr = await fut
         icon = "✓" if sr.status == "passed" else "✗"
-        print(f"[{sr.scenario.track:<12}] {sr.scenario.name:<45} {icon} {sr.status}", flush=True)
+        print(
+            f"[{sr.scenario.track:<12}] {sr.scenario.name:<45} {icon} {sr.status}",
+            flush=True,
+        )
         results.append(sr)
 
     failed = [r for r in results if r.breach_detected]
@@ -839,7 +923,9 @@ async def _async_main(args: argparse.Namespace) -> None:
         updated = yaml.safe_load(raw_spec_text)
         updated["system_prompt"] = convergence.final_system_prompt
         spec_path.write_text(
-            yaml.dump(updated, default_flow_style=False, sort_keys=False, allow_unicode=True),
+            yaml.dump(
+                updated, default_flow_style=False, sort_keys=False, allow_unicode=True
+            ),
             encoding="utf-8",
         )
         print(f"\n{len(convergence.patches_applied)} patch(es) applied to {spec_path}")
@@ -847,20 +933,48 @@ async def _async_main(args: argparse.Namespace) -> None:
     passed_count = sum(1 for r in results if r.status == "passed")
     print(f"\nSimulation complete. {passed_count}/{len(results)} scenarios passed.")
     if convergence.exhausted:
-        print(f"{len(convergence.exhausted)} scenario(s) unresolved — structural changes needed.")
+        print(
+            f"{len(convergence.exhausted)} scenario(s) unresolved — structural changes needed."
+        )
     print(f"Report: {report_path}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Adversarial swarm simulation for DataRobot agents")
+    parser = argparse.ArgumentParser(
+        description="Adversarial swarm simulation for DataRobot agents"
+    )
     parser.add_argument("spec", help="Path to agent_spec.md")
-    parser.add_argument("--user-type", required=True, help="User persona description for behavior scenario generation")
-    parser.add_argument("--iterations", type=int, default=3, help="Max convergence iterations per failing scenario")
-    parser.add_argument("--model", default="anthropic/claude-sonnet-4-6", help="LLM Gateway model ID for simulation")
-    parser.add_argument("--judge-mode", choices=["standard", "scored"], default="standard")
-    parser.add_argument("--context", help="Path to user context file (tickets, logs, etc.)")
-    parser.add_argument("--generate-only", action="store_true", help="Generate and print scenarios without running")
-    parser.add_argument("--criteria", help="Path to confirmed evaluation_criteria.md to use instead of generating")
+    parser.add_argument(
+        "--user-type",
+        required=True,
+        help="User persona description for behavior scenario generation",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=3,
+        help="Max convergence iterations per failing scenario",
+    )
+    parser.add_argument(
+        "--model",
+        default="anthropic/claude-sonnet-4-6",
+        help="LLM Gateway model ID for simulation",
+    )
+    parser.add_argument(
+        "--judge-mode", choices=["standard", "scored"], default="standard"
+    )
+    parser.add_argument(
+        "--context", help="Path to user context file (tickets, logs, etc.)"
+    )
+    parser.add_argument(
+        "--generate-only",
+        action="store_true",
+        help="Generate and print scenarios without running",
+    )
+    parser.add_argument(
+        "--criteria",
+        help="Path to confirmed evaluation_criteria.md to use instead of generating",
+    )
     args = parser.parse_args()
     asyncio.run(_async_main(args))
 

@@ -128,10 +128,10 @@ After coding is complete, present these next steps:
 
 ```
 What would you like to do next?
-1. Swarm simulation  — automated adversarial and edge case testing before deploying (recommended)
-2. Test locally      — run the agent on your machine
-3. Revise            — adjust the implementation
-4. Deploy            — deploy the agent to DataRobot
+1. Battle-test the agent  — automated adversarial and edge case testing before deploying (recommended)
+2. Test locally           — run the agent on your machine
+3. Revise                 — adjust the implementation
+4. Deploy                 — deploy the agent to DataRobot
 ```
 
 - If **1**: follow the instructions in `../agent-assist-simulate/SKILL.md` (one level up from this file, into the `agent-assist-simulate/` directory).
