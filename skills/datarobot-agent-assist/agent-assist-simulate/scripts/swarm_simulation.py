@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import re
 import string
 import sys
@@ -38,18 +37,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-
-# ---------------------------------------------------------------------------
-# Config / credentials
-# ---------------------------------------------------------------------------
-
-
-def _get_env(key: str) -> str:
-    val = os.environ.get(key, "").strip()
-    if not val:
-        print(f"Error: {key} environment variable is not set.", file=sys.stderr)
-        sys.exit(1)
-    return val
+from env_utils import CredentialError, load_datarobot_credentials
 
 
 _JSON_SCHEMA_TYPE = {
@@ -69,8 +57,12 @@ def _strip_model_prefix(model: str) -> str:
 
 
 def _make_model(model_name: str | None = None) -> OpenAIChatModel:
-    api_token = _get_env("DATAROBOT_API_TOKEN")
-    endpoint = _get_env("DATAROBOT_ENDPOINT").rstrip("/")
+    try:
+        endpoint, api_token = load_datarobot_credentials()
+    except CredentialError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    endpoint = endpoint.rstrip("/")
     llmgw_base = f"{endpoint}/genai/llmgw"
     name = _strip_model_prefix(model_name or "anthropic/claude-sonnet-4-6")
     return OpenAIChatModel(

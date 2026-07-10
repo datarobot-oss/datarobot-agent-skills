@@ -56,11 +56,8 @@ Try `uv pip install` first (works in venv environments without pip). If all opti
 3. Check for generated code files: look for `tools.py` and `agent.py` in the working directory.
    Note which exist — these are potential targets for structural code fixes if unresolved
    scenarios require them and the user approves the changes after simulation.
-4. Confirm `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT` are set:
-   ```bash
-   env | grep -E "DATAROBOT_API_TOKEN|DATAROBOT_ENDPOINT"
-   ```
-   If either is missing, invoke the `datarobot-setup` skill before continuing. Do not print manual export instructions.
+4. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, immediately read
+   and follow `../../datarobot-setup/SKILL.md`, then retry. Never inspect, print, copy, or persist credentials.
 
 ---
 

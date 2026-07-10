@@ -20,11 +20,13 @@ SCRIPT_PATH = (
     / "swarm_simulation.py"
 )
 
+sys.path.insert(0, str(SCRIPT_PATH.parent))
 spec = importlib.util.spec_from_file_location("swarm_simulation", SCRIPT_PATH)
 assert spec and spec.loader
 swarm = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = swarm
 spec.loader.exec_module(swarm)
+env_utils = sys.modules["env_utils"]
 
 
 def scenario_data() -> dict[str, object]:
@@ -55,6 +57,52 @@ def scenario_result(
         transcript=[{"role": "assistant", "content": "test response"}],
         turns_run=1,
     )
+
+
+def test_credentials_prefer_dotenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "DATAROBOT_ENDPOINT=https://dotenv.example\nDATAROBOT_API_TOKEN=dotenv-token\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://env.example")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "env-token")
+
+    assert env_utils.load_datarobot_credentials(env_file) == (
+        "https://dotenv.example",
+        "dotenv-token",
+    )
+
+
+def test_credentials_fall_back_to_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(env_utils, "ensure_env_file", lambda path: None)
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://env.example")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "env-token")
+
+    assert env_utils.load_datarobot_credentials(env_file) == (
+        "https://env.example",
+        "env-token",
+    )
+    assert capsys.readouterr().out == ""
+
+
+def test_credentials_fail_without_printing_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(env_utils, "ensure_env_file", lambda path: None)
+    monkeypatch.delenv("DATAROBOT_ENDPOINT", raising=False)
+    monkeypatch.delenv("DATAROBOT_API_TOKEN", raising=False)
+
+    with pytest.raises(env_utils.CredentialError, match="run datarobot-setup"):
+        env_utils.load_datarobot_credentials(tmp_path / ".env")
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_load_criteria_requires_existing_file(tmp_path: Path) -> None:
