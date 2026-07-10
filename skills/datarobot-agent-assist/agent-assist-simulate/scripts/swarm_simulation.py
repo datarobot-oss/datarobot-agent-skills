@@ -782,16 +782,29 @@ def write_criteria(scenarios: list[Scenario], path: Path) -> None:
     )
 
 
+class CriteriaError(ValueError):
+    """Raised when confirmed evaluation criteria cannot be loaded safely."""
+
+
 def load_criteria(path: Path) -> list[Scenario]:
-    """Minimal parser — re-runs generation if file is missing or malformed."""
+    """Load a non-empty, validated confirmed scenario list."""
     try:
         text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise CriteriaError(f"could not read {path}: {exc}") from exc
+
+    try:
         data = yaml.safe_load(text)
-        if isinstance(data, list):
-            return [Scenario.model_validate(s) for s in data]
-    except Exception:
-        pass
-    return []
+    except yaml.YAMLError as exc:
+        raise CriteriaError(f"{path} contains invalid YAML: {exc}") from exc
+
+    if not isinstance(data, list) or not data:
+        raise CriteriaError(f"{path} must contain a non-empty list of scenarios")
+
+    try:
+        return [Scenario.model_validate(s) for s in data]
+    except Exception as exc:
+        raise CriteriaError(f"{path} contains an invalid scenario: {exc}") from exc
 
 
 def save_config(user_type: str, iterations: int, judge_mode: str, model: str) -> None:
@@ -820,71 +833,71 @@ async def _async_main(args: argparse.Namespace) -> None:
     raw_spec_text = spec_path.read_text(encoding="utf-8")
     spec = _load_spec(spec_path)
 
-    model = _make_model(args.model)
-
-    user_context: str | None = None
-    if args.context:
-        ctx_path = Path(args.context)
-        if ctx_path.exists():
-            user_context = ctx_path.read_text(encoding="utf-8")
-
-    code_context = _read_generated_code()
-    if code_context:
+    all_scenarios: list[Scenario] | None = None
+    if args.criteria:
+        criteria_path = Path(args.criteria)
+        try:
+            all_scenarios = load_criteria(criteria_path)
+        except CriteriaError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(2)
         print(
-            "Found generated code — using it for persistence scenario generation.",
+            f"Loaded {len(all_scenarios)} confirmed scenarios from {criteria_path}",
             flush=True,
         )
 
-    # --- Generate scenarios ---
-    async def _tracked(coro, label):
-        result = await coro
-        print(f"  ✓ {len(result)} {label} scenarios", flush=True)
-        return result
+    model = _make_model(args.model)
 
-    print("Generating scenarios...", flush=True)
-    attack, behavior, persistence = await asyncio.gather(
-        _tracked(generate_attack_scenarios(spec, model), "attack"),
-        _tracked(
-            generate_behavior_scenarios(spec, model, args.user_type, user_context),
-            "behavior",
-        ),
-        _tracked(
-            generate_persistence_scenarios(spec, model, code_context), "persistence"
-        ),
-    )
-    all_scenarios = attack + behavior + persistence
+    if all_scenarios is None:
+        user_context: str | None = None
+        if args.context:
+            ctx_path = Path(args.context)
+            if ctx_path.exists():
+                user_context = ctx_path.read_text(encoding="utf-8")
 
-    print(f"\nGenerated {len(all_scenarios)} scenarios:\n")
-    print(f"ATTACK STRATEGIES ({len(attack)}):")
-    for s in attack:
-        print(f"  • {s.name} [targets: {s.capability_targeted or 'unknown'}]")
-    print(f"\nBEHAVIOR SCENARIOS ({len(behavior)}):")
-    for s in behavior:
-        print(f"  • {s.name}")
-    print(f"\nPERSISTENCE & ESCALATION ({len(persistence)}):")
-    for s in persistence:
-        print(f"  • {s.name} [targets: {s.capability_targeted or 'unknown'}]")
-
-    if args.generate_only:
-        criteria_path = Path("evaluation_criteria.md")
-        write_criteria(all_scenarios, criteria_path)
-        print(f"\nScenario list written to {criteria_path}")
-        print("Review and confirm, then re-run without --generate-only to execute.")
-        return
-
-    # --- Load from confirmed criteria file if provided ---
-    if args.criteria:
-        criteria_path = Path(args.criteria)
-        loaded = load_criteria(criteria_path)
-        if loaded:
-            all_scenarios = loaded
+        code_context = _read_generated_code()
+        if code_context:
             print(
-                f"\nLoaded {len(all_scenarios)} confirmed scenarios from {criteria_path}"
+                "Found generated code — using it for persistence scenario generation.",
+                flush=True,
             )
-        else:
-            print(
-                f"Warning: could not parse {criteria_path}, using generated scenarios."
-            )
+
+        # --- Generate scenarios ---
+        async def _tracked(coro, label):
+            result = await coro
+            print(f"  ✓ {len(result)} {label} scenarios", flush=True)
+            return result
+
+        print("Generating scenarios...", flush=True)
+        attack, behavior, persistence = await asyncio.gather(
+            _tracked(generate_attack_scenarios(spec, model), "attack"),
+            _tracked(
+                generate_behavior_scenarios(spec, model, args.user_type, user_context),
+                "behavior",
+            ),
+            _tracked(
+                generate_persistence_scenarios(spec, model, code_context), "persistence"
+            ),
+        )
+        all_scenarios = attack + behavior + persistence
+
+        print(f"\nGenerated {len(all_scenarios)} scenarios:\n")
+        print(f"ATTACK STRATEGIES ({len(attack)}):")
+        for s in attack:
+            print(f"  • {s.name} [targets: {s.capability_targeted or 'unknown'}]")
+        print(f"\nBEHAVIOR SCENARIOS ({len(behavior)}):")
+        for s in behavior:
+            print(f"  • {s.name}")
+        print(f"\nPERSISTENCE & ESCALATION ({len(persistence)}):")
+        for s in persistence:
+            print(f"  • {s.name} [targets: {s.capability_targeted or 'unknown'}]")
+
+        if args.generate_only:
+            criteria_path = Path("evaluation_criteria.md")
+            write_criteria(all_scenarios, criteria_path)
+            print(f"\nScenario list written to {criteria_path}")
+            print("Review and confirm, then re-run without --generate-only to execute.")
+            return
 
     save_config(args.user_type, args.iterations, args.judge_mode, args.model)
 
@@ -966,12 +979,13 @@ def main() -> None:
     parser.add_argument(
         "--context", help="Path to user context file (tickets, logs, etc.)"
     )
-    parser.add_argument(
+    scenario_source = parser.add_mutually_exclusive_group()
+    scenario_source.add_argument(
         "--generate-only",
         action="store_true",
         help="Generate and print scenarios without running",
     )
-    parser.add_argument(
+    scenario_source.add_argument(
         "--criteria",
         help="Path to confirmed evaluation_criteria.md to use instead of generating",
     )
