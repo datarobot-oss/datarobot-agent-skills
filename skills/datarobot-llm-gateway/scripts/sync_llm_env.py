@@ -15,6 +15,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 INTEGRATION_TO_INFRA = {
     "gateway": "gateway_direct.py",
@@ -107,7 +108,7 @@ def parse_dotenv(path: Path) -> list[str]:
     return kept
 
 
-def build_llm_env(config: dict) -> dict[str, str]:
+def build_llm_env(config: dict[str, Any]) -> dict[str, str]:
     integration = config.get("integration", "").strip()
     if integration not in INTEGRATION_TO_INFRA:
         raise ValueError(
@@ -228,7 +229,7 @@ def main() -> int:
     sync.set_defaults(func=cmd_sync)
 
     args = parser.parse_args()
-    return args.func(args)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":
