@@ -14,7 +14,7 @@ description: >-
 
 ## On Activation
 
-Always present this menu first — before reading any sub-skill file, regardless of what the user said to trigger the skill:
+For broad or ambiguous Agent Assist requests, present this menu before reading a sub-skill file:
 
 ```
 Welcome! I help you design, build, and deploy AI agents on DataRobot.
@@ -30,18 +30,18 @@ Once the user selects an option, read the relevant sub-skill file and jump direc
 
 | Choice | Sub-skill file | Jump to |
 |---|---|---|
-| 1 — Design | `agent-assist-main/SKILL.md` | Clarification Phase |
-| 2 — Code | `agent-assist-main/SKILL.md` | 2. Coding an AI Agent |
+| 1 — Design | `agent-assist-build/SKILL.md` | Clarification Phase |
+| 2 — Code | `agent-assist-build/SKILL.md` | 2. Coding an AI Agent |
 | 3 — Battle-test | `agent-assist-simulate/SKILL.md` | Pre-flight Check |
-| 4 — Deploy | `agent-assist-main/SKILL.md` | 3. Deploying an AI Agent |
+| 4 — Deploy | `agent-assist-build/SKILL.md` | 3. Deploying an AI Agent |
 
 ---
 
 ## Workflows
 
-### `agent-assist-main` — Design, code, and deploy
+### `agent-assist-build` — Design, code, and deploy
 
-Read `agent-assist-main/SKILL.md` for options 1, 2, and 4.
+Read `agent-assist-build/SKILL.md` for options 1, 2, and 4.
 
 ### `agent-assist-simulate` — Battle-test an implemented agent
 

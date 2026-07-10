@@ -8,7 +8,7 @@ description: >-
 
 # Agent Assist — Simulate
 
-Use this workflow to adversarially test an existing agent before deployment.
+Use this workflow to adversarially test an implemented agent before deployment.
 
 This workflow reads `agent_spec.md` and any generated code (`tools.py`, `agent.py`) to run three
 tracks of automated simulation, then iteratively hardens the agent through a convergence loop —
@@ -49,7 +49,7 @@ Try `uv pip install` first (works in venv environments without pip). If all opti
 ## Pre-flight Check
 
 1. Confirm `agent_spec.md` exists in the working directory. If not, tell the user and stop —
-   this workflow requires a completed spec. Offer to switch to `agent-assist-main` to build one.
+   this workflow requires a completed spec. Offer to switch to `agent-assist-build` to build one.
 2. Confirm the spec has `system_prompt` and at least one tool defined. If either is missing,
    surface the gap and stop.
 3. Check for generated code files: look for `tools.py` and `agent.py` in the working directory.
@@ -220,4 +220,4 @@ What would you like to do next?
 - If **1**: read `eval_report.md` and present a structured summary to the user.
 - If **2**: return to Step 1 to re-collect configuration (or reuse saved settings) and re-run.
 - If **3**: read `AGENTS.md` for the local test command, display it in a code block, tell the user to run it in a new terminal. Do not run it yourself.
-- If **4**: follow the deploy instructions in `agent-assist-main/SKILL.md`.
+- If **4**: follow the deploy instructions in `agent-assist-build/SKILL.md`.

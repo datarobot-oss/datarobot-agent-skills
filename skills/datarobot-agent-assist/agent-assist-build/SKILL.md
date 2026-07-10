@@ -1,16 +1,12 @@
 ---
-name: datarobot-agent-assist
+name: datarobot-agent-assist-build
 description: >-
-  Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive
-  model) to DataRobot; mentions agent_spec.md, dr-assist, datarobot-agent-assist, dress rehearsal,
-  or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base
-  agent targeting DataRobot; wants to add an MCP server, backend API, or React frontend to a
-  DataRobot agent application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom
-  application. Covers the full workflow: agent design, agent_spec.md authoring, dress-rehearsal
-  simulation via the DataRobot LLM Gateway, template-based coding, and deployment.
+  Use when the user wants to design, build, code, or deploy an AI agent on DataRobot; mentions
+  agent_spec.md, dress rehearsal, the DataRobot agent template, LangGraph, CrewAI, LlamaIndex, NAT,
+  Base agents, MCP servers, backend APIs, custom frontends, or the DataRobot CLI.
 ---
 
-# DataRobot Agent Assist
+# Agent Assist — Build
 
 This skill merges **agent design, coding, and deployment** with **interactive dress-rehearsal simulation** in one place.
 
