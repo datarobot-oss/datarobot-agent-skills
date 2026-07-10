@@ -22,7 +22,7 @@ Welcome! I help you design, build, and deploy AI agents on DataRobot.
 What would you like to do?
   1. Design an agent        — describe your idea and build agent_spec.md
   2. Code the agent         — implement an existing agent_spec.md
-  3. Battle-test the agent  — adversarial and edge case testing before deploying
+  3. Battle-test the agent  — test an implemented agent before deploying
   4. Deploy                 — deploy your agent to DataRobot
 ```
 
@@ -43,11 +43,13 @@ Once the user selects an option, read the relevant sub-skill file and jump direc
 
 Read `agent-assist-main/SKILL.md` for options 1, 2, and 4.
 
-### `agent-assist-simulate` — Battle-test an existing agent
+### `agent-assist-simulate` — Battle-test an implemented agent
 
 Read `agent-assist-simulate/SKILL.md` for option 3. Also use directly when the user says
-"simulate my agent", "run swarm", "adversarial testing", "harden my agent", or "test my spec" —
-in these cases skip the menu above and go straight to the Pre-flight Check.
+"simulate my agent", "run swarm", "adversarial testing", "harden my agent", or "test my agent".
+Swarm simulation is post-coding only. If implementation code exists, skip the menu and go straight
+to the Pre-flight Check. Otherwise, explain that the agent must be implemented first and route the
+user to option 2.
 
 ---
 

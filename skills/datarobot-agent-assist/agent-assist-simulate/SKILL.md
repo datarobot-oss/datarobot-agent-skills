@@ -1,3 +1,11 @@
+---
+name: datarobot-agent-assist-simulate
+description: >-
+  Use when the user wants to adversarially test, evaluate, or harden an implemented AI agent before
+  deployment; mentions swarm simulation, attack testing, persistence testing, evaluation criteria,
+  or eval_report.md.
+---
+
 # Agent Assist — Simulate
 
 Use this workflow to adversarially test an existing agent before deployment.
