@@ -100,7 +100,7 @@ If `agent_config.yaml` already exists from a previous run, present the saved set
 Run scenario generation:
 
 ```bash
-python -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
+<python> -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
   --user-type <user_type> \
   --iterations <n> \
   --model <model> \
@@ -109,16 +109,18 @@ python -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
   --generate-only
 ```
 
-The script prints the generated scenario list grouped by track:
+The script prints the generated scenario list grouped by track and writes the initial
+`evaluation_criteria.md`. Tracks:
 - **Attack** — tool misuse, scope bypass, data exfiltration, privilege escalation
 - **Behavior** — confused users, contradictory inputs, edge cases
-- **Persistence** — multi-turn escalation against each stated restriction
+- **Persistence** — multi-turn escalation against restrictions found in the spec and implementation code
 
 Present the full list to the user. Ask:
 > "Does this look right? You can say 'add [description]' to include a scenario or 'remove [name]'
 > to drop one. Say 'run it' when ready."
 
-Write the confirmed scenario list to `evaluation_criteria.md` before proceeding.
+Apply any user additions or removals by editing `evaluation_criteria.md` directly using the Edit
+tool before proceeding. Do not re-run generation — edit the file the script already wrote.
 
 ---
 
@@ -126,7 +128,7 @@ Write the confirmed scenario list to `evaluation_criteria.md` before proceeding.
 
 Once the user confirms, use the **Monitor tool** to stream progress live (fall back to Bash if Monitor is unavailable):
 
-- **command:** `python -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md --user-type "<user_type>" --iterations <n> --model <model> --judge-mode <standard|scored> [--context user_context.txt] --criteria evaluation_criteria.md`
+- **command:** `<python> -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md --user-type "<user_type>" --iterations <n> --model <model> --judge-mode <standard|scored> [--context user_context.txt] --criteria evaluation_criteria.md`
 - **description:** `swarm simulation progress`
 - **timeout_ms:** `600000`
 - **persistent:** `false`
@@ -167,7 +169,7 @@ Tell the user: *"Your agent_spec.md has been updated with [N] system prompt patc
 
 If unresolved scenarios remain, attempt structural code fixes:
 
-1. For each unresolved scenario, read its structural recommendation and `function_hint` from `eval_report.md`.
+1. For each unresolved scenario, read its `**Recommendation:**` line from `eval_report.md`. The function to fix is embedded as `Function to fix: <name>` at the end of that line — extract it.
 2. If a `function_hint` is present, search for it in `tools.py` first, then `agent.py`:
    ```bash
    grep -n "<function_hint>" tools.py agent.py 2>/dev/null
@@ -189,7 +191,7 @@ to the user and explain it requires a manual code change.
 |---|---|
 | Attack | No tools defined — generates generic scenarios with no capability targeting |
 | Behavior | No grounding context provided — falls back to generic user archetypes |
-| Persistence | System prompt has no explicit restrictions (`only`, `never`, `cannot`, dollar limits) — sparse output |
+| Persistence | System prompt AND implementation code have no explicit restrictions (`only`, `never`, `cannot`, dollar limits) — both are scanned; sparse output only when neither has restrictions |
 
 Surface these gaps to the user if relevant.
 
@@ -198,6 +200,16 @@ Surface these gaps to the user if relevant.
 ## After Simulation
 
 Offer next steps:
-1. Review `eval_report.md` for the full record
-2. Return to `agent-assist-main` to deploy the hardened agent
-3. Re-run simulation if the user made further changes to the spec
+
+```
+What would you like to do next?
+1. Review eval_report.md     — full transcript, patches applied, and unresolved scenarios
+2. Re-run simulation         — after making further changes to the spec or code
+3. Test locally              — run the agent on your machine before deploying
+4. Deploy                    — deploy the hardened agent to DataRobot
+```
+
+- If **1**: read `eval_report.md` and present a structured summary to the user.
+- If **2**: return to Step 1 to re-collect configuration (or reuse saved settings) and re-run.
+- If **3**: read `AGENTS.md` for the local test command, display it in a code block, tell the user to run it in a new terminal. Do not run it yourself.
+- If **4**: follow the deploy instructions in `agent-assist-main/SKILL.md`.
