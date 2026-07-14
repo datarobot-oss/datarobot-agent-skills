@@ -97,15 +97,19 @@ def test_prepare_writes_isolated_role_inputs(tmp_path: Path) -> None:
     assert "fetch_records" in persistence["implementation_context"]
 
 
-def test_prepare_cli_persists_gateway_compatible_config(tmp_path: Path) -> None:
+def test_prepare_cli_persists_native_config_with_grounding_path(
+    tmp_path: Path,
+) -> None:
     spec_path = write_spec(tmp_path)
     work_dir = tmp_path / ".datarobot" / "swarm"
+    context_path = tmp_path / "user_context.txt"
+    context_path.write_text("Users often omit time ranges.", encoding="utf-8")
 
     result = subprocess.run(
         [
             sys.executable,
             str(SCRIPT_PATH),
-            "prepare",
+            "configure",
             str(spec_path),
             "--user-persona",
             "support analysts",
@@ -113,10 +117,8 @@ def test_prepare_cli_persists_gateway_compatible_config(tmp_path: Path) -> None:
             "4",
             "--judge-mode",
             "scored",
-            "--model",
-            "test-model",
-            "--work-dir",
-            str(work_dir),
+            "--context",
+            str(context_path),
         ],
         cwd=tmp_path,
         check=False,
@@ -125,15 +127,56 @@ def test_prepare_cli_persists_gateway_compatible_config(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    config = yaml.safe_load(
-        (tmp_path / "agent_config.yaml").read_text(encoding="utf-8")
+    config, warnings = artifacts.load_native_config(
+        tmp_path / "agent_config.yaml"
     )
-    assert config == {
-        "user_type": "support analysts",
-        "max_convergence_iterations": 4,
-        "judge_mode": "scored",
-        "llm_judge_model": "test-model",
-    }
+    assert warnings == []
+    assert config.schema_version == 1
+    assert config.persona.description == "support analysts"
+    assert config.grounding.context_path == "user_context.txt"
+    assert config.convergence.max_iterations == 4
+    assert config.evaluation.mode == "scored"
+
+    prepared = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "prepare",
+            str(spec_path),
+            "--work-dir",
+            str(work_dir),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert prepared.returncode == 0
+    assert (work_dir / "behavior-input.json").is_file()
+
+
+def test_prepare_rejects_context_and_work_directory_path_escape(
+    tmp_path: Path,
+) -> None:
+    spec_path = write_spec(tmp_path)
+    outside_context = tmp_path.parent / "outside-context.txt"
+    outside_context.write_text("sensitive", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="grounding context escapes project root"):
+        native.prepare(
+            spec_path,
+            "support analysts",
+            outside_context,
+            tmp_path / ".datarobot" / "swarm",
+        )
+
+    with pytest.raises(ValueError, match="work directory escapes project root"):
+        native.prepare(
+            spec_path,
+            "support analysts",
+            None,
+            tmp_path.parent / "outside-work",
+        )
 
 
 def test_finalize_validates_and_writes_candidates(tmp_path: Path) -> None:
@@ -246,9 +289,30 @@ def test_skill_documents_native_generation_state_transitions() -> None:
     skill = SKILL_PATH.read_text(encoding="utf-8")
 
     assert "Spawn three fresh native subagents in parallel" in skill
+    assert "native_scenarios.py configure" in skill
     assert "native_scenarios.py prepare" in skill
     assert "native_scenarios.py finalize" in skill
     assert "native_scenarios.py confirm" in skill
     assert ".datarobot/swarm/candidates.json" in skill
     assert "Present the grouped candidate list printed by `finalize`" in skill
     assert "Your previous response was rejected: <reason>." in skill
+
+
+def test_skill_is_cut_over_to_native_execution_and_convergence() -> None:
+    skill = SKILL_PATH.read_text(encoding="utf-8")
+
+    assert "native_swarm.py prepare" in skill
+    assert "native_swarm.py aggregate" in skill
+    assert "native_execution.py submit" in skill
+    assert "native_execution.py fail" in skill
+    assert "native_convergence.py initialize" in skill
+    assert "native_convergence.py advance" in skill
+    assert "native_convergence.py fail" in skill
+    assert "native_convergence.py report" in skill
+    assert "at most five worker invocations concurrently" in skill
+    assert "Do not ask for a model" in skill
+    assert "Would you like me to implement these structural fixes?" in skill
+    assert "swarm_simulation.py" not in skill
+    assert "pydantic_ai" not in skill
+    assert "dr auth check" not in skill
+    assert "--model" not in skill

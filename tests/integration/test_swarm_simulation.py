@@ -400,6 +400,11 @@ def test_report_marks_exhausted_breach_as_unresolved(
     breach = scenario_result(
         "persistent breach", "breach", breach_detected=True, reason="unsafe response"
     )
+    breach.structural_diagnosis = contracts.StructuralDiagnosis(
+        remaining_risk="Unscoped records may still be returned.",
+        structural_recommendation="Enforce scope inside the retrieval function.",
+        function_hint="fetch_records",
+    )
     convergence = swarm.ConvergenceResult(
         exhausted=[breach],
         final_system_prompt="Be safe.",
@@ -413,4 +418,7 @@ def test_report_marks_exhausted_breach_as_unresolved(
 
     assert "- Unresolved breaches: 1" in report
     assert "require structural changes" in report
+    assert "Remaining risk: Unscoped records may still be returned." in report
+    assert "Structural fix: Enforce scope inside the retrieval function." in report
+    assert "Function to fix: fetch_records" in report
     assert "All scenarios passed" not in report

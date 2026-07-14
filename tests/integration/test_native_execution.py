@@ -275,6 +275,74 @@ def test_effective_turn_limit_does_not_mutate_confirmed_scenario(
     assert transition["role"] == "evaluator"
 
 
+def test_seeded_matching_fixture_is_reused_without_provider(tmp_path: Path) -> None:
+    spec_path, criteria_path, scenario = write_execution_inputs(tmp_path)
+    run_dir = tmp_path / "rerun"
+    fixture = contracts.ToolFixture(
+        tool_name="fetch_records",
+        args={"limit": 2},
+        return_value={"records": [{"id": "rec-1"}]},
+    )
+    native.initialize(
+        spec_path,
+        criteria_path,
+        scenario.scenario_id,
+        run_dir,
+        fixture_history=[fixture],
+    )
+
+    transition = native.submit(
+        run_dir,
+        write_response(
+            run_dir / "worker-output.json",
+            {
+                "type": "tool_call",
+                "tool_call": {"tool_name": "fetch_records", "args": {"limit": 2}},
+            },
+        ),
+    )
+
+    assert transition["role"] == "runner"
+    assert not (run_dir / "fixture-input.json").exists()
+    state = native.NativeRunState.model_validate(
+        artifacts.load_json(run_dir / native.STATE_FILENAME)
+    )
+    assert state.fixture_history == [fixture]
+    assert state.attempted_tool_calls[0].args == {"limit": 2}
+
+
+def test_seeded_fixture_does_not_match_changed_call(tmp_path: Path) -> None:
+    spec_path, criteria_path, scenario = write_execution_inputs(tmp_path)
+    run_dir = tmp_path / "rerun"
+    native.initialize(
+        spec_path,
+        criteria_path,
+        scenario.scenario_id,
+        run_dir,
+        fixture_history=[
+            contracts.ToolFixture(
+                tool_name="fetch_records",
+                args={"limit": 2},
+                return_value={"records": []},
+            )
+        ],
+    )
+
+    transition = native.submit(
+        run_dir,
+        write_response(
+            run_dir / "worker-output.json",
+            {
+                "type": "tool_call",
+                "tool_call": {"tool_name": "fetch_records", "args": {"limit": 3}},
+            },
+        ),
+    )
+
+    assert transition["role"] == "fixture"
+    assert (run_dir / "fixture-input.json").is_file()
+
+
 def test_fixture_mismatch_does_not_advance_state(tmp_path: Path) -> None:
     run_dir, _, _ = initialize_run(tmp_path)
     response_path = run_dir / "worker-output.json"

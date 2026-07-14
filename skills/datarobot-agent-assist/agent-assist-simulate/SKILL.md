@@ -36,15 +36,17 @@ Resolve the Python binary to use — in order of preference:
 
 Store the resolved binary as `<python>` and use it for all script calls.
 
-Then confirm `pydantic_ai` is available:
+Require Python 3.11 or newer and the deterministic script dependencies:
 ```bash
-<python> -c "import pydantic_ai, yaml" 2>/dev/null \
-  || uv pip install pydantic-ai pyyaml 2>/dev/null \
-  || <python> -m pip install pydantic-ai pyyaml 2>/dev/null \
-  || pip3 install pydantic-ai pyyaml
+<python> -c "import sys; assert sys.version_info >= (3, 11)"
+<python> -c "import pydantic, yaml" 2>/dev/null \
+  || uv pip install pydantic pyyaml \
+  || <python> -m pip install pydantic pyyaml
+<python> -c "import pydantic, yaml"
 ```
 
-Try `uv pip install` first (works in venv environments without pip). If all options fail, tell the user to run `pip install pydantic-ai pyyaml` in their terminal and stop.
+If dependency installation or the version check still fails, surface the error and stop. Simulated
+native execution does not require DataRobot credentials.
 
 ---
 
@@ -64,6 +66,11 @@ Try `uv pip install` first (works in venv environments without pip). If all opti
 Ask the following questions in sequence. Do not run the simulation until all answers are collected.
 Save answers to `agent_config.yaml` automatically after collection.
 
+Before creating new internal artifacts, check for `.datarobot/swarm/runs/`,
+`.datarobot/swarm/results.json`, or `.datarobot/swarm/convergence/state.json`. If present, archive
+the entire `.datarobot/swarm/` directory with a timestamp. Never delete or silently overwrite an
+earlier run.
+
 **Question 1 — User type:**
 
 Read `agent_spec.md` and derive 2–4 user personas specific to this agent's domain. Always append "Other — describe your user segment" as the last option:
@@ -74,7 +81,7 @@ Read `agent_spec.md` and derive 2–4 user personas specific to this agent's dom
 > ...
 > N. Other — describe your user segment"
 
-If the user picks "Other", ask: *"Describe your users in a sentence."* Pass the selected or entered persona description to `--user-persona`.
+If the user picks "Other", ask: *"Describe your users in a sentence."*
 
 **Question 2 — Grounding context (optional):**
 > "Want to ground the behavior scenarios in real user data? Paste customer tickets, support logs,
@@ -87,15 +94,27 @@ path to the script. If they skip, pass no context file.
 > "How many times should I attempt to fix a failing scenario before marking it unresolved?
 > Default is 3."
 
-**Question 4 — Model:**
-> "Which LLM should run the simulation? Default is anthropic/claude-sonnet-4-6. Say 'default' to keep it or paste a model ID from the LLM Gateway catalog."
-
-**Question 5 — Evaluation mode:**
+**Question 4 — Evaluation mode:**
 > "Standard breach detection (pass/fail) or scored evaluation using an LLM judge?
 > Default is standard."
 
-If `agent_config.yaml` already exists from a previous run, present the saved settings first:
-> "Last time: [user_type], [iterations] iterations, [llm_judge_model], [judge_mode]. Same settings or change anything?"
+If `agent_config.yaml` already exists, present its persona, grounding path, convergence iterations,
+and evaluation mode:
+> "Last time: [persona], [context or no context], [iterations] iterations, [evaluation mode].
+> Same settings or change anything?"
+
+After collection, persist the native configuration:
+
+```bash
+<python> <skill_scripts_dir>/native_scenarios.py configure agent_spec.md \
+  --user-persona "<persona>" \
+  --iterations <n> \
+  --judge-mode <standard|scored> \
+  [--context user_context.txt]
+```
+
+Do not ask for a model. Use the active harness model. Capture its identifier later only when the
+harness exposes reliable model metadata; otherwise leave it unknown.
 
 ---
 
@@ -105,11 +124,7 @@ Prepare isolated input packages:
 
 ```bash
 <python> <skill_scripts_dir>/native_scenarios.py prepare agent_spec.md \
-  --user-persona "<user_type>" \
-  --iterations <n> \
-  --model <model> \
-  --judge-mode <standard|scored> \
-  [--context user_context.txt]
+  --config agent_config.yaml
 ```
 
 Spawn three fresh native subagents in parallel:
@@ -149,72 +164,129 @@ generation. When the user confirms, write the authoritative criteria:
 
 ## Step 3 — Run Simulation
 
-Before legacy Gateway execution, run `dr --version` and `dr auth check`. If either fails,
-immediately read and follow `../../datarobot-setup/SKILL.md`, then retry. Never inspect, print,
-copy, or persist credentials.
+Use native code search to identify the agent entry point and relevant implementation files. Pass
+their explicit project-contained paths; do not ask Python to crawl the repository.
 
-Once the user confirms, use the **Monitor tool** to stream progress live (fall back to Bash if Monitor is unavailable):
+Prepare all confirmed scenarios:
 
-- **command:** `<python> -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md --user-type "<user_type>" --iterations <n> --model <model> --judge-mode <standard|scored> [--context user_context.txt] --criteria evaluation_criteria.md`
-- **description:** `swarm simulation progress`
-- **timeout_ms:** `600000`
-- **persistent:** `false`
-
-Relay each notification line to the user as it arrives. Scenario results stream in as they complete:
-```
-[attack]      fetch_records scope bypass          ✓ passed
-[attack]      data exfiltration via summary       ✗ breach
-[behavior]    contradictory request               ✓ passed
-[persistence] refund denial under pressure        ✗ breach
+```bash
+<python> <skill_scripts_dir>/native_swarm.py prepare agent_spec.md \
+  --criteria evaluation_criteria.md \
+  --config agent_config.yaml \
+  --implementation <path> [--implementation <path> ...]
 ```
 
-When you see `Simulation complete.` in the stream, the script has finished — proceed to Step 4.
+Treat stdout as a `SwarmPreparation` JSON object. Surface its warnings. The harness owns an
+in-memory task queue and runs at most five worker invocations concurrently. Only one task for a
+given `run_dir` may be active at a time; Python never schedules workers.
 
-The convergence loop runs automatically on failures. For each breach cluster the script prints:
-```
-──────────────────────────────────────────────
-Fixing: <scenario name>
-Reason: <breach summary>
-Patch: <first 120 chars of system prompt addition>...
+For each task, spawn a fresh leaf subagent with only the role prompt and the JSON object read from
+`input_path`:
+
+- `runner` → `<skill_prompts_dir>/run-scenario.md`
+- `fixture` → `<skill_prompts_dir>/generate-tool-return.md`
+- `evaluator` → `<skill_prompts_dir>/evaluate-result.md`
+
+Do not pass parent-chat history, sibling output, credentials, or evaluation criteria to a runner.
+Save the worker's exact JSON object to the declared `response_path`, then submit it:
+
+```bash
+<python> <skill_scripts_dir>/native_execution.py submit \
+  --run-dir <run_dir> \
+  --response <response_path>
 ```
 
-Patches are applied automatically without per-breach approval. Present the output as it arrives.
+If submit returns `status: next`, enqueue the returned task. If it returns a terminal status, report
+that scenario's progress and do not enqueue another task for it.
+
+On worker-output validation failure, retry that role once with a fresh subagent and the exact same
+input JSON. Append:
+`Your previous response was rejected: <reason>. Correct the response and try again.`
+Overwrite only the declared response file and submit again. After a second rejection, timeout, or
+worker unavailability, record the terminal failure:
+
+```bash
+<python> <skill_scripts_dir>/native_execution.py fail \
+  --run-dir <run_dir> \
+  --reason "<reason>"
+```
+
+When every scenario is terminal, aggregate:
+
+```bash
+<python> <skill_scripts_dir>/native_swarm.py aggregate agent_spec.md \
+  --criteria evaluation_criteria.md \
+  --config agent_config.yaml \
+  --output .datarobot/swarm/results.json
+```
 
 ---
 
-## Step 4 — Report, Spec Update, and Optional Structural Fixes
+## Step 4 — Converge
 
-When the script finishes it prints a summary line and the path to `eval_report.md`.
+Initialize native convergence. Pass `--actual-model` only when the harness exposes reliable model
+metadata; never guess it.
 
-Present the summary to the user:
-- How many scenarios passed / total
-- How many patches were applied
-- How many scenarios remain unresolved (if any), with the structural recommendation for each
-- How many scenarios errored (if any), with the execution error and a warning that the evaluation is incomplete
+```bash
+<python> <skill_scripts_dir>/native_convergence.py initialize agent_spec.md \
+  --criteria evaluation_criteria.md \
+  --config agent_config.yaml \
+  --results .datarobot/swarm/results.json \
+  [--actual-model "<active-model>"]
+```
 
-If patches were applied, `agent_spec.md` has been updated in-place with the hardened system prompt.
-Tell the user: *"Your agent_spec.md has been updated with [N] system prompt patches. Full record in eval_report.md."*
+Process each returned task wave in bounded batches of at most five:
 
-If unresolved scenarios remain, prepare optional structural code fixes:
+- `fixer` → `<skill_prompts_dir>/generate-fix.md`
+- `diagnoser` → `<skill_prompts_dir>/diagnose-failure.md`
+- `runner`, `fixture`, or `evaluator` → the Step 3 scenario-execution loop
 
-1. For each unresolved scenario, read its `**Recommendation:**` line from `eval_report.md`. The function to fix is embedded as `Function to fix: <name>` at the end of that line — extract it.
-2. If a `function_hint` is present, search for it in `tools.py` first, then `agent.py`:
-   ```bash
-   rg -n "<function_hint>" tools.py agent.py
-   ```
-3. Present each unresolved scenario with its remaining risk, structural recommendation, and likely
-   `<file>:<function>` target. Do not edit any implementation file yet.
-4. Ask: *"Would you like me to implement these structural fixes?"* Stop and wait for explicit approval.
-5. If approved, read the relevant sections and apply targeted fixes using the Edit tool. After each
-   change, tell the user: *"Applied structural fix to `<file>:<function>` for [scenario name].
-   Reason: [recommendation]."*
-6. If declined, leave all implementation files unchanged.
+For fixer and diagnoser tasks, give a fresh leaf subagent only its role prompt and declared input
+JSON, then save its exact JSON object to `response_path`. After every fixer/diagnoser wave, or after
+all returned rerun scenarios become terminal, advance:
 
-After approved code fixes are applied, offer to re-run the simulation to verify:
-> "Code fixes applied to [list of files]. Want me to re-run the simulation to confirm these scenarios now pass?"
+```bash
+<python> <skill_scripts_dir>/native_convergence.py advance agent_spec.md
+```
 
-If no `function_hint` is available for an unresolved scenario, surface the structural recommendation
-to the user and explain that it requires a manually identified code change.
+`advance` validates the whole wave before applying prompt patches. Prompt patches are automatic and
+audited; structural implementation changes are not.
+
+On invalid fixer/diagnoser output, retry only that task once using the exact input and rejection note
+from Step 3. After a second rejection, timeout, or worker unavailability:
+
+```bash
+<python> <skill_scripts_dir>/native_convergence.py fail agent_spec.md \
+  --task-id <task_id> \
+  --reason "<reason>"
+```
+
+Continue from the tasks returned by `advance` or `fail` until status is `complete`.
+
+## Step 5 — Report and Optional Structural Fixes
+
+Render the authoritative report:
+
+```bash
+<python> <skill_scripts_dir>/native_convergence.py report agent_spec.md \
+  --output eval_report.md
+```
+
+Use the returned JSON summary as authoritative. Present passed/total, unresolved, exhausted, errored,
+convergence-worker failures, patches applied, readiness, and the report path. Do not independently
+infer readiness.
+
+If prompt patches were applied, explain that `agent_spec.md` was updated and the complete audit is in
+`eval_report.md`.
+
+For every structural diagnosis, present its scenario, remaining risk, recommendation,
+`function_hint`, and likely implementation target. Then ask exactly:
+> "Would you like me to implement these structural fixes?"
+
+Stop and wait. If declined, leave implementation files unchanged. If approved, locate the hinted
+function using native code search, apply only the targeted changes, explain each edit, and offer a
+fresh simulation. A missing `function_hint` is guidance for manual target identification, not
+permission to make a broad code change.
 
 ---
 
@@ -232,15 +304,15 @@ Surface these gaps to the user if relevant.
 
 ## After Simulation
 
-If any scenarios errored or remain unresolved, state that the evaluation did not fully pass before
-offering next steps. Keep Deploy available, but warn that the agent still has incomplete or failing
-evaluation coverage.
+If the report returns `ready: false`, state that the evaluation did not fully pass before offering
+next steps. Keep Deploy available only with the explicit warning that coverage is incomplete or
+failing; never describe the agent as ready.
 
 Offer next steps:
 
 ```
 What would you like to do next?
-1. Review eval_report.md     — full transcript, patches applied, and unresolved scenarios
+1. Review eval_report.md     — outcomes, audit history, and unresolved scenarios
 2. Re-run simulation         — after making further changes to the spec or code
 3. Test locally              — run the agent on your machine before deploying
 4. Deploy                    — deploy the hardened agent to DataRobot
@@ -249,7 +321,7 @@ What would you like to do next?
 - If **1**: read `eval_report.md` and present a structured summary to the user.
 - If **2**: return to Step 1 to re-collect configuration (or reuse saved settings) and re-run.
 - If **3**: read `AGENTS.md` for the local test command, display it in a code block, tell the user to run it in a new terminal. Do not run it yourself.
-- If **4** and scenarios errored or remain unresolved: repeat the warning and ask whether the user
-  wants to deploy anyway. Stop and wait for confirmation.
-- If **4** and the user confirms, or all scenarios passed: follow the deploy instructions in
+- If **4** and `ready` is false: repeat the warning and ask whether the user wants to deploy anyway.
+  Stop and wait for confirmation.
+- If **4** and the user confirms, or `ready` is true: follow the deploy instructions in
   `agent-assist-build/SKILL.md`.

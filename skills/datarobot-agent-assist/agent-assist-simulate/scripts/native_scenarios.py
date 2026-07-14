@@ -16,16 +16,22 @@ from pydantic import ValidationError
 
 from artifacts import (
     load_json,
+    load_native_config,
     load_spec,
     read_generated_code,
-    save_config,
+    save_native_config,
     write_criteria,
     write_json,
 )
 from contracts import (
+    ConvergenceConfig,
+    EvaluationConfig,
+    GroundingConfig,
+    PersonaConfig,
     Scenario,
     ScenarioProposal,
     ScenarioProposalList,
+    SimulationConfig,
     confirm_scenario,
 )
 from prompt_inputs import attack_input, behavior_input, persistence_input
@@ -51,13 +57,19 @@ def prepare(
     work_dir: Path,
 ) -> dict[Role, Path]:
     """Write minimal input packages for the three scenario generators."""
-    spec = load_spec(spec_path)
-    grounding_context = (
-        grounding_context_path.read_text(encoding="utf-8")
+    resolved_spec = spec_path.resolve()
+    project_root = resolved_spec.parent
+    resolved_work_dir = _resolve_under_root(project_root, work_dir, "work directory")
+    resolved_context = (
+        _resolve_project_file(project_root, grounding_context_path, "grounding context")
         if grounding_context_path
         else None
     )
-    implementation_context = read_generated_code(spec_path.parent)
+    spec = load_spec(resolved_spec)
+    grounding_context = (
+        resolved_context.read_text(encoding="utf-8") if resolved_context else None
+    )
+    implementation_context = read_generated_code(project_root)
     packages: dict[Role, dict[str, object]] = {
         "attack": attack_input(spec),
         "behavior": behavior_input(spec, user_persona, grounding_context),
@@ -66,10 +78,70 @@ def prepare(
 
     paths: dict[Role, Path] = {}
     for role, package in packages.items():
-        path = work_dir / f"{role}-input.json"
+        path = resolved_work_dir / f"{role}-input.json"
         write_json(path, package)
         paths[role] = path
     return paths
+
+
+def configure(
+    spec_path: Path,
+    user_persona: str,
+    grounding_context_path: Path | None,
+    iterations: int,
+    judge_mode: Literal["standard", "scored"],
+    output_path: Path,
+) -> Path:
+    """Persist the public native configuration collected by the harness."""
+    project_root = spec_path.resolve().parent
+    resolved_output = _resolve_under_root(
+        project_root, output_path, "simulation config"
+    )
+    context_path = (
+        str(
+            _resolve_project_file(
+                project_root, grounding_context_path, "grounding context"
+            ).relative_to(project_root)
+        )
+        if grounding_context_path
+        else None
+    )
+    save_native_config(
+        SimulationConfig(
+            persona=PersonaConfig(description=user_persona),
+            grounding=GroundingConfig(context_path=context_path),
+            evaluation=EvaluationConfig(mode=judge_mode),
+            convergence=ConvergenceConfig(max_iterations=iterations),
+        ),
+        resolved_output,
+    )
+    return resolved_output
+
+
+def prepare_from_config(
+    spec_path: Path,
+    config_path: Path,
+    work_dir: Path,
+) -> dict[Role, Path]:
+    """Load native configuration and prepare the three generator packages."""
+    project_root = spec_path.resolve().parent
+    resolved_config = _resolve_project_file(
+        project_root, config_path, "simulation config"
+    )
+    config, warnings = load_native_config(resolved_config)
+    for warning in warnings:
+        print(f"warning:{warning}", file=sys.stderr)
+    context_path = (
+        Path(config.grounding.context_path)
+        if config.grounding.context_path is not None
+        else None
+    )
+    return prepare(
+        spec_path,
+        config.persona.description,
+        context_path,
+        work_dir,
+    )
 
 
 def validate_role_output(role: Role, data: object) -> list[ScenarioProposal]:
@@ -132,6 +204,21 @@ def _one_line(exc: Exception) -> str:
     return re.sub(r"\s+", " ", str(exc)).strip()
 
 
+def _resolve_project_file(project_root: Path, path: Path, label: str) -> Path:
+    resolved = _resolve_under_root(project_root, path, label)
+    if not resolved.is_file():
+        raise ValueError(f"{label} does not exist or is not a file: {resolved}")
+    return resolved
+
+
+def _resolve_under_root(project_root: Path, path: Path, label: str) -> Path:
+    candidate = path if path.is_absolute() else project_root / path
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(project_root):
+        raise ValueError(f"{label} escapes project root: {path}")
+    return resolved
+
+
 def _print_candidates(candidates: ScenarioProposalList) -> None:
     for role in ROLES:
         role_scenarios = [
@@ -140,21 +227,38 @@ def _print_candidates(candidates: ScenarioProposalList) -> None:
         print(f"{role.upper()} ({len(role_scenarios)}):")
         for scenario in role_scenarios:
             print(f"- {scenario.name}")
+            print(f"  Capability: {scenario.capability_targeted or 'N/A'}")
+            print(f"  Max turns: {scenario.max_turns}")
+            print("  Turns:")
+            for turn in scenario.turns:
+                print(f"    - {turn}")
+            print(f"  Expected safe behavior: {scenario.expected_safe_behavior}")
+            print("  Breach indicators:")
+            for indicator in scenario.breach_indicators:
+                print(f"    - {indicator}")
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    prepare_parser = subparsers.add_parser("prepare")
-    prepare_parser.add_argument("spec", type=Path)
-    prepare_parser.add_argument("--user-persona", required=True)
-    prepare_parser.add_argument("--context", type=Path)
-    prepare_parser.add_argument("--iterations", type=int, default=3)
-    prepare_parser.add_argument(
+    configure_parser = subparsers.add_parser("configure")
+    configure_parser.add_argument("spec", type=Path)
+    configure_parser.add_argument("--user-persona", required=True)
+    configure_parser.add_argument("--context", type=Path)
+    configure_parser.add_argument("--iterations", type=int, default=3)
+    configure_parser.add_argument(
         "--judge-mode", choices=["standard", "scored"], default="standard"
     )
-    prepare_parser.add_argument("--model", default="anthropic/claude-sonnet-4-6")
+    configure_parser.add_argument(
+        "--output", type=Path, default=Path("agent_config.yaml")
+    )
+
+    prepare_parser = subparsers.add_parser("prepare")
+    prepare_parser.add_argument("spec", type=Path)
+    prepare_parser.add_argument(
+        "--config", type=Path, default=Path("agent_config.yaml")
+    )
     prepare_parser.add_argument(
         "--work-dir", type=Path, default=Path(".datarobot/swarm")
     )
@@ -179,9 +283,18 @@ def main(argv: list[str] | None = None) -> int:
     """Run the internal native-scenario helper."""
     args = _build_parser().parse_args(argv)
     try:
-        if args.command == "prepare":
-            paths = prepare(args.spec, args.user_persona, args.context, args.work_dir)
-            save_config(args.user_persona, args.iterations, args.judge_mode, args.model)
+        if args.command == "configure":
+            config_path = configure(
+                args.spec,
+                args.user_persona,
+                args.context,
+                args.iterations,
+                args.judge_mode,
+                args.output,
+            )
+            print(f"config:{config_path}")
+        elif args.command == "prepare":
+            paths = prepare_from_config(args.spec, args.config, args.work_dir)
             for role in ROLES:
                 print(f"{role}:{paths[role]}")
         elif args.command == "finalize":

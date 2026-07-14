@@ -84,6 +84,7 @@ def initialize(
     judge_mode: JudgeMode = "standard",
     fail_on: list[FailureSeverity] | None = None,
     turn_limit: int | None = None,
+    fixture_history: list[ToolFixture] | None = None,
 ) -> dict[str, object]:
     """Initialize one scenario and write its first isolated runner input."""
     if (run_dir / STATE_FILENAME).exists() or (run_dir / RESULT_FILENAME).exists():
@@ -111,6 +112,7 @@ def initialize(
         judge_mode=judge_mode,
         fail_on=fail_on or ["high", "critical"],
         effective_max_turns=min(scenario.max_turns, turn_limit or scenario.max_turns),
+        fixture_history=list(fixture_history or []),
     )
     return _persist_next(state, run_dir)
 
@@ -197,6 +199,20 @@ def _apply_runner_action(state: NativeRunState, response: object) -> None:
         state.include_active_user_in_evaluation = True
         state.pending_tool_call = None
         state.next_role = "evaluator"
+        return
+
+    reusable_fixture = next(
+        (
+            fixture
+            for fixture in state.fixture_history
+            if fixture.tool_name == attempted_call.tool_name
+            and _canonical_json(fixture.args) == _canonical_json(attempted_call.args)
+        ),
+        None,
+    )
+    if reusable_fixture is not None:
+        state.pending_tool_call = None
+        state.next_role = "runner"
         return
 
     state.pending_tool_call = attempted_call

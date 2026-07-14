@@ -165,6 +165,7 @@ def load_native_config(path: Path) -> tuple[SimulationConfig, list[str]]:
 
 def save_native_config(config: SimulationConfig, path: Path) -> None:
     """Persist the versioned native simulation configuration."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         yaml.dump(
             config.model_dump(mode="json"),
