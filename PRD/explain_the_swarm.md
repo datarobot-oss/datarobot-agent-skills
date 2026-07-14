@@ -132,6 +132,41 @@ fix.
 Contains `remaining_risk` (what the patch couldn't fix), `structural_recommendation` (what code
 change is needed), and optionally `function_hint` (the function name to change).
 
+**ConvergenceTask** — a harness work item returned by the convergence CLI. Like `SwarmTask` but
+for fixer and diagnoser roles. Contains a `task_id` (`fix_<12hex>` or `diag_<12hex>`), the `role`,
+the list of `scenario_ids` it covers, the `input_path` to give the subagent, and the
+`response_path` where the harness writes the subagent's output.
+
+**ConvergencePreparation** — the envelope returned by every convergence CLI call
+(`initialize`, `advance`, `fail`). Contains a `status` (one of `awaiting_fixers`, `rerunning`,
+`awaiting_diagnosers`, `complete`), the `state_path`, and the list of `tasks` for the current
+wave. When `status` is `complete`, `tasks` is empty and convergence is done.
+
+**NativeConvergenceState** — the full convergence state persisted to
+`.datarobot/swarm/convergence/state.json`. Python reads and writes this file atomically. It holds
+the current system prompt, all scenario results, per-scenario iteration counts, all applied patches,
+all worker failures, the spec hash guard values, and rerun directory paths. The harness never reads
+or writes this file directly.
+
+**PromptPatchRecord** — the audit record written for each successful fixer wave. Contains the
+cluster ID, iteration number, timestamp, fixer description and reasoning, the exact patch text
+appended, the scenario IDs it addressed, and SHA-256 hashes of the system prompt before and after.
+Stored in `state.json` and rendered in `eval_report.md`.
+
+**ConvergenceFailure** — written when a fixer or diagnoser worker fails permanently (two rejected
+responses, timeout, or harness calling `native_convergence.py fail`). Records the `task_id`,
+`role`, affected `scenario_ids`, failure reason, and timestamp. Scenarios whose fixer failed
+remain as `breach` permanently and block `ready: true`.
+
+**NativeReportSummary** — the machine-readable JSON printed by `native_convergence.py report`.
+Contains `ready` (bool), `total`, `passed`, `breached`, `exhausted`, `errored`,
+`convergence_failures`, `patches_applied`, and `report_path`. The harness uses `ready` as the
+authoritative readiness signal — it never infers readiness from the counts itself.
+
+**iteration_counts** — a dict in `NativeConvergenceState` mapping each `scenario_id` to the
+number of fixer iterations that have been attempted against it. When this count reaches
+`max_iterations`, the scenario is promoted to `exhausted` and handed to a diagnoser.
+
 ---
 
 ## Phase 1 — Scenario Generation
@@ -196,6 +231,54 @@ has a result, checks no run is still active, and writes `.datarobot/swarm/result
 
 ---
 
+## Phase 3 — Convergence
+
+Convergence tries to fix breached scenarios by iteratively patching the system prompt, then
+diagnoses any that couldn't be fixed. It runs entirely after Phase 2 and never reruns the full
+swarm from scratch.
+
+```
+native_convergence.py initialize  →  wave of ConvergenceTasks (fixers or diagnosers)
+                                      ↓
+[harness] spawn fixer/diagnoser subagents  →  write response_path
+                                      ↓
+native_convergence.py advance     →  validates wave, applies patches, starts reruns
+                                      ↓
+[harness] run rerun scenarios through the Phase 2 loop
+                                      ↓
+native_convergence.py advance     →  promotes exhausted to diagnosers or finishes
+                                      ↓  (repeat until status == complete)
+native_convergence.py report      →  renders eval_report.md, returns NativeReportSummary
+```
+
+**Fixer wave** — `initialize` clusters related breaches by track + capability + normalized breach
+reason. Each cluster becomes one `ConvergenceTask` (role `fixer`). A fixer subagent receives the
+last 3 transcript entries from each affected scenario, the current system prompt, and all prior
+patches. It returns a `FixProposal`. Python validates all fixers in the wave atomically — if any
+is invalid, no patches are applied. On success, each patch is appended to the system prompt and
+written as a `PromptPatchRecord`.
+
+**Rerun wave** — after patches are applied, every scenario that was in the fixer's cluster gets a
+rerun. The rerun uses the patched system prompt and pre-seeds fixture history from the prior run.
+Reruns use the same Phase 2 runner → fixture → evaluator loop, isolated in
+`convergence/runs/<scenario_id>/iteration-<n>/`.
+
+**Diagnoser wave** — scenarios that hit `max_iterations` or whose fixers failed become `exhausted`.
+Each gets one `ConvergenceTask` (role `diagnoser`). A diagnoser subagent reads the full transcript,
+all patches, and the final system prompt. It returns a `StructuralDiagnosis` that Python attaches
+to the `ScenarioResult`. These diagnoses surface in `eval_report.md` as implementation-level
+recommendations requiring user approval.
+
+**Spec hash guard** — `initialize` records a SHA-256 hash of `agent_spec.md`. Every subsequent
+`advance` and `fail` call re-hashes the file and rejects the call if the hash changed. This
+prevents external edits from silently corrupting the convergence state.
+
+**Atomicity** — Python validates every response in a wave before mutating any state. A single
+invalid fixer or diagnoser response aborts the entire wave without touching `agent_spec.md`,
+`state.json`, or any rerun directory.
+
+---
+
 ## Role Isolation Summary
 
 | Role | Sees | Does not see |
@@ -234,8 +317,21 @@ directly — it only acts on what Python confirms is valid.
 │       ├── worker-output.json # last raw worker response (overwritten each turn)
 │       └── result.json        # terminal ScenarioResult (written once, never overwritten)
 └── results.json               # aggregate SwarmResults envelope (written by aggregate)
+convergence/
+│   ├── state.json             # full NativeConvergenceState — owned by Python, never touched by harness
+│   ├── fixers/
+│   │   └── fix_<12hex>/
+│   │       ├── input.json     # fixer subagent input package (breached transcripts, current prompt, prior patches)
+│   │       └── response.json  # harness writes fixer subagent's raw response here
+│   ├── diagnosers/
+│   │   └── <scenario_id>/
+│   │       ├── input.json     # diagnoser subagent input package (full transcript, patches, final prompt)
+│   │       └── response.json
+│   └── runs/
+│       └── <scenario_id>/
+│           └── iteration-<n>/ # isolated rerun directory — same layout as .datarobot/swarm/runs/
 
 evaluation_criteria.md         # confirmed scenarios with stable IDs (user-visible)
 agent_config.yaml              # versioned simulation config (user-visible)
-eval_report.md                 # convergence and patch audit (M7, user-visible)
+eval_report.md                 # convergence and patch audit (user-visible)
 ```
