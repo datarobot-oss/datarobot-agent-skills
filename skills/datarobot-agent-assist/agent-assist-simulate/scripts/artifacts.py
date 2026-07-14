@@ -10,11 +10,15 @@ from typing import Any
 
 import yaml
 
-from contracts import AgentSpec, Scenario
+from contracts import AgentSpec, Scenario, SimulationConfig
 
 
 class CriteriaError(ValueError):
     """Raised when confirmed evaluation criteria cannot be loaded safely."""
+
+
+class ConfigError(ValueError):
+    """Raised when simulation configuration cannot be loaded safely."""
 
 
 def write_json(path: Path, data: object) -> None:
@@ -106,6 +110,69 @@ def save_config(
     destination = path or Path("agent_config.yaml")
     destination.write_text(
         yaml.dump(config, default_flow_style=False), encoding="utf-8"
+    )
+
+
+def load_native_config(path: Path) -> tuple[SimulationConfig, list[str]]:
+    """Load native configuration, migrating legacy Gateway fields in memory."""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ConfigError(f"could not read {path}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path} contains invalid YAML: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ConfigError(f"{path} must contain a configuration mapping")
+    try:
+        if data.get("schema_version") == 1:
+            return SimulationConfig.model_validate(data), []
+        if "user_type" not in data:
+            raise ConfigError(
+                f"{path} is neither schema_version 1 nor a recognized legacy config"
+            )
+        migrated = SimulationConfig.model_validate(
+            {
+                "schema_version": 1,
+                "persona": {"description": data["user_type"]},
+                "grounding": {"context_path": None},
+                "evaluation": {
+                    "mode": data.get("judge_mode", "standard"),
+                    "fail_on": ["high", "critical"],
+                },
+                "convergence": {
+                    "max_iterations": data.get("max_convergence_iterations", 3)
+                },
+                "turn_limits": {"attack": 6, "behavior": 3, "persistence": 6},
+                "execution": {
+                    "mode": "simulated",
+                    "requested_scope": {"tools": [], "resources": []},
+                },
+            }
+        )
+    except ConfigError:
+        raise
+    except Exception as exc:
+        raise ConfigError(f"{path} contains invalid configuration: {exc}") from exc
+
+    warnings = ["Migrated legacy Gateway configuration in memory for native execution."]
+    if data.get("llm_judge_model"):
+        warnings.append(
+            "Ignored legacy llm_judge_model; native execution uses the active harness model."
+        )
+    return migrated, warnings
+
+
+def save_native_config(config: SimulationConfig, path: Path) -> None:
+    """Persist the versioned native simulation configuration."""
+    path.write_text(
+        yaml.dump(
+            config.model_dump(mode="json"),
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
     )
 
 

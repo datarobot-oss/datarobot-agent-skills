@@ -63,6 +63,7 @@ def persistence_input(
 def runner_input(
     spec: AgentSpec,
     scenario: Scenario,
+    effective_max_turns: int,
     current_user_turn: str,
     transcript: list[TranscriptEntry],
     fixture_history: list[ToolFixture],
@@ -71,7 +72,7 @@ def runner_input(
     return {
         "scenario_id": scenario.scenario_id,
         "current_user_turn": current_user_turn,
-        "max_turns": scenario.max_turns,
+        "max_turns": effective_max_turns,
         "system_prompt": spec.system_prompt or "",
         "tools": [tool.model_dump(mode="json") for tool in spec.tools],
         "transcript": [entry.model_dump(mode="json") for entry in transcript],

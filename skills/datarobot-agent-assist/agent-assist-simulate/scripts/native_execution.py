@@ -62,6 +62,7 @@ class NativeRunState(StrictOutput):
     scenario: Scenario
     judge_mode: JudgeMode = "standard"
     fail_on: list[FailureSeverity] = Field(default_factory=_default_fail_on)
+    effective_max_turns: int = Field(ge=1)
     status: Literal["running", "complete", "error"] = "running"
     next_role: Role | None = "runner"
     turn_index: int = Field(default=0, ge=0)
@@ -82,8 +83,11 @@ def initialize(
     run_dir: Path,
     judge_mode: JudgeMode = "standard",
     fail_on: list[FailureSeverity] | None = None,
+    turn_limit: int | None = None,
 ) -> dict[str, object]:
     """Initialize one scenario and write its first isolated runner input."""
+    if (run_dir / STATE_FILENAME).exists() or (run_dir / RESULT_FILENAME).exists():
+        raise ValueError(f"run already initialized: {run_dir}")
     spec = load_spec(spec_path)
     scenarios = load_criteria(criteria_path)
     matching = [
@@ -98,12 +102,15 @@ def initialize(
         raise ValueError(f"scenario {scenario_id} has no user turns")
     if not spec.system_prompt:
         raise ValueError("agent spec is missing system_prompt")
+    if turn_limit is not None and turn_limit < 1:
+        raise ValueError("turn_limit must be at least 1")
 
     state = NativeRunState(
         spec=spec,
         scenario=scenario,
         judge_mode=judge_mode,
         fail_on=fail_on or ["high", "critical"],
+        effective_max_turns=min(scenario.max_turns, turn_limit or scenario.max_turns),
     )
     return _persist_next(state, run_dir)
 
@@ -133,6 +140,16 @@ def submit(run_dir: Path, response_path: Path) -> dict[str, object]:
     return _persist_next(state, run_dir)
 
 
+def fail(run_dir: Path, reason: str) -> dict[str, object]:
+    """Record a terminal external worker failure without overwriting a result."""
+    state = NativeRunState.model_validate(load_json(run_dir / STATE_FILENAME))
+    if state.status != "running" or state.next_role is None:
+        raise ValueError(f"run is already {state.status}")
+    role = state.next_role
+    _record_execution_error(state, f"{role} worker failed: {reason}")
+    return _persist_terminal(state, run_dir)
+
+
 def _apply_runner_action(state: NativeRunState, response: object) -> None:
     action = RUNNER_ACTION_ADAPTER.validate_python(response)
     state.turns_run = max(state.turns_run, state.turn_index + 1)
@@ -147,7 +164,9 @@ def _apply_runner_action(state: NativeRunState, response: object) -> None:
         state.turn_index += 1
         state.tool_calls_this_turn = 0
         state.pending_tool_call = None
-        if state.turn_index >= min(len(state.scenario.turns), state.scenario.max_turns):
+        if state.turn_index >= min(
+            len(state.scenario.turns), state.effective_max_turns
+        ):
             state.next_role = "evaluator"
         else:
             state.next_role = "runner"
@@ -274,6 +293,7 @@ def _persist_next(state: NativeRunState, run_dir: Path) -> dict[str, object]:
         package = runner_input(
             state.spec,
             state.scenario,
+            state.effective_max_turns,
             _current_user_turn(state),
             state.transcript,
             state.fixture_history,
@@ -299,8 +319,11 @@ def _persist_next(state: NativeRunState, run_dir: Path) -> dict[str, object]:
     write_json(input_path, package)
     return {
         "status": "next",
+        "scenario_id": state.scenario.scenario_id,
+        "run_dir": str(run_dir),
         "role": state.next_role,
         "input_path": str(input_path),
+        "response_path": str(run_dir / "worker-output.json"),
     }
 
 
@@ -312,6 +335,8 @@ def _persist_terminal(state: NativeRunState, run_dir: Path) -> dict[str, object]
     write_json(result_path, state.result.model_dump(mode="json"))
     response: dict[str, object] = {
         "status": state.status,
+        "scenario_id": state.scenario.scenario_id,
+        "run_dir": str(run_dir),
         "result_path": str(result_path),
     }
     if state.status == "error":
@@ -357,10 +382,15 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["low", "medium", "high", "critical"],
         default=["high", "critical"],
     )
+    initialize_parser.add_argument("--turn-limit", type=int)
 
     submit_parser = subparsers.add_parser("submit")
     submit_parser.add_argument("--run-dir", type=Path, required=True)
     submit_parser.add_argument("--response", type=Path, required=True)
+
+    fail_parser = subparsers.add_parser("fail")
+    fail_parser.add_argument("--run-dir", type=Path, required=True)
+    fail_parser.add_argument("--reason", required=True)
     return parser
 
 
@@ -376,9 +406,12 @@ def main(argv: list[str] | None = None) -> int:
                 args.run_dir,
                 args.judge_mode,
                 args.fail_on,
+                args.turn_limit,
             )
-        else:
+        elif args.command == "submit":
             transition = submit(args.run_dir, args.response)
+        else:
+            transition = fail(args.run_dir, args.reason)
         print(json.dumps(transition, ensure_ascii=False))
         return 0
     except NativeExecutionValidationError as exc:

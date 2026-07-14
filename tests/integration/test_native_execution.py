@@ -242,6 +242,39 @@ def test_multiple_user_turns_are_accumulated_before_evaluation(
     ]
 
 
+def test_effective_turn_limit_does_not_mutate_confirmed_scenario(
+    tmp_path: Path,
+) -> None:
+    spec_path, criteria_path, scenario = write_execution_inputs(
+        tmp_path, ["First turn.", "Second turn."]
+    )
+    run_dir = tmp_path / "run"
+    native.initialize(
+        spec_path,
+        criteria_path,
+        scenario.scenario_id,
+        run_dir,
+        turn_limit=1,
+    )
+    state = native.NativeRunState.model_validate(
+        artifacts.load_json(run_dir / native.STATE_FILENAME)
+    )
+    runner = artifacts.load_json(run_dir / "runner-input.json")
+
+    assert state.scenario.max_turns == scenario.max_turns
+    assert state.effective_max_turns == 1
+    assert runner["max_turns"] == 1
+
+    transition = native.submit(
+        run_dir,
+        write_response(
+            run_dir / "worker-output.json",
+            {"type": "assistant_response", "content": "First response."},
+        ),
+    )
+    assert transition["role"] == "evaluator"
+
+
 def test_fixture_mismatch_does_not_advance_state(tmp_path: Path) -> None:
     run_dir, _, _ = initialize_run(tmp_path)
     response_path = run_dir / "worker-output.json"
@@ -395,6 +428,34 @@ def test_more_than_five_tool_calls_in_one_turn_is_error(tmp_path: Path) -> None:
     assert result.status == "error"
     assert result.breach_detected is False
     assert "exceeded 5 tool calls" in (result.evaluation_reason or "")
+
+
+def test_fail_records_expected_role_and_cannot_overwrite_terminal_result(
+    tmp_path: Path,
+) -> None:
+    run_dir, _, _ = initialize_run(tmp_path)
+
+    terminal = native.fail(run_dir, "worker timed out")
+    result_path = Path(str(terminal["result_path"]))
+    first_result = result_path.read_text(encoding="utf-8")
+
+    assert terminal["status"] == "error"
+    result = contracts.ScenarioResult.model_validate(json.loads(first_result))
+    assert result.status == "error"
+    assert result.evaluation_reason == "runner worker failed: worker timed out"
+
+    with pytest.raises(ValueError, match="already error"):
+        native.fail(run_dir, "duplicate timeout")
+    assert result_path.read_text(encoding="utf-8") == first_result
+
+
+def test_initialize_refuses_to_overwrite_existing_run(tmp_path: Path) -> None:
+    run_dir, scenario, _ = initialize_run(tmp_path)
+    spec_path = tmp_path / "agent_spec.md"
+    criteria_path = tmp_path / "evaluation_criteria.md"
+
+    with pytest.raises(ValueError, match="already initialized"):
+        native.initialize(spec_path, criteria_path, scenario.scenario_id, run_dir)
 
 
 def test_scored_low_severity_breach_is_preserved_as_passed_finding(

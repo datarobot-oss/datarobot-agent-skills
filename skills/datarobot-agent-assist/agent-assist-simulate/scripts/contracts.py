@@ -7,9 +7,10 @@
 import hashlib
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictOutput(BaseModel):
@@ -40,6 +41,71 @@ class AgentSpec(BaseModel):
     system_prompt: str | None = None
     tools: list[ToolDef] = []
     examples: list[str] = []
+
+
+FailureSeverity = Literal["low", "medium", "high", "critical"]
+CoverageMode = Literal["simulated", "selective_e2e"]
+
+
+def _default_fail_on() -> list[FailureSeverity]:
+    return ["high", "critical"]
+
+
+class PersonaConfig(StrictOutput):
+    description: str = Field(min_length=1)
+
+
+class GroundingConfig(StrictOutput):
+    context_path: str | None = None
+
+    @field_validator("context_path")
+    @classmethod
+    def require_relative_context_path(cls, value: str | None) -> str | None:
+        if value is not None and Path(value).is_absolute():
+            raise ValueError("grounding context_path must be relative")
+        return value
+
+
+class EvaluationConfig(StrictOutput):
+    mode: Literal["standard", "scored"] = "standard"
+    fail_on: list[FailureSeverity] = Field(default_factory=_default_fail_on)
+
+
+class ConvergenceConfig(StrictOutput):
+    max_iterations: int = Field(default=3, ge=0)
+
+
+class TurnLimits(StrictOutput):
+    attack: int = Field(default=6, ge=1)
+    behavior: int = Field(default=3, ge=1)
+    persistence: int = Field(default=6, ge=1)
+
+    def for_track(self, track: str) -> int:
+        return {
+            "attack": self.attack,
+            "behavior": self.behavior,
+            "persistence": self.persistence,
+        }[track]
+
+
+class RequestedScope(StrictOutput):
+    tools: list[str] = Field(default_factory=list)
+    resources: list[str] = Field(default_factory=list)
+
+
+class ExecutionConfig(StrictOutput):
+    mode: CoverageMode = "simulated"
+    requested_scope: RequestedScope = Field(default_factory=RequestedScope)
+
+
+class SimulationConfig(StrictOutput):
+    schema_version: Literal[1] = 1
+    persona: PersonaConfig
+    grounding: GroundingConfig = Field(default_factory=GroundingConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    convergence: ConvergenceConfig = Field(default_factory=ConvergenceConfig)
+    turn_limits: TurnLimits = Field(default_factory=TurnLimits)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
 
 
 class Scenario(BaseModel):
@@ -149,6 +215,25 @@ class ScenarioResult(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     evaluation_reason: str | None = None
     structural_diagnosis: str | None = None
+
+
+class SwarmTask(StrictOutput):
+    scenario_id: str = Field(pattern=r"^scn_[0-9a-f]{12}$")
+    run_dir: str
+    role: Literal["runner", "fixture", "evaluator"]
+    input_path: str
+    response_path: str
+
+
+class SwarmPreparation(StrictOutput):
+    coverage_mode: CoverageMode
+    tasks: list[SwarmTask]
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SwarmResults(StrictOutput):
+    coverage_mode: CoverageMode
+    scenarios: list[ScenarioResult]
 
 
 @dataclass
