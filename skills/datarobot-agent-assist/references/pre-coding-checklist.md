@@ -51,7 +51,7 @@ Run this checklist when the user enters **[2. Coding an AI Agent](../SKILL.md#2-
 
    a. Explain what was found in `<target_dir>`.
 
-   b. Offer to create the agent in a subdirectory (default name: `BYO-datarobot-agent`). Tell the user that `agent_spec.md` will be **moved** into that subdirectory (not copied) so there is a single project location. Ask the user to confirm or provide a different subdirectory name.
+   b. Offer to create the agent in a subdirectory (default name: `new-datarobot-agent`). Tell the user that `agent_spec.md` will be **moved** into that subdirectory (not copied) so there is a single project location. Ask the user to confirm or provide a different subdirectory name.
 
    c. If the subdirectory already exists: warn that using it will **clear everything** in that subdirectory. Ask for confirmation. If the user declines, ask for a different name or return to the [welcome menu](../SKILL.md#on-activation).
 

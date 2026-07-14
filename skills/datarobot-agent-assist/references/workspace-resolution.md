@@ -2,7 +2,7 @@
 
 Run after menu options **1** (Design) or **2** (Code). Sets `<target_dir>` for the session.
 
-**Default subdirectory name:** `BYO-datarobot-agent`
+**Default subdirectory name:** `new-datarobot-agent`
 
 **After resolution:** all design/code work uses `<target_dir>` — specs at `<target_dir>/agent_spec.md`, helper scripts with `--target-dir <target_dir>`, and `list_llm_models.py` / `rehearsal.py` run from `<target_dir>`.
 
@@ -30,14 +30,14 @@ Option **3** (Deploy) skips this document — see [pre-deployment-checklist.md](
    > Continue editing this spec, or start a new agent in a subdirectory?
 
    - **Continue editing** → Design in `<target_dir>`.
-   - **New agent** → create/use subdirectory (default `BYO-datarobot-agent`), set `<target_dir>`, Design there.
+   - **New agent** → create/use subdirectory (default `new-datarobot-agent`), set `<target_dir>`, Design there.
 
 ### Design — no spec in cwd
 
 Ask:
 
 > Where would you like to design your agent?
-> 1. **Subdirectory** (recommended) — e.g. `./BYO-datarobot-agent`
+> 1. **Subdirectory** (recommended) — e.g. `./new-datarobot-agent`
 > 2. **Current directory**
 
 **Subdirectory chosen:**
@@ -61,9 +61,9 @@ Ask:
 
    - If cwd is an **existing template** (git repo, `AGENTS.md` present) → set `<target_dir>` = cwd.
    - Else if cwd contains only `agent_spec.md` and/or `.env` → set `<target_dir>` = cwd.
-   - Else if cwd has other files (conflicting workspace) **and** `./BYO-datarobot-agent/AGENTS.md` exists → set `<target_dir>` = `./BYO-datarobot-agent`. Notify:
+   - Else if cwd has other files (conflicting workspace) **and** `./new-datarobot-agent/AGENTS.md` exists → set `<target_dir>` = `./new-datarobot-agent`. Notify:
 
-     > Found an implemented agent in `./BYO-datarobot-agent`. Continuing there. If `./agent_spec.md` also exists in the current directory, it may be outdated — use `<target_dir>/agent_spec.md`.
+     > Found an implemented agent in `./new-datarobot-agent`. Continuing there. If `./agent_spec.md` also exists in the current directory, it may be outdated — use `<target_dir>/agent_spec.md`.
 
    - Else → set `<target_dir>` = cwd (pre-coding will handle conflicting workspace).
 
