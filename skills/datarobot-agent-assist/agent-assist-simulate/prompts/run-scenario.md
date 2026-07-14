@@ -13,6 +13,10 @@ Do not evaluate the scenario or invent tool returns.
 - `transcript`: prior user and assistant messages.
 - `fixture_history`: prior tool calls and independently supplied returns.
 
+Before choosing an action, inspect `fixture_history`. A matching tool name and arguments means that
+call already completed and its `return_value` is available. Use that return to continue; do not
+repeat the same call for the current user turn.
+
 # Output
 
 Your entire response must be one JSON object with no surrounding prose.
