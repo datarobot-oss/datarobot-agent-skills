@@ -195,6 +195,11 @@ For each task, spawn a fresh leaf subagent with only the role prompt and the JSO
 - `fixture` → `<skill_prompts_dir>/generate-tool-return.md`
 - `evaluator` → `<skill_prompts_dir>/evaluate-result.md`
 
+Fixture workers must synthesize only the minimal fictional data needed for the scenario and replace
+identifying, confidential, credential, or otherwise sensitive values with obvious placeholders or
+redactions. Treat this as a context-dependent worker instruction, not a fixed field-name policy in
+Python.
+
 Do not pass parent-chat history, sibling output, credentials, or evaluation criteria to a runner.
 Save the worker's exact JSON object to the declared `response_path`, then submit it:
 

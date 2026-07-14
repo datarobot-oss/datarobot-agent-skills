@@ -71,7 +71,8 @@ def test_fixture_prompt_requires_minimal_fictional_data() -> None:
 
     assert "fictional, minimal data only" in prompt
     assert "at most three example records" in prompt
-    assert "person@example.invalid" in prompt
+    assert "otherwise sensitive values" in prompt
+    assert "obvious fictional placeholders" in prompt
     assert "no larger than 50 KB" in prompt
 
 

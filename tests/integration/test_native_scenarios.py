@@ -128,9 +128,7 @@ def test_prepare_cli_persists_native_config_with_grounding_path(
     )
 
     assert result.returncode == 0
-    config, warnings = artifacts.load_native_config(
-        tmp_path / "agent_config.yaml"
-    )
+    config, warnings = artifacts.load_native_config(tmp_path / "agent_config.yaml")
     assert warnings == []
     assert config.schema_version == 1
     assert config.persona.description == "support analysts"
