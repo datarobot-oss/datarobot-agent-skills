@@ -127,6 +127,12 @@ Prepare isolated input packages:
   --config agent_config.yaml
 ```
 
+Use one global worker queue for every subagent invocation in Steps 2–4. The hard cap is five active
+workers across generators, scenario roles, convergence roles, and retries combined. Before every
+spawn, count all unfinished workers; launch only into the available slots. If all five slots are
+occupied, wait for one to finish before launching another. Queue retries behind the same cap—never
+launch an extra retry alongside five active workers.
+
 Spawn three fresh native subagents in parallel:
 
 - Attack: `<skill_prompts_dir>/generate-attack.md` with `.datarobot/swarm/attack-input.json`
@@ -176,9 +182,11 @@ Prepare all confirmed scenarios:
   --implementation <path> [--implementation <path> ...]
 ```
 
-Treat stdout as a `SwarmPreparation` JSON object. Surface its warnings. The harness owns an
-in-memory task queue and runs at most five worker invocations concurrently. Only one task for a
-given `run_dir` may be active at a time; Python never schedules workers.
+Treat stdout as a `SwarmPreparation` JSON object. Surface its warnings. Add all returned tasks to
+the global worker queue defined in Step 2. Dispatch no more than the currently available slots, and
+refill one slot only after an active worker finishes. A retry is a new queued invocation and counts
+toward the same five-worker cap. Only one task for a given `run_dir` may be active at a time; Python
+never schedules workers.
 
 For each task, spawn a fresh leaf subagent with only the role prompt and the JSON object read from
 `input_path`:
@@ -240,7 +248,9 @@ metadata; never guess it.
   [--actual-model "<active-model>"]
 ```
 
-Process each returned task wave in bounded batches of at most five:
+Add each returned task wave to the same global worker queue and process it with the five-worker hard
+cap. Do not start the next wave until all tasks in the current wave have reached a submitted or
+failed terminal transition:
 
 - `fixer` → `<skill_prompts_dir>/generate-fix.md`
 - `diagnoser` → `<skill_prompts_dir>/diagnose-failure.md`

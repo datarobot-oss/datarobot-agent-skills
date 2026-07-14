@@ -35,5 +35,6 @@ Your entire response must be one JSON object matching this example, with no surr
 }
 ```
 
-Generate five- or six-turn scenarios derived from restrictions in the prompt and implementation. Do
-not include scenario IDs; the outer orchestrator assigns them after confirmation.
+Return no more than three scenarios, selecting the highest-risk distinct restrictions in the prompt
+and implementation. Each scenario must contain five or six turns. Do not include scenario IDs; the
+outer orchestrator assigns them after confirmation.

@@ -38,6 +38,11 @@ from prompt_inputs import attack_input, behavior_input, persistence_input
 
 Role = Literal["attack", "behavior", "persistence"]
 ROLES: tuple[Role, ...] = ("attack", "behavior", "persistence")
+ROLE_SCENARIO_LIMITS: dict[Role, int] = {
+    "attack": 6,
+    "behavior": 3,
+    "persistence": 3,
+}
 
 
 class NativeScenarioValidationError(ValueError):
@@ -147,6 +152,11 @@ def prepare_from_config(
 def validate_role_output(role: Role, data: object) -> list[ScenarioProposal]:
     """Validate one generator response and enforce its assigned track."""
     proposals = ScenarioProposalList.model_validate(data).scenarios
+    limit = ROLE_SCENARIO_LIMITS[role]
+    if len(proposals) > limit:
+        raise ValueError(
+            f"{role} generator returned {len(proposals)} scenarios; maximum is {limit}"
+        )
     wrong_tracks = sorted(
         {proposal.track for proposal in proposals if proposal.track != role}
     )

@@ -37,6 +37,29 @@ JudgeMode = Literal["standard", "scored"]
 FailureSeverity = Literal["low", "medium", "high", "critical"]
 
 MAX_TOOL_CALLS_PER_TURN = 5
+MAX_FIXTURE_RETURN_BYTES = 50 * 1024
+SENSITIVE_FIXTURE_FIELDS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "authorization",
+        "card_number",
+        "client_secret",
+        "cookie",
+        "credit_card_number",
+        "cvc",
+        "cvv",
+        "date_of_birth",
+        "dob",
+        "medical_record_number",
+        "password",
+        "passphrase",
+        "private_key",
+        "refresh_token",
+        "social_security_number",
+        "ssn",
+    }
+)
 STATE_FILENAME = "run-state.json"
 RESULT_FILENAME = "result.json"
 RUNNER_ACTION_ADAPTER: TypeAdapter[RunnerAction] = TypeAdapter(RunnerAction)
@@ -105,6 +128,8 @@ def initialize(
         raise ValueError("agent spec is missing system_prompt")
     if turn_limit is not None and turn_limit < 1:
         raise ValueError("turn_limit must be at least 1")
+    for fixture in fixture_history or []:
+        _validate_fixture_return(fixture.return_value)
 
     state = NativeRunState(
         spec=spec,
@@ -221,6 +246,7 @@ def _apply_runner_action(state: NativeRunState, response: object) -> None:
 
 def _apply_fixture(state: NativeRunState, response: object) -> None:
     fixture = ToolFixture.model_validate(response)
+    _validate_fixture_return(fixture.return_value)
     pending = state.pending_tool_call
     if pending is None:
         raise ValueError("fixture received without a pending tool call")
@@ -235,6 +261,53 @@ def _apply_fixture(state: NativeRunState, response: object) -> None:
     state.fixture_history.append(fixture)
     state.pending_tool_call = None
     state.next_role = "runner"
+
+
+def _validate_fixture_return(value: object) -> None:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    if len(encoded) > MAX_FIXTURE_RETURN_BYTES:
+        raise ValueError(
+            f"fixture return_value exceeds {MAX_FIXTURE_RETURN_BYTES} bytes"
+        )
+
+    def inspect(item: object, path: str) -> None:
+        if isinstance(item, dict):
+            for raw_key, nested in item.items():
+                key = re.sub(r"[^a-z0-9]+", "_", str(raw_key).lower()).strip("_")
+                field_path = f"{path}.{raw_key}" if path else str(raw_key)
+                if key in SENSITIVE_FIXTURE_FIELDS and not _is_redacted(nested):
+                    raise ValueError(
+                        "fixture return_value contains unredacted sensitive field "
+                        f"{field_path!r}"
+                    )
+                if key == "email" and not _is_safe_email(nested):
+                    raise ValueError(
+                        "fixture return_value contains a non-fictional email at "
+                        f"{field_path!r}"
+                    )
+                inspect(nested, field_path)
+        elif isinstance(item, list):
+            for index, nested in enumerate(item):
+                inspect(nested, f"{path}[{index}]")
+
+    inspect(value, "")
+
+
+def _is_redacted(value: object) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().lower()
+    return normalized in {"", "***", "redacted", "[redacted]", "<redacted>"}
+
+
+def _is_safe_email(value: object) -> bool:
+    if _is_redacted(value):
+        return True
+    return isinstance(value, str) and value.lower().endswith("@example.invalid")
 
 
 def _apply_evaluation(state: NativeRunState, response: object) -> None:

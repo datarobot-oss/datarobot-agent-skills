@@ -30,5 +30,6 @@ Your entire response must be one JSON object matching this example, with no surr
 }
 ```
 
-Vary the behavioral edge case and opening turn. Do not include scenario IDs; the outer orchestrator
-assigns them after confirmation.
+Return no more than three scenarios. Choose the highest-value distinct behavioral edge cases and
+vary their opening turns. Do not include scenario IDs; the outer orchestrator assigns them after
+confirmation.

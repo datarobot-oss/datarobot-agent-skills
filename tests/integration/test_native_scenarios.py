@@ -5,6 +5,7 @@ import importlib
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import yaml
@@ -216,6 +217,34 @@ def test_finalize_rejects_entire_wrong_track_response(tmp_path: Path) -> None:
     assert not (work_dir / "candidates.json").exists()
 
 
+@pytest.mark.parametrize(
+    ("role", "limit"),
+    [("attack", 6), ("behavior", 3), ("persistence", 3)],
+)
+def test_finalize_rejects_role_output_above_scenario_limit(
+    tmp_path: Path,
+    role: Literal["attack", "behavior", "persistence"],
+    limit: int,
+) -> None:
+    work_dir = tmp_path / ".datarobot" / "swarm"
+    write_role_outputs(work_dir)
+    artifacts.write_json(
+        work_dir / f"{role}-output.json",
+        {
+            "scenarios": [
+                proposal_data(role, f"{role} scenario {index}")
+                for index in range(limit + 1)
+            ]
+        },
+    )
+
+    with pytest.raises(native.NativeScenarioValidationError) as exc_info:
+        native.finalize(work_dir)
+
+    assert exc_info.value.failures[role].endswith(f"maximum is {limit}")
+    assert not (work_dir / "candidates.json").exists()
+
+
 def test_finalize_cli_reports_failed_role(tmp_path: Path) -> None:
     work_dir = tmp_path / ".datarobot" / "swarm"
     write_role_outputs(work_dir)
@@ -309,7 +338,9 @@ def test_skill_is_cut_over_to_native_execution_and_convergence() -> None:
     assert "native_convergence.py advance" in skill
     assert "native_convergence.py fail" in skill
     assert "native_convergence.py report" in skill
-    assert "at most five worker invocations concurrently" in skill
+    assert "one global worker queue" in skill
+    assert "hard cap is five active" in skill
+    assert "A retry is a new queued invocation" in skill
     assert "read it and present `persona.description`" in skill
     assert "the declared `result_path`" in skill
     assert "Before a fixer wave" in skill

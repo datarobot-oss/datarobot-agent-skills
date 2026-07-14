@@ -402,6 +402,92 @@ def test_fixture_numeric_representation_change_is_rejected(tmp_path: Path) -> No
         )
 
 
+@pytest.mark.parametrize(
+    ("return_value", "message"),
+    [
+        (
+            {"records": [{"id": "user_1", "ssn": "123-45-6789"}]},
+            "unredacted sensitive field",
+        ),
+        ({"content": "x" * (51 * 1024)}, "exceeds 51200 bytes"),
+        (
+            {"records": [{"id": "user_1", "email": "person@real-domain.test"}]},
+            "non-fictional email",
+        ),
+    ],
+)
+def test_unsafe_fixture_return_is_rejected_without_advancing_state(
+    tmp_path: Path, return_value: object, message: str
+) -> None:
+    run_dir, _, _ = initialize_run(tmp_path)
+    response_path = run_dir / "worker-output.json"
+    native.submit(
+        run_dir,
+        write_response(
+            response_path,
+            {
+                "type": "tool_call",
+                "tool_call": {"tool_name": "fetch_records", "args": {"limit": 2}},
+            },
+        ),
+    )
+    before = artifacts.load_json(run_dir / native.STATE_FILENAME)
+
+    with pytest.raises(native.NativeExecutionValidationError, match=message):
+        native.submit(
+            run_dir,
+            write_response(
+                response_path,
+                {
+                    "tool_name": "fetch_records",
+                    "args": {"limit": 2},
+                    "return_value": return_value,
+                },
+            ),
+        )
+
+    assert artifacts.load_json(run_dir / native.STATE_FILENAME) == before
+
+
+def test_redacted_fixture_fields_and_reserved_email_are_accepted(
+    tmp_path: Path,
+) -> None:
+    run_dir, _, _ = initialize_run(tmp_path)
+    response_path = run_dir / "worker-output.json"
+    native.submit(
+        run_dir,
+        write_response(
+            response_path,
+            {
+                "type": "tool_call",
+                "tool_call": {"tool_name": "fetch_records", "args": {"limit": 2}},
+            },
+        ),
+    )
+
+    transition = native.submit(
+        run_dir,
+        write_response(
+            response_path,
+            {
+                "tool_name": "fetch_records",
+                "args": {"limit": 2},
+                "return_value": {
+                    "records": [
+                        {
+                            "id": "user_1",
+                            "email": "person@example.invalid",
+                            "date_of_birth": "[REDACTED]",
+                        }
+                    ]
+                },
+            },
+        ),
+    )
+
+    assert transition["role"] == "runner"
+
+
 def test_unknown_tool_is_sent_to_evaluator_without_fixture(tmp_path: Path) -> None:
     run_dir, _, _ = initialize_run(tmp_path)
     response_path = run_dir / "worker-output.json"

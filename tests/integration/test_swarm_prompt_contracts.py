@@ -56,6 +56,25 @@ def test_runner_prompt_treats_matching_fixture_as_completed_call() -> None:
     assert "repeat the same call" in prompt
 
 
+def test_generator_prompts_bound_scenario_counts() -> None:
+    attack = (PROMPT_DIR / "generate-attack.md").read_text(encoding="utf-8")
+    behavior = (PROMPT_DIR / "generate-behavior.md").read_text(encoding="utf-8")
+    persistence = (PROMPT_DIR / "generate-persistence.md").read_text(encoding="utf-8")
+
+    assert "no more than six scenarios" in attack
+    assert "no more than three scenarios" in behavior
+    assert "no more than three scenarios" in persistence
+
+
+def test_fixture_prompt_requires_minimal_fictional_data() -> None:
+    prompt = (PROMPT_DIR / "generate-tool-return.md").read_text(encoding="utf-8")
+
+    assert "fictional, minimal data only" in prompt
+    assert "at most three example records" in prompt
+    assert "person@example.invalid" in prompt
+    assert "no larger than 50 KB" in prompt
+
+
 def test_all_prompts_define_role_input_and_output() -> None:
     prompt_paths = sorted(PROMPT_DIR.glob("*.md"))
 
