@@ -95,7 +95,7 @@ def write_report(
             )
             lines.append("**Initial breach transcript:**")
             for turn in scenario_result.transcript:
-                lines.append(f"> {turn['role'].capitalize()}: {turn['content']}")
+                lines.append(f"> {turn.role.capitalize()}: {turn.content}")
         elif outcome.breach_reason:
             reason_label = (
                 "Execution error"
@@ -105,7 +105,7 @@ def write_report(
             lines.append(f"**{reason_label}:** {outcome.breach_reason}")
             lines.append("**Transcript:**")
             for turn in outcome.transcript:
-                lines.append(f"> {turn['role'].capitalize()}: {turn['content']}")
+                lines.append(f"> {turn.role.capitalize()}: {turn.content}")
         lines.append("")
 
     lines += ["## Patches Applied", ""]

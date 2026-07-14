@@ -30,6 +30,7 @@ env_utils = sys.modules["env_utils"]
 artifacts = sys.modules["artifacts"]
 contracts = sys.modules["contracts"]
 patch_utils = sys.modules["apply_patch"]
+prompt_inputs = sys.modules["prompt_inputs"]
 report_utils = sys.modules["write_report"]
 
 
@@ -69,6 +70,7 @@ def test_deterministic_core_is_reexported() -> None:
     assert swarm.load_criteria is artifacts.load_criteria
     assert swarm.write_report is report_utils.write_report
     assert swarm._normalize_breach is patch_utils.normalize_breach
+    assert swarm._format_tools is prompt_inputs.format_tools
 
 
 def test_prompt_patch_helper_preserves_gateway_behavior() -> None:
@@ -76,6 +78,24 @@ def test_prompt_patch_helper_preserves_gateway_behavior() -> None:
         patch_utils.apply_system_prompt_patch("Be helpful.", "Never expose secrets.")
         == "Be helpful.\nNever expose secrets."
     )
+
+
+def test_format_tools_builds_shared_prompt_input() -> None:
+    agent_spec = contracts.AgentSpec(
+        tools=[
+            contracts.ToolDef(
+                function_name="fetch_records",
+                inputs=[contracts.ToolInput(arg_name="limit", type="int")],
+                out=[contracts.ToolInput(arg_name="records", type="list")],
+            )
+        ]
+    )
+
+    assert (
+        prompt_inputs.format_tools(agent_spec)
+        == "- fetch_records(limit: int) -> (records: list)"
+    )
+    assert prompt_inputs.format_tools(contracts.AgentSpec()) == "(no tools)"
 
 
 def test_update_spec_system_prompt_preserves_other_fields(tmp_path: Path) -> None:

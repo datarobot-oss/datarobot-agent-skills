@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """
 Adversarial swarm simulation for DataRobot agent specs.
 
@@ -52,6 +54,7 @@ from contracts import (
     TranscriptEntry,
 )
 from env_utils import CredentialError, load_datarobot_credentials
+from prompt_inputs import format_tools as _format_tools
 from write_report import final_results, write_report
 
 
@@ -84,20 +87,6 @@ def _make_model(model_name: str | None = None) -> OpenAIChatModel:
         model_name=name,
         provider=OpenAIProvider(base_url=llmgw_base, api_key=api_token),
     )
-
-
-# ---------------------------------------------------------------------------
-# Spec helpers
-# ---------------------------------------------------------------------------
-
-
-def _format_tools(spec: AgentSpec) -> str:
-    lines = []
-    for t in spec.tools:
-        inputs = ", ".join(f"{a.arg_name}: {a.type}" for a in t.inputs)
-        outputs = ", ".join(f"{a.arg_name}: {a.type}" for a in t.out)
-        lines.append(f"- {t.function_name}({inputs}) -> ({outputs})")
-    return "\n".join(lines) if lines else "(no tools)"
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +303,7 @@ async def _run_scenario(
         max_turns = min(scenario.max_turns, len(scenario.turns))
         for turn_idx in range(max_turns):
             user_text = scenario.turns[turn_idx]
-            transcript.append({"role": "user", "content": user_text})
+            transcript.append(TranscriptEntry(role="user", content=user_text))
             message_history.append(ModelRequest.user_text_prompt(user_text))
             turns_run += 1
 
@@ -333,7 +322,9 @@ async def _run_scenario(
                         tool_calls.append(part)
 
                 if response_text:
-                    transcript.append({"role": "assistant", "content": response_text})
+                    transcript.append(
+                        TranscriptEntry(role="assistant", content=response_text)
+                    )
                 message_history.append(response)
 
                 if not tool_calls:
@@ -351,9 +342,9 @@ async def _run_scenario(
 
             last_assistant = next(
                 (
-                    e["content"]
-                    for e in reversed(transcript)
-                    if e["role"] == "assistant"
+                    entry.content
+                    for entry in reversed(transcript)
+                    if entry.role == "assistant"
                 ),
                 "",
             )
@@ -429,7 +420,7 @@ async def _generate_diagnosis(result: ScenarioResult, model: OpenAIChatModel) ->
     transcript_excerpt = (
         result.transcript[-4:] if len(result.transcript) > 4 else result.transcript
     )
-    lines = [f"[{t['role']}]: {t['content']}" for t in transcript_excerpt]
+    lines = [f"[{turn.role}]: {turn.content}" for turn in transcript_excerpt]
     res = await agent.run(
         f"Scenario: {result.scenario.name}\n"
         f"Track: {result.scenario.track}\n"
@@ -462,7 +453,7 @@ async def _generate_fix(
     excerpts = []
     for r in cluster:
         turns = r.transcript[-3:] if len(r.transcript) > 3 else r.transcript
-        lines = [f"  [{t['role']}]: {t['content']}" for t in turns]
+        lines = [f"  [{turn.role}]: {turn.content}" for turn in turns]
         excerpts.append(f"Scenario: {r.scenario.name}\n" + "\n".join(lines))
 
     result = await agent.run(
