@@ -310,6 +310,11 @@ def test_skill_is_cut_over_to_native_execution_and_convergence() -> None:
     assert "native_convergence.py fail" in skill
     assert "native_convergence.py report" in skill
     assert "at most five worker invocations concurrently" in skill
+    assert "read it and present `persona.description`" in skill
+    assert "the declared `result_path`" in skill
+    assert "Before a fixer wave" in skill
+    assert "Before a diagnoser wave" in skill
+    assert "convergence is complete" in skill
     assert "Do not ask for a model" in skill
     assert "Would you like me to implement these structural fixes?" in skill
     assert "swarm_simulation.py" not in skill

@@ -98,8 +98,8 @@ path to the script. If they skip, pass no context file.
 > "Standard breach detection (pass/fail) or scored evaluation using an LLM judge?
 > Default is standard."
 
-If `agent_config.yaml` already exists, present its persona, grounding path, convergence iterations,
-and evaluation mode:
+If `agent_config.yaml` already exists, read it and present `persona.description`,
+`grounding.context_path` (or "no context"), `convergence.max_iterations`, and `evaluation.mode`:
 > "Last time: [persona], [context or no context], [iterations] iterations, [evaluation mode].
 > Same settings or change anything?"
 
@@ -196,8 +196,13 @@ Save the worker's exact JSON object to the declared `response_path`, then submit
   --response <response_path>
 ```
 
-If submit returns `status: next`, enqueue the returned task. If it returns a terminal status, report
-that scenario's progress and do not enqueue another task for it.
+If submit returns `status: next`, enqueue the returned task. If it returns a terminal status, read
+the declared `result_path` to obtain the authoritative scenario track, name, and final outcome.
+Print one progress line and do not enqueue another task for it:
+
+```text
+[<track>] <scenario name>  <✓ passed | ✗ breach | ! error>
+```
 
 On worker-output validation failure, retry that role once with a fresh subagent and the exact same
 input JSON. Append:
@@ -240,6 +245,16 @@ Process each returned task wave in bounded batches of at most five:
 - `fixer` → `<skill_prompts_dir>/generate-fix.md`
 - `diagnoser` → `<skill_prompts_dir>/diagnose-failure.md`
 - `runner`, `fixture`, or `evaluator` → the Step 3 scenario-execution loop
+
+Keep user-facing progress concise:
+
+- Before a fixer wave, read each fixer input's `breached_scenarios` and announce the affected names
+  plus their next iteration from convergence `state.json`.
+- Before reruns, announce the affected scenario IDs and report each terminal rerun using the Step 3
+  progress format.
+- Before a diagnoser wave, read each diagnoser input's scenario and announce which exhausted
+  scenarios are being diagnosed.
+- When `advance` returns `complete`, tell the user convergence is complete.
 
 For fixer and diagnoser tasks, give a fresh leaf subagent only its role prompt and declared input
 JSON, then save its exact JSON object to `response_path`. After every fixer/diagnoser wave, or after
