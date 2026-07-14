@@ -13,14 +13,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
-import string
 import sys
-import yaml
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_ai import (
@@ -37,7 +32,27 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from apply_patch import apply_system_prompt_patch, normalize_breach as _normalize_breach
+from artifacts import (
+    CriteriaError,
+    load_criteria,
+    load_spec as _load_spec,
+    read_generated_code as _read_generated_code,
+    save_config,
+    update_spec_system_prompt,
+    write_criteria,
+)
+from contracts import (
+    AgentSpec,
+    ConvergenceResult,
+    Fix,
+    Scenario,
+    ScenarioList,
+    ScenarioResult,
+    TranscriptEntry,
+)
 from env_utils import CredentialError, load_datarobot_credentials
+from write_report import final_results, write_report
 
 
 _JSON_SCHEMA_TYPE = {
@@ -72,100 +87,8 @@ def _make_model(model_name: str | None = None) -> OpenAIChatModel:
 
 
 # ---------------------------------------------------------------------------
-# Data models
-# ---------------------------------------------------------------------------
-
-
-class ToolInput(BaseModel):
-    arg_name: str
-    type: str
-
-
-class ToolDef(BaseModel):
-    function_name: str
-    inputs: list[ToolInput] = []
-    out: list[ToolInput] = []
-    description: str = ""
-
-
-class AgentSpec(BaseModel):
-    model: str | None = None
-    system_prompt: str | None = None
-    tools: list[ToolDef] = []
-    examples: list[str] = []
-
-
-class Scenario(BaseModel):
-    name: str
-    track: Literal["attack", "behavior", "persistence"]
-    capability_targeted: str | None = None
-    turns: list[str]
-    expected_safe_behavior: str
-    breach_indicators: list[str]
-    max_turns: int = 6
-
-
-class ScenarioList(BaseModel):
-    scenarios: list[Scenario]
-
-
-class ScenarioResult(BaseModel):
-    scenario: Scenario
-    status: Literal["passed", "breach", "error", "exhausted"]
-    breach_detected: bool
-    breach_reason: str | None = None
-    transcript: list[dict]
-    turns_run: int
-    structural_diagnosis: str | None = None
-
-
-@dataclass
-class Fix:
-    scenario_name: str
-    description: str
-    system_prompt_patch: str
-    reasoning: str
-    addresses_scenarios: list[str] = field(default_factory=list)
-
-
-@dataclass
-class ConvergenceResult:
-    resolved: list[ScenarioResult] = field(default_factory=list)
-    exhausted: list[ScenarioResult] = field(default_factory=list)
-    errors: list[ScenarioResult] = field(default_factory=list)
-    patches_applied: list[Fix] = field(default_factory=list)
-    final_system_prompt: str = ""
-
-
-# ---------------------------------------------------------------------------
 # Spec helpers
 # ---------------------------------------------------------------------------
-
-
-def _read_generated_code() -> str | None:
-    priority = ["tools.py", "agent.py", "app.py"]
-    candidates: list[Path] = []
-    cwd = Path.cwd()
-    for name in priority:
-        p = cwd / name
-        if p.is_file():
-            candidates.append(p)
-    if not candidates:
-        return None
-    parts: list[str] = []
-    for p in candidates[:3]:
-        try:
-            lines = p.read_text(encoding="utf-8").splitlines()[:200]
-            parts.append(f"# File: {p.name}\n" + "\n".join(lines) + "\n")
-        except OSError:
-            continue
-    return "\n".join(parts) if parts else None
-
-
-def _load_spec(path: Path) -> AgentSpec:
-    with path.open(encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    return AgentSpec.model_validate(data)
 
 
 def _format_tools(spec: AgentSpec) -> str:
@@ -360,7 +283,7 @@ async def _detect_breach(
 async def _run_scenario(
     scenario: Scenario, spec: AgentSpec, model: OpenAIChatModel
 ) -> ScenarioResult:
-    transcript: list[dict] = []
+    transcript: list[TranscriptEntry] = []
     turns_run = 0
     try:
         message_history: list[ModelMessage] = []
@@ -475,25 +398,6 @@ async def run_simulation(
 # ---------------------------------------------------------------------------
 # Convergence loop
 # ---------------------------------------------------------------------------
-
-
-def _normalize_breach(text: str) -> str:
-    if not text:
-        return ""
-    words = text.split()
-    filtered = []
-    sentence_start = True
-    for word in words:
-        clean = word.strip(string.punctuation)
-        if clean and clean[0].isupper() and not sentence_start:
-            pass
-        else:
-            filtered.append(word.lower())
-        sentence_start = bool(re.search(r"[.!?]\s*$", word))
-    normalized = " ".join(filtered)
-    normalized = re.sub(r"\d+", "", normalized)
-    normalized = re.sub(r"[^\w\s]", "", normalized)
-    return re.sub(r"\s+", " ", normalized).strip()
 
 
 class _FixSchema(BaseModel):
@@ -626,7 +530,9 @@ async def run_convergence_loop(
             if len(fix.system_prompt_patch) > 120:
                 patch_preview += "..."
             print(f"Patch: {patch_preview}", flush=True)
-            current_prompt = current_prompt + "\n" + fix.system_prompt_patch
+            current_prompt = apply_system_prompt_patch(
+                current_prompt, fix.system_prompt_patch
+            )
             patches_applied.append(fix)
 
         spec.system_prompt = current_prompt
@@ -650,218 +556,6 @@ async def run_convergence_loop(
         errors=errors,
         patches_applied=patches_applied,
         final_system_prompt=current_prompt,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Report
-# ---------------------------------------------------------------------------
-
-
-def final_results(
-    initial_results: list[ScenarioResult],
-    convergence: ConvergenceResult,
-) -> list[ScenarioResult]:
-    """Return one authoritative final result per scenario in initial-run order."""
-    replacements = {
-        result.scenario.name: result
-        for result in convergence.resolved + convergence.errors
-    }
-    replacements.update(
-        {
-            result.scenario.name: result.model_copy(update={"status": "exhausted"})
-            for result in convergence.exhausted
-        }
-    )
-    return [
-        replacements.get(result.scenario.name, result) for result in initial_results
-    ]
-
-
-def write_report(
-    results: list[ScenarioResult],
-    convergence: ConvergenceResult,
-    spec_text: str,
-    max_iterations: int,
-) -> Path:
-    import hashlib
-
-    spec_hash = hashlib.sha256(spec_text.encode()).hexdigest()[:12]
-    prompt_hash = hashlib.sha256(convergence.final_system_prompt.encode()).hexdigest()[
-        :12
-    ]
-    report_path = Path.cwd() / "eval_report.md"
-
-    if report_path.exists():
-        existing = report_path.read_text(encoding="utf-8")
-        for line in existing.splitlines()[:10]:
-            m = re.search(r"\*\*Spec hash:\*\*\s*([0-9a-f]+)", line)
-            if m and m.group(1) != spec_hash:
-                archive = Path.cwd() / f"eval_report_{m.group(1)}.md"
-                report_path.rename(archive)
-                break
-
-    outcomes = final_results(results, convergence)
-    passed = sum(1 for r in outcomes if r.status == "passed")
-    unresolved = sum(1 for r in outcomes if r.status in {"breach", "exhausted"})
-    errored = sum(1 for r in outcomes if r.status == "error")
-    outcome_by_name = {result.scenario.name: result for result in outcomes}
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-    lines: list[str] = [
-        "# Evaluation Report",
-        f"**Date:** {timestamp}",
-        f"**Spec hash:** {spec_hash}",
-        f"**System prompt hash:** {prompt_hash}",
-        "",
-        "## Summary",
-        f"- Total scenarios: {len(results)}",
-        f"- Passed: {passed}",
-        f"- Unresolved breaches: {unresolved}",
-        f"- Errored: {errored}",
-        f"- Patches applied: {len(convergence.patches_applied)}",
-        "",
-        "## Results by Scenario",
-        "",
-    ]
-
-    for sr in results:
-        track = sr.scenario.track
-        name = sr.scenario.name
-        cap = sr.scenario.capability_targeted or "N/A"
-        outcome = outcome_by_name[name]
-        lines.append(f"### [{track}] {name} — {outcome.status.upper()}")
-        lines.append(f"**Capability targeted:** {cap}")
-        lines.append(f"**Turns run:** {outcome.turns_run}")
-        if sr.status == "breach" and outcome.status == "passed":
-            lines.append("**Initial result:** Breach resolved during convergence")
-            lines.append(f"**Initial breach reason:** {sr.breach_reason or '(none)'}")
-            lines.append("**Initial breach transcript:**")
-            for t in sr.transcript:
-                lines.append(f"> {t['role'].capitalize()}: {t['content']}")
-        elif outcome.breach_reason:
-            reason_label = (
-                "Execution error"
-                if outcome.status == "error"
-                else "Final breach reason"
-            )
-            lines.append(f"**{reason_label}:** {outcome.breach_reason}")
-            lines.append("**Transcript:**")
-            for t in outcome.transcript:
-                lines.append(f"> {t['role'].capitalize()}: {t['content']}")
-        lines.append("")
-
-    lines += ["## Patches Applied", ""]
-    if convergence.patches_applied:
-        for fix in convergence.patches_applied:
-            addresses = ", ".join(fix.addresses_scenarios) or fix.scenario_name
-            lines += [
-                f"### {fix.description}",
-                f"**Addresses:** {addresses}",
-                f"**Reasoning:** {fix.reasoning}",
-                "**Added to system prompt:**",
-                "```",
-                fix.system_prompt_patch,
-                "```",
-                "",
-            ]
-    else:
-        lines += ["No patches applied.", ""]
-
-    lines += ["## Unresolved Scenarios", ""]
-    if convergence.exhausted:
-        for sr in convergence.exhausted:
-            diagnosis = sr.structural_diagnosis or (
-                f"Structural redesign required — prompt patching could not resolve this "
-                f"in {max_iterations} iteration(s)."
-            )
-            lines += [
-                f"### {sr.scenario.name}",
-                f"**Track:** {sr.scenario.track}",
-                f"**Breach reason:** {sr.breach_reason or '(none)'}",
-                f"**Recommendation:** {diagnosis}",
-                "",
-            ]
-    else:
-        lines += ["No unresolved scenarios.", ""]
-
-    lines += ["## Next Steps", ""]
-    error_results = [result for result in outcomes if result.status == "error"]
-    if error_results:
-        names = ", ".join(result.scenario.name for result in error_results)
-        lines += [
-            f"Evaluation incomplete — the following scenarios errored: {names}",
-            "Review the execution errors and rerun them before relying on this evaluation.",
-            "",
-        ]
-        if convergence.exhausted:
-            unresolved_names = ", ".join(
-                result.scenario.name for result in convergence.exhausted
-            )
-            lines += [
-                f"These scenarios also require structural changes: {unresolved_names}",
-                "",
-            ]
-    elif convergence.exhausted:
-        names = ", ".join(sr.scenario.name for sr in convergence.exhausted)
-        lines += [
-            f"The following require structural changes beyond system prompt patching: {names}",
-            "Consider revising tool scope or access control logic for the affected capabilities.",
-            "",
-        ]
-    else:
-        lines += ["All scenarios passed. Your agent is ready to deploy.", ""]
-
-    report_path.write_text("\n".join(lines), encoding="utf-8")
-    return report_path
-
-
-# ---------------------------------------------------------------------------
-# evaluation_criteria.md helpers
-# ---------------------------------------------------------------------------
-
-
-def write_criteria(scenarios: list[Scenario], path: Path) -> None:
-    data = [s.model_dump() for s in scenarios]
-    path.write_text(
-        yaml.dump(data, default_flow_style=False, allow_unicode=True), encoding="utf-8"
-    )
-
-
-class CriteriaError(ValueError):
-    """Raised when confirmed evaluation criteria cannot be loaded safely."""
-
-
-def load_criteria(path: Path) -> list[Scenario]:
-    """Load a non-empty, validated confirmed scenario list."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise CriteriaError(f"could not read {path}: {exc}") from exc
-
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise CriteriaError(f"{path} contains invalid YAML: {exc}") from exc
-
-    if not isinstance(data, list) or not data:
-        raise CriteriaError(f"{path} must contain a non-empty list of scenarios")
-
-    try:
-        return [Scenario.model_validate(s) for s in data]
-    except Exception as exc:
-        raise CriteriaError(f"{path} contains an invalid scenario: {exc}") from exc
-
-
-def save_config(user_type: str, iterations: int, judge_mode: str, model: str) -> None:
-    config = {
-        "user_type": user_type,
-        "max_convergence_iterations": iterations,
-        "judge_mode": judge_mode,
-        "llm_judge_model": model,
-    }
-    Path("agent_config.yaml").write_text(
-        yaml.dump(config, default_flow_style=False), encoding="utf-8"
     )
 
 
@@ -909,7 +603,9 @@ async def _async_main(args: argparse.Namespace) -> None:
             )
 
         # --- Generate scenarios ---
-        async def _tracked(coro, label):
+        async def _tracked(
+            coro: Awaitable[list[Scenario]], label: str
+        ) -> list[Scenario]:
             result = await coro
             print(f"  ✓ {len(result)} {label} scenarios", flush=True)
             return result
@@ -980,13 +676,8 @@ async def _async_main(args: argparse.Namespace) -> None:
 
     # --- Update agent_spec.md if patches were applied ---
     if convergence.patches_applied:
-        updated = yaml.safe_load(raw_spec_text)
-        updated["system_prompt"] = convergence.final_system_prompt
-        spec_path.write_text(
-            yaml.dump(
-                updated, default_flow_style=False, sort_keys=False, allow_unicode=True
-            ),
-            encoding="utf-8",
+        update_spec_system_prompt(
+            spec_path, raw_spec_text, convergence.final_system_prompt
         )
         print(f"\n{len(convergence.patches_applied)} patch(es) applied to {spec_path}")
 

@@ -27,6 +27,10 @@ swarm = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = swarm
 spec.loader.exec_module(swarm)
 env_utils = sys.modules["env_utils"]
+artifacts = sys.modules["artifacts"]
+contracts = sys.modules["contracts"]
+patch_utils = sys.modules["apply_patch"]
+report_utils = sys.modules["write_report"]
 
 
 def scenario_data() -> dict[str, object]:
@@ -57,6 +61,40 @@ def scenario_result(
         transcript=[{"role": "assistant", "content": "test response"}],
         turns_run=1,
     )
+
+
+def test_deterministic_core_is_reexported() -> None:
+    assert swarm.Scenario is contracts.Scenario
+    assert swarm.ConvergenceResult is contracts.ConvergenceResult
+    assert swarm.load_criteria is artifacts.load_criteria
+    assert swarm.write_report is report_utils.write_report
+    assert swarm._normalize_breach is patch_utils.normalize_breach
+
+
+def test_prompt_patch_helper_preserves_gateway_behavior() -> None:
+    assert (
+        patch_utils.apply_system_prompt_patch("Be helpful.", "Never expose secrets.")
+        == "Be helpful.\nNever expose secrets."
+    )
+
+
+def test_update_spec_system_prompt_preserves_other_fields(tmp_path: Path) -> None:
+    spec_path = tmp_path / "agent_spec.md"
+    raw_spec = yaml.safe_dump(
+        {
+            "system_prompt": "Be helpful.",
+            "tools": [{"function_name": "fetch_records", "inputs": [], "out": []}],
+        },
+        sort_keys=False,
+    )
+
+    artifacts.update_spec_system_prompt(
+        spec_path, raw_spec, "Be helpful.\nNever expose secrets."
+    )
+
+    updated = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    assert updated["system_prompt"] == "Be helpful.\nNever expose secrets."
+    assert updated["tools"][0]["function_name"] == "fetch_records"
 
 
 def test_credentials_prefer_dotenv(
@@ -185,6 +223,77 @@ def test_confirmed_criteria_skip_generation(
     asyncio.run(swarm._async_main(args))
 
     assert executed == ["confirmed scenario"]
+
+
+def test_async_main_persists_convergence_prompt_patch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec_path = tmp_path / "agent_spec.md"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "system_prompt": "Be helpful.",
+                "tools": [{"function_name": "fetch_records", "inputs": [], "out": []}],
+                "metadata": {"owner": "safety-team"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    criteria_path = tmp_path / "evaluation_criteria.md"
+    criteria_path.write_text(yaml.safe_dump([scenario_data()]), encoding="utf-8")
+
+    async def run_breaching_scenario(
+        scenario: object, agent_spec: object, model: object
+    ) -> object:
+        del agent_spec, model
+        return swarm.ScenarioResult(
+            scenario=scenario,
+            status="breach",
+            breach_detected=True,
+            breach_reason="unsafe response",
+            transcript=[],
+            turns_run=1,
+        )
+
+    async def converge(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return swarm.ConvergenceResult(
+            resolved=[scenario_result("confirmed scenario", "passed")],
+            patches_applied=[
+                swarm.Fix(
+                    scenario_name="confirmed scenario",
+                    description="Add a restriction",
+                    system_prompt_patch="Never expose secrets.",
+                    reasoning="Prevents unsafe disclosure.",
+                )
+            ],
+            final_system_prompt="Be helpful.\nNever expose secrets.",
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(swarm, "_make_model", lambda model: object())
+    monkeypatch.setattr(swarm, "_run_scenario", run_breaching_scenario)
+    monkeypatch.setattr(swarm, "run_convergence_loop", converge)
+    monkeypatch.setattr(
+        swarm, "write_report", lambda *args, **kwargs: tmp_path / "eval_report.md"
+    )
+
+    args = argparse.Namespace(
+        spec=str(spec_path),
+        user_type="support agents",
+        iterations=3,
+        model="test-model",
+        judge_mode="standard",
+        context=None,
+        generate_only=False,
+        criteria=str(criteria_path),
+    )
+    asyncio.run(swarm._async_main(args))
+
+    updated = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    assert updated["system_prompt"] == "Be helpful.\nNever expose secrets."
+    assert updated["metadata"] == {"owner": "safety-team"}
 
 
 def test_convergence_rerun_error_is_not_resolved(
