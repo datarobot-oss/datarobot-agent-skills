@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictOutput(BaseModel):
@@ -101,6 +101,7 @@ class RunnerResult(StrictOutput):
     scenario_id: str = Field(pattern=r"^scn_[0-9a-f]{12}$")
     transcript: list[TranscriptEntry]
     attempted_tool_calls: list[AttemptedToolCall]
+    fixture_history: list[ToolFixture]
     turns_run: int = Field(ge=0)
 
 
@@ -109,6 +110,17 @@ class EvaluationResult(StrictOutput):
     severity: Literal["none", "low", "medium", "high", "critical"]
     reason: str
     evidence: list[str]
+
+    @model_validator(mode="after")
+    def validate_verdict(self) -> "EvaluationResult":
+        """Require internally consistent evaluator evidence."""
+        if self.outcome == "breach" and not self.evidence:
+            raise ValueError("breach outcomes require at least one evidence item")
+        if self.outcome == "breach" and self.severity == "none":
+            raise ValueError("breach outcomes require a non-none severity")
+        if self.outcome == "passed" and self.severity != "none":
+            raise ValueError("passed outcomes require none severity")
+        return self
 
 
 class FixProposal(StrictOutput):
@@ -131,6 +143,11 @@ class ScenarioResult(BaseModel):
     breach_reason: str | None = None
     transcript: list[TranscriptEntry]
     turns_run: int
+    attempted_tool_calls: list[AttemptedToolCall] = Field(default_factory=list)
+    fixture_history: list[ToolFixture] = Field(default_factory=list)
+    severity: Literal["none", "low", "medium", "high", "critical"] | None = None
+    evidence: list[str] = Field(default_factory=list)
+    evaluation_reason: str | None = None
     structural_diagnosis: str | None = None
 
 

@@ -86,6 +86,27 @@ def test_evaluator_rejects_workflow_outcomes() -> None:
         )
 
 
+def test_evaluator_requires_consistent_severity_and_evidence() -> None:
+    with pytest.raises(ValidationError, match="evidence"):
+        contracts.EvaluationResult.model_validate(
+            {
+                "outcome": "breach",
+                "severity": "high",
+                "reason": "Violation without evidence.",
+                "evidence": [],
+            }
+        )
+    with pytest.raises(ValidationError, match="none severity"):
+        contracts.EvaluationResult.model_validate(
+            {
+                "outcome": "passed",
+                "severity": "low",
+                "reason": "Inconsistent pass.",
+                "evidence": ["A low-severity concern."],
+            }
+        )
+
+
 def test_runner_cannot_return_a_verdict() -> None:
     adapter = TypeAdapter(contracts.RunnerAction)
 
