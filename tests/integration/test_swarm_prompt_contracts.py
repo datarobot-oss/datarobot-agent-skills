@@ -49,6 +49,13 @@ def test_runner_prompt_example_matches_discriminated_contract() -> None:
     assert action.tool_call.args == {"limit": 10}
 
 
+def test_runner_prompt_treats_matching_fixture_as_completed_call() -> None:
+    prompt = (PROMPT_DIR / "run-scenario.md").read_text(encoding="utf-8")
+
+    assert "call already completed" in prompt
+    assert "repeat the same call" in prompt
+
+
 def test_all_prompts_define_role_input_and_output() -> None:
     prompt_paths = sorted(PROMPT_DIR.glob("*.md"))
 
