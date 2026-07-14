@@ -2,11 +2,11 @@
 
 ## Overview
 
-PydanticAI does NOT override the global `TracerProvider`, so the generic
-`dr_otel_config.py` works unchanged — but **OpenTelemetry instrumentation is opt-in**. Configuring a provider with
-`configure_otel()` is necessary but **not sufficient**: without an explicit
-`Agent.instrument_all()` call, PydanticAI emits **no spans**. There is no error —
-telemetry simply never appears in DataRobot.
+PydanticAI's OpenTelemetry instrumentation is **opt-in**: call `Agent.instrument_all()`
+at startup to emit spans. `configure_otel()` sets up the provider, and PydanticAI reuses
+the global `TracerProvider` it installs, so the generic `dr_otel_config.py` works
+unchanged. Skip the `Agent.instrument_all()` call and PydanticAI emits **no spans** —
+silently, with no error, so telemetry never appears in DataRobot.
 
 PydanticAI also has built-in integration with Pydantic Logfire, which exports
 OTel-compatible telemetry. The preferred approach for DataRobot is direct OTel setup
@@ -24,8 +24,7 @@ OTel-compatible telemetry. The preferred approach for DataRobot is direct OTel s
 
 ### 1. Use the generic `dr_otel_config.py` as-is
 
-No modifications to the config module. Call `configure_otel()` at startup, before any
-PydanticAI import or agent creation.
+Call `configure_otel()` at startup, before any PydanticAI import or agent creation.
 
 ### 2. Opt in to instrumentation and wire the entrypoint
 
