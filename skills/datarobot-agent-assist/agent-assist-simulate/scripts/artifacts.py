@@ -4,7 +4,9 @@
 
 """Deterministic spec, criteria, and configuration artifact helpers."""
 
+import json
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -13,6 +15,20 @@ from contracts import AgentSpec, Scenario
 
 class CriteriaError(ValueError):
     """Raised when confirmed evaluation criteria cannot be loaded safely."""
+
+
+def write_json(path: Path, data: object) -> None:
+    """Write an internal JSON artifact, creating its parent directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def load_json(path: Path) -> Any:
+    """Load an internal JSON artifact."""
+    with path.open(encoding="utf-8") as artifact_file:
+        return json.load(artifact_file)
 
 
 def read_generated_code(directory: Path | None = None) -> str | None:

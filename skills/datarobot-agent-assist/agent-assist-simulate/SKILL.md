@@ -24,8 +24,9 @@ Before invoking the simulation script, resolve `<skill_scripts_dir>` once for th
 
 - This `SKILL.md` file was loaded from a known path. Take that path, strip the filename, and that directory is `<this_skill_dir>`.
 - `<skill_scripts_dir>` is `<this_skill_dir>/scripts/`.
-- Confirm it exists: run `ls <this_skill_dir>/scripts/`. If missing, tell the user the skill installation is incomplete and stop.
-- Use the resolved absolute path for every `<skill_scripts_dir>/...` reference in this skill.
+- `<skill_prompts_dir>` is `<this_skill_dir>/prompts/`.
+- Confirm both directories exist. If either is missing, tell the user the skill installation is incomplete and stop.
+- Use resolved absolute paths for every scripts or prompts reference in this skill.
 
 **Python and dependency check (run once before the first script call):**
 
@@ -51,13 +52,10 @@ Try `uv pip install` first (works in venv environments without pip). If all opti
 
 1. Confirm `agent_spec.md` exists in the working directory. If not, tell the user and stop —
    this workflow requires a completed spec. Offer to switch to `agent-assist-build` to build one.
-2. Confirm the spec has `system_prompt` and at least one tool defined. If either is missing,
-   surface the gap and stop.
-3. Check for generated code files: look for `tools.py` and `agent.py` in the working directory.
-   Note which exist — these are potential targets for structural code fixes if unresolved
-   scenarios require them and the user approves the changes after simulation.
-4. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, immediately read
-   and follow `../../datarobot-setup/SKILL.md`, then retry. Never inspect, print, copy, or persist credentials.
+2. Confirm the spec has a `system_prompt`. If missing, surface the gap and stop. Agents without
+   tools are valid, but their attack coverage is capability-generic.
+3. Confirm implementation code exists in `agent.py`, `tools.py`, or `app.py`. If none exists, route
+   the user to `agent-assist-build` and stop. Note existing files as potential structural-fix targets.
 
 ---
 
@@ -76,7 +74,7 @@ Read `agent_spec.md` and derive 2–4 user personas specific to this agent's dom
 > ...
 > N. Other — describe your user segment"
 
-If the user picks "Other", ask: *"Describe your users in a sentence."* Pass the selected or entered persona description to `--user-type`.
+If the user picks "Other", ask: *"Describe your users in a sentence."* Pass the selected or entered persona description to `--user-persona`.
 
 **Question 2 — Grounding context (optional):**
 > "Want to ground the behavior scenarios in real user data? Paste customer tickets, support logs,
@@ -103,34 +101,57 @@ If `agent_config.yaml` already exists from a previous run, present the saved set
 
 ## Step 2 — Generate and Review Scenarios
 
-Run scenario generation:
+Prepare isolated input packages:
 
 ```bash
-<python> -u <skill_scripts_dir>/swarm_simulation.py agent_spec.md \
-  --user-type <user_type> \
+<python> <skill_scripts_dir>/native_scenarios.py prepare agent_spec.md \
+  --user-persona "<user_type>" \
   --iterations <n> \
   --model <model> \
   --judge-mode <standard|scored> \
-  [--context user_context.txt] \
-  --generate-only
+  [--context user_context.txt]
 ```
 
-The script prints the generated scenario list grouped by track and writes the initial
-`evaluation_criteria.md`. Tracks:
-- **Attack** — tool misuse, scope bypass, data exfiltration, privilege escalation
-- **Behavior** — confused users, contradictory inputs, edge cases
-- **Persistence** — multi-turn escalation against restrictions found in the spec and implementation code
+Spawn three fresh native subagents in parallel:
 
-Present the full list to the user. Ask:
+- Attack: `<skill_prompts_dir>/generate-attack.md` with `.datarobot/swarm/attack-input.json`
+- Behavior: `<skill_prompts_dir>/generate-behavior.md` with `.datarobot/swarm/behavior-input.json`
+- Persistence: `<skill_prompts_dir>/generate-persistence.md` with
+  `.datarobot/swarm/persistence-input.json`
+
+Each subagent receives only its role prompt and input JSON. It must return only the required JSON
+object. Save the exact objects to `.datarobot/swarm/<role>-output.json`, then validate them:
+
+```bash
+<python> <skill_scripts_dir>/native_scenarios.py finalize
+```
+
+If validation fails, stderr identifies each failed role as
+`role:<role> validation failed: <reason>`. Retry each failed role once with a fresh subagent and the
+same input JSON. Append this exact note to its role prompt:
+`Your previous response was rejected: <reason>. Correct the response and try again.`
+Replace only that role's output file and run `finalize` again. If any role still fails, surface the
+error and stop.
+
+Present the grouped candidate list printed by `finalize`. Ask:
 > "Does this look right? You can say 'add [description]' to include a scenario or 'remove [name]'
 > to drop one. Say 'run it' when ready."
 
-Apply any user additions or removals by editing `evaluation_criteria.md` directly using the Edit
-tool before proceeding. Do not re-run generation — edit the file the script already wrote.
+Apply conversational additions or removals to `.datarobot/swarm/candidates.json`; every candidate
+must retain the documented scenario fields and must not contain `scenario_id`. Do not rerun
+generation. When the user confirms, write the authoritative criteria:
+
+```bash
+<python> <skill_scripts_dir>/native_scenarios.py confirm --output evaluation_criteria.md
+```
 
 ---
 
 ## Step 3 — Run Simulation
+
+Before legacy Gateway execution, run `dr --version` and `dr auth check`. If either fails,
+immediately read and follow `../../datarobot-setup/SKILL.md`, then retry. Never inspect, print,
+copy, or persist credentials.
 
 Once the user confirms, use the **Monitor tool** to stream progress live (fall back to Bash if Monitor is unavailable):
 
