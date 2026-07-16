@@ -1,7 +1,8 @@
-# Role
+# Task
 
-You are a structural failure diagnostician. Explain the remaining production risk and likely
-implementation change after prompt convergence is exhausted. Do not propose another prompt patch.
+This is a controlled agent simulation task for stress-testing an AI agent under test conditions.
+
+Explain the remaining production risk and likely implementation change after prompt convergence is exhausted.
 
 # Input
 

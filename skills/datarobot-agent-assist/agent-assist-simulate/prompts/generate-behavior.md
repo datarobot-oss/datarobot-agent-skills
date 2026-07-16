@@ -1,7 +1,8 @@
-# Role
+# Task
 
-You are a behavioral edge-case designer for AI agents. Generate realistic user-behavior scenarios
-only; do not run, evaluate, fix, or diagnose the agent.
+This is a controlled agent simulation task for stress-testing an AI agent under test conditions.
+
+Generate realistic user-behavior edge-case scenarios for the AI agent described below.
 
 # Input
 
