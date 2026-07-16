@@ -147,6 +147,32 @@ def _fail(run_dir: Path, reason: str) -> None:
     )
 
 
+def _invoke_role(
+    current_role: str,
+    current_input: Path,
+    current_response: Path,
+    model: str,
+    server_url: str,
+    timeout: int,
+    e2e_tools: set[str],
+    tools_path: Path | None,
+    rejection_note: str | None = None,
+) -> bool:
+    """Produce one worker response: real executor for selective_e2e readonly
+    fixtures, otherwise the gateway worker."""
+    if (
+        current_role == "fixture"
+        and tools_path is not None
+        and _fixture_tool_name(current_input) in e2e_tools
+    ):
+        return _run_tool_executor(current_input, current_response, tools_path)
+    role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
+    return _run_worker(
+        role_prompt, current_input, current_response, model, server_url, timeout,
+        rejection_note=rejection_note,
+    )
+
+
 def _drive_scenario(
     task: dict[str, object],
     model: str,
@@ -161,50 +187,37 @@ def _drive_scenario(
     current_input = Path(str(task["input_path"]))
     current_response = Path(str(task["response_path"]))
 
-    while True:
-        # Fixture: use real executor for selective_e2e readonly tools
-        if (
-            current_role == "fixture"
-            and tools_path is not None
-            and _fixture_tool_name(current_input) in e2e_tools
-        ):
-            ok = _run_tool_executor(current_input, current_response, tools_path)
-        else:
-            role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
-            ok = _run_worker(
-                role_prompt, current_input, current_response, model, server_url, timeout
-            )
+    def invoke(rejection_note: str | None = None) -> bool:
+        return _invoke_role(
+            current_role, current_input, current_response, model, server_url,
+            timeout, e2e_tools, tools_path, rejection_note=rejection_note,
+        )
 
+    def fixture_fallback() -> bool:
+        return _substitute_fixture_fallback(
+            run_dir, current_role, current_input, current_response,
+            tools_path, e2e_tools,
+        )
+
+    while True:
+        # Hard worker failure (e.g. the model broke character and emitted prose
+        # instead of the JSON envelope): retry once, then fall back for fixtures.
+        ok = invoke()
         if not ok:
+            ok = invoke("prior attempt did not return the required JSON object")
+        if not ok and not fixture_fallback():
             _fail(run_dir, "worker subprocess failed")
             return "error"
 
         transition, err = _submit(run_dir, current_response)
         if err is not None:
-            # One retry with rejection note
-            if (
-                current_role == "fixture"
-                and tools_path is not None
-                and _fixture_tool_name(current_input) in e2e_tools
-            ):
-                ok = _run_tool_executor(current_input, current_response, tools_path)
-            else:
-                role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
-                ok = _run_worker(
-                    role_prompt,
-                    current_input,
-                    current_response,
-                    model,
-                    server_url,
-                    timeout,
-                    rejection_note=err,
-                )
-            if not ok:
+            # Content rejected by validation: retry once, then fall back for fixtures.
+            if invoke(err):
+                transition, err = _submit(run_dir, current_response)
+            if err is not None and fixture_fallback():
+                transition, err = _submit(run_dir, current_response)
+            if err is not None:
                 _fail(run_dir, err)
-                return "error"
-            transition, err2 = _submit(run_dir, current_response)
-            if err2 is not None:
-                _fail(run_dir, err2)
                 return "error"
 
         next_role = transition.get("role")
@@ -222,6 +235,71 @@ def _fixture_tool_name(input_path: Path) -> str:
         return str(data.get("tool_name", ""))
     except (OSError, json.JSONDecodeError):
         return ""
+
+
+def _write_fallback_fixture(input_path: Path, response_path: Path) -> bool:
+    """Last-resort fixture when the fixture worker refuses on both attempts.
+
+    Returns a neutral error value for the pending tool call so the scenario can
+    still be evaluated instead of erroring out. An error is the least-assumptive
+    substitute — it never fabricates a rich success payload the agent under test
+    might mishandle — and for "resource unavailable" scenarios it also matches
+    what the real tool would return. Callers must surface this as degraded
+    coverage; it is not a clean fixture.
+    """
+    try:
+        data = json.loads(input_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    tool_name = data.get("tool_name")
+    if not isinstance(tool_name, str) or not tool_name:
+        return False
+    fixture = {
+        "tool_name": tool_name,
+        "args": data.get("args", {}),
+        "return_value": {"error": "resource unavailable"},
+    }
+    try:
+        response_path.parent.mkdir(parents=True, exist_ok=True)
+        response_path.write_text(
+            json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        return False
+    return True
+
+
+def _substitute_fixture_fallback(
+    run_dir: Path,
+    current_role: str,
+    current_input: Path,
+    current_response: Path,
+    tools_path: Path | None,
+    e2e_tools: set[str],
+) -> bool:
+    """Substitute a synthetic error fixture when the fixture worker is exhausted.
+
+    Scoped to the simulated fixture role only — a failing real (e2e) tool
+    execution is a genuine environment signal and is never faked. Surfaces the
+    substitution as a `warning:` line so the caller reports degraded coverage.
+    """
+    if current_role != "fixture":
+        return False
+    is_e2e_fixture = (
+        tools_path is not None and _fixture_tool_name(current_input) in e2e_tools
+    )
+    if is_e2e_fixture:
+        return False
+    if not _write_fallback_fixture(current_input, current_response):
+        return False
+    print(
+        f"warning: fixture worker failed for scenario {run_dir.name} "
+        f"tool {_fixture_tool_name(current_input)!r}; substituted a synthetic "
+        'error return ({"error": "resource unavailable"}). Coverage for this '
+        "scenario is degraded — treat its verdict with caution.",
+        file=sys.stderr,
+    )
+    return True
 
 
 def run(
@@ -260,8 +338,11 @@ def run(
 
     statuses: list[str] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {
-            pool.submit(
+        futures = {}
+        for i, task in enumerate(tasks):
+            if i > 0:
+                time.sleep(0.5)
+            futures[pool.submit(
                 _drive_scenario,
                 task.model_dump(mode="json"),
                 model,
@@ -269,9 +350,7 @@ def run(
                 timeout,
                 e2e_tools,
                 tools_path,
-            ): task
-            for task in tasks
-        }
+            )] = task
         for future in as_completed(futures):
             task = futures[future]
             completed += 1
@@ -577,7 +656,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--implementation", type=Path, action="append", default=None
     )
     run_parser.add_argument("--tools-path", type=Path, default=None)
-    run_parser.add_argument("--workers", type=int, default=20)
+    run_parser.add_argument("--workers", type=int, default=4)
     run_parser.add_argument("--timeout", type=int, default=120)
 
     return parser

@@ -41,7 +41,7 @@ def _build_message(role_prompt_path: Path, input_path: Path) -> str:
     return f"{role_prompt}\n\n# Input\n\n{input_json}"
 
 
-def _extract_response(stdout: str) -> dict[str, object]:
+def _extract_response(stdout: str, role: str = "") -> dict[str, object]:
     """Parse JSONL event stream and return the assistant's JSON object.
 
     opencode --format json emits one event per line:
@@ -50,6 +50,11 @@ def _extract_response(stdout: str) -> dict[str, object]:
       {"type":"step_finish","part": {...}}
 
     Concatenate all type=="text" part.text payloads, then parse as JSON.
+
+    For the runner role only, a plain-prose reply (the simulation model declining
+    the framing instead of emitting the envelope) is wrapped as an
+    `assistant_response` rather than raised as a failure: prose from the simulated
+    agent is behaviorally a refusal and should be scored, not discarded.
     """
     text_parts: list[str] = []
     for line in stdout.splitlines():
@@ -79,9 +84,13 @@ def _extract_response(stdout: str) -> dict[str, object]:
     try:
         result = json.loads(combined)
     except json.JSONDecodeError as exc:
+        if role == "runner":
+            return {"type": "assistant_response", "content": combined}
         raise ValueError(f"worker response is not valid JSON: {exc}") from exc
 
     if not isinstance(result, dict):
+        if role == "runner":
+            return {"type": "assistant_response", "content": combined}
         raise ValueError(
             f"expected a JSON object from worker, got {type(result).__name__}"
         )
@@ -207,7 +216,7 @@ def main() -> None:
     error: str | None = None
 
     try:
-        cmd = ["dr", "opencode", "run", "--format", "json", "--model", args.model]
+        cmd = ["dr", "--skip-plugin-update-check", "--plugin-discovery-timeout", "30s", "opencode", "run", "--format", "json", "--model", args.model]
         if args.server_url:
             cmd += ["--attach", args.server_url]
         else:
@@ -237,7 +246,7 @@ def main() -> None:
             sys.exit(1)
 
         try:
-            response = _extract_response(result.stdout)
+            response = _extract_response(result.stdout, role)
         except ValueError as exc:
             error = "parse_failed"
             print(f"response extraction failed: {exc}", file=sys.stderr)

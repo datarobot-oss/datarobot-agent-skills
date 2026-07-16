@@ -354,8 +354,9 @@ def _persist_terminal(state: NativeRunState, run_dir: Path) -> dict[str, object]
     result_path = run_dir / RESULT_FILENAME
     write_json(run_dir / STATE_FILENAME, state.model_dump(mode="json"))
     write_json(result_path, state.result.model_dump(mode="json"))
+    display_status = state.result.status if state.status == "complete" else state.status
     response: dict[str, object] = {
-        "status": state.status,
+        "status": display_status,
         "scenario_id": state.scenario.scenario_id,
         "run_dir": str(run_dir),
         "result_path": str(result_path),
