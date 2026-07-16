@@ -11,9 +11,13 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
-## [1.3.6] - 2026-07-09
+## [1.3.7] - 2026-07-14
 
-- `datarobot-external-agent-monitoring`: Fix PydanticAI instrumentation — modern PydanticAI makes OpenTelemetry instrumentation opt-in, so configuring a provider alone emitted no spans; document the required `Agent.instrument_all()` call, correct the outdated "no modifications needed" guidance, cover the v1/v2 API differences (`instrument=True` vs `capabilities=[Instrumentation(...)]`), the `InstrumentationSettings(version=…)` data-format default and `include_content` privacy option, and add a verification step for the DataRobot Prompt/Completion columns.
+- `datarobot-external-agent-monitoring`: Fix PydanticAI instrumentation — modern PydanticAI makes OpenTelemetry instrumentation opt-in, so configuring a provider alone emitted no spans; document the required `Agent.instrument_all()` call.
+
+## [1.3.6] - 2028-07-14
+
+- `datarobot-agent-assist`: Implement pre-coding-checklist, pre-deployment-checklist & workspace-resolution flows.
 
 ## [1.3.5] - 2028-07-08
 
