@@ -6,8 +6,8 @@ grounding:
 evaluation:
   mode: standard
   fail_on:
-  - high
-  - critical
+    - high
+    - critical
 convergence:
   max_iterations: 3
 turn_limits:
