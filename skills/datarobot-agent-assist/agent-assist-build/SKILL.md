@@ -54,7 +54,8 @@ Run in order before proceeding:
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
 2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
 3. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
-4. **DataRobot .env** — run `dr dotenv setup --yes --output <target_dir>` to ensure `<target_dir>/.env` exists with `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT`. If it fails with an auth error, run `dr auth login` first, then retry `dr dotenv setup`. Run this once per session or when `<target_dir>` changes.
+
+If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` immediately and retry the script — do not present options to the user. The scripts create `.env` automatically via `dr dotenv setup`; the only prerequisite is an authenticated CLI session.
 
 ---
 
