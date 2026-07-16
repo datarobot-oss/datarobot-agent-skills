@@ -150,6 +150,18 @@
       ]
     },
     {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:agent-assist-simulate",
+      "displayName": "datarobot-agent-assist-simulate",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-agent-assist-simulate/SKILL.md",
+      "description": "Adversarially test and harden AI agents before deployment using swarm simulation, attack testing, convergence loops, and automated evaluation reporting.",
+      "representativeQueries": [
+        "test my AI agent for security vulnerabilities",
+        "run adversarial simulations against my DataRobot agent",
+        "evaluate and harden my agent before deployment"
+      ]
+    },
+    {
       "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:workload-api",
       "displayName": "datarobot-workload-api",
       "type": "application/ai-skill",

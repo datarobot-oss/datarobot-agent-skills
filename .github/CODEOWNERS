@@ -5,6 +5,7 @@
 
 # Agent assist team skills
 /skills/datarobot-agent-assist/ @datarobot/agentic-assistant
+/skills/datarobot-agent-assist-simulate/ @datarobot/agentic-assistant
 
 # Skills owned by core-modeling
 /skills/datarobot-data-preparation/ @datarobot/core-modeling
