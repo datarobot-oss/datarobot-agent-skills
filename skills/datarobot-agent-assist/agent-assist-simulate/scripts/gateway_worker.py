@@ -135,8 +135,8 @@ def main() -> None:
     parser.add_argument(
         "--role-prompt",
         required=True,
-        type=Path,
-        help="path to the role prompt markdown file",
+        type=str,
+        help="prompt name (e.g. 'generate-attack') or path to a role prompt markdown file",
     )
     parser.add_argument(
         "--input-path",
@@ -175,13 +175,20 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    for p, name in [
-        (args.role_prompt, "--role-prompt"),
-        (args.input_path, "--input-path"),
-    ]:
-        if not p.is_file():
-            print(f"{name}: file not found: {p}", file=sys.stderr)
-            sys.exit(1)
+    role_prompt_path = Path(args.role_prompt)
+    if not role_prompt_path.is_file():
+        candidate = Path(__file__).parent.parent / "prompts" / args.role_prompt
+        if not candidate.suffix:
+            candidate = candidate.with_suffix(".md")
+        role_prompt_path = candidate
+    if not role_prompt_path.is_file():
+        print(f"--role-prompt: file not found: {args.role_prompt}", file=sys.stderr)
+        sys.exit(1)
+    args.role_prompt = role_prompt_path
+
+    if not args.input_path.is_file():
+        print(f"--input-path: file not found: {args.input_path}", file=sys.stderr)
+        sys.exit(1)
 
     role = PROMPT_ROLE_MAP.get(args.role_prompt.name, args.role_prompt.stem)
     scenario_id = _scenario_id_from_input(args.input_path)

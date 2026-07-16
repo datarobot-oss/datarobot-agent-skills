@@ -24,9 +24,8 @@ Before invoking the simulation script, resolve `<skill_scripts_dir>` once for th
 
 - This `SKILL.md` file was loaded from a known path. Take that path, strip the filename, and that directory is `<this_skill_dir>`.
 - `<skill_scripts_dir>` is `<this_skill_dir>/scripts/`.
-- `<skill_prompts_dir>` is `<this_skill_dir>/prompts/`.
-- Confirm both directories exist. If either is missing, tell the user the skill installation is incomplete and stop.
-- Use resolved absolute paths for every scripts or prompts reference in this skill.
+- Confirm the directory exists. If missing, tell the user the skill installation is incomplete and stop.
+- Use the resolved absolute path for every `<skill_scripts_dir>/...` reference in this skill.
 
 **Python and dependency check (run once before the first script call):**
 
@@ -190,25 +189,25 @@ all in-flight workers when one completed worker can be processed; keep slots fil
 Queue retries behind the same cap — never launch an extra retry alongside twenty active workers.
 
 Run three generator workers in parallel via the gateway adapter.
-`--role-prompt` paths use `<skill_prompts_dir>` (not `<skill_scripts_dir>`):
+Pass prompt names (not file paths) to `--role-prompt` — the script resolves them automatically:
 
 ```bash
 <python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <skill_prompts_dir>/generate-attack.md \
+  --role-prompt generate-attack \
   --input-path .datarobot/swarm/attack-input.json \
   --response-path .datarobot/swarm/attack-output.json \
   --model <model> \
   --server-url <opencode_server_url>
 
 <python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <skill_prompts_dir>/generate-behavior.md \
+  --role-prompt generate-behavior \
   --input-path .datarobot/swarm/behavior-input.json \
   --response-path .datarobot/swarm/behavior-output.json \
   --model <model> \
   --server-url <opencode_server_url>
 
 <python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <skill_prompts_dir>/generate-persistence.md \
+  --role-prompt generate-persistence \
   --input-path .datarobot/swarm/persistence-input.json \
   --response-path .datarobot/swarm/persistence-output.json \
   --model <model> \
@@ -321,8 +320,8 @@ Add each returned task wave to the same global worker queue and process it with 
 cap. Do not start the next wave until all tasks in the current wave have reached a submitted or
 failed terminal transition:
 
-- `fixer` → `<skill_prompts_dir>/generate-fix.md`
-- `diagnoser` → `<skill_prompts_dir>/diagnose-failure.md`
+- `fixer` → `--role-prompt generate-fix`
+- `diagnoser` → `--role-prompt diagnose-failure`
 - `runner`, `fixture`, or `evaluator` → rerun loop below
 
 **Keep user-facing progress conversational:**
@@ -343,7 +342,7 @@ For fixer and diagnoser tasks, invoke the gateway adapter:
 
 ```bash
 <python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <skill_prompts_dir>/<role>.md \
+  --role-prompt <role> \
   --input-path <input_path> \
   --response-path <response_path> \
   --model <model> \
@@ -359,7 +358,7 @@ drive it to terminal sequentially (reruns are few; parallelism is not required h
 
 ```bash
 <python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <skill_prompts_dir>/<role_prompt> \
+  --role-prompt <role_prompt> \
   --input-path <input_path> \
   --response-path <response_path> \
   --model <model> \
