@@ -1,18 +1,14 @@
 ---
-name: datarobot-agent-assist
+name: datarobot-agent-assist-build
 description: >-
-  Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive
-  model) to DataRobot; mentions agent_spec.md, dr-assist, datarobot-agent-assist, dress rehearsal,
-  or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base
-  agent targeting DataRobot; wants to add an MCP server, backend API, or React frontend to a
-  DataRobot agent application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom
-  application. Covers the full workflow: agent design, agent_spec.md authoring, dress-rehearsal
-  simulation via the DataRobot LLM Gateway, template-based coding, and deployment.
+  Use when the user wants to design, build, code, or deploy an AI agent on DataRobot; mentions
+  agent_spec.md, dress rehearsal, the DataRobot agent template, LangGraph, CrewAI, LlamaIndex, NAT,
+  Base agents, MCP servers, backend APIs, custom frontends, or the DataRobot CLI.
 ---
 
-# DataRobot Agent Assist
+# Agent Assist — Build
 
-This skill merges **agent design, coding, and deployment** with an optional **dress-rehearsal simulation** — a try-before-you-build session that lets you chat with your agent design before writing any code.
+This skill merges **agent design, coding, and deployment** with **interactive dress-rehearsal simulation** in one place.
 
 Assistance falls into three categories:
 
@@ -29,18 +25,15 @@ If the user's first message is simply `1`, `2`, or `3`, treat it as selecting on
 Present the three options clearly:
 
 ```
-Welcome! I help you design, code, and deploy AI agents.
+Welcome! I help you design, code, and deploy AI agents (with optional dress-rehearsal simulation before coding).
 
 What would you like to do?
-  1. Design an AI agent     → Describe your idea (optional dress rehearsal before coding)
+  1. Design an AI agent     → Describe your idea
   2. Code an AI agent       → Load and implement an existing agent_spec.md
   3. Deploy an AI agent     → Deploy an implemented agent to DataRobot
 ```
 
-Show this menu first. After the user selects an option (`1`, `2`, or `3`), run the **[Pre-requisite Check](#pre-requisite-check)** and then the **[Script Path Resolution](#script-path-resolution)**.
-
-- Options **1** and **2** — read and follow [references/workspace-resolution.md](references/workspace-resolution.md), then proceed to the selected workflow.
-- Option **3** — skip Workspace Resolution; `<target_dir>` is resolved in the [Pre-deployment Checklist](references/pre-deployment-checklist.md) when unset.
+Show this menu first. After the user selects an option (`1`, `2`, or `3`), run the **[Pre-requisite Check](#pre-requisite-check)** and then the **[Script Path Resolution](#script-path-resolution)** before doing anything else for that option.
 
 ---
 
@@ -54,44 +47,13 @@ Before invoking any helper script, resolve `<skill_scripts_dir>` once for the se
 
 ---
 
-## Session State
-
-Track these for the conversation:
-
-- `<target_dir>` — project root for design, coding, and deployment. Set during [Workspace Resolution](references/workspace-resolution.md) or the [Pre-deployment Checklist](references/pre-deployment-checklist.md). Reuse across phases in the same session. Only change when the user explicitly asks, during [pre-coding subdir recovery](references/pre-coding-checklist.md), or in a new session.
-- `<dependency_check_passed>` — `false` until a passing `dr dependency check` in `<target_dir>`.
-- `<dependency_check_target_dir>` — the `<target_dir>` value when the last check passed.
-
-### Dependency check session rule
-
-Before running `dr dependency check`:
-
-- If `<dependency_check_passed>` is true and `<target_dir>` equals `<dependency_check_target_dir>`, skip the check.
-- Otherwise, run `dr dependency check` in `<target_dir>`. On zero exit: set `<dependency_check_passed>` = true and `<dependency_check_target_dir>` = `<target_dir>`. On non-zero exit: hard stop — return full output; do not attempt to resolve automatically.
-
-Invalidate `<dependency_check_passed>` (set to false) when:
-
-- `<target_dir>` changes
-- `clone_template.py`, `select_framework.py`, or `setup_template.py` runs in `<target_dir>`
-
----
-
-## Workspace Resolution
-
-Read and follow [references/workspace-resolution.md](references/workspace-resolution.md) after menu options **1** or **2**.
-
----
-
 ## Pre-requisite Check
 
 Run in order before proceeding:
 
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
 2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
-3. **DataRobot CLI** — follow **DataRobot CLI Setup** at the bottom:
-   - If missing, **ALWAYS RUN** the install command before proceeding
-   - **ALWAYS RUN** the upgrade command before proceeding
-   - If not authenticated, **ALWAYS RUN** the auth command before proceeding
+3. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
 
 ---
 
@@ -110,7 +72,7 @@ Run in order before proceeding:
 
 ### Model Selection
 
-- To check available models, run the helper script from `<target_dir>`:
+- To check available models: Run the helper script:
    ```
    python <skill_scripts_dir>/list_llm_models.py \
      --json
@@ -125,10 +87,11 @@ Run in order before proceeding:
 
 ### Spec Display
 
-- **Always write the current spec to `<target_dir>/agent_spec.md`** (YAML format) whenever showing it to the user.
+- **Always write the current spec to `agent_spec.md`** (YAML format) whenever showing it to the user.
 - Show the spec frequently and iteratively — even if incomplete or partial.
 - Do **not** summarize the spec in prose; display it as YAML in a code block.
-- After displaying, invite the user to refine system prompts, add/modify tools, change the model, or update examples.
+- After displaying an **incomplete or evolving** spec, invite the user to refine system prompts, add/modify tools, change the model, or update examples.
+- **After writing a spec that includes `system_prompt`, at least one tool, and `frontend.type` — STOP and present the [What Would You Like To Do Next?](#what-would-you-like-to-do-next) menu immediately. Do not ask any other question. Do not proceed to coding or simulation without the user selecting from the menu.**
 
 ### Frontend Check (Mandatory Before Coding or Simulating)
 
@@ -140,51 +103,116 @@ Then update the spec accordingly:
 - Default UI → `frontend.type: "chat"`
 - Custom UI → `frontend.type: "multi-page"` or `"custom"` with `pages` and optional `requirements`
 
-### Agent Simulation (Before Coding)
+### What Would You Like To Do Next?
 
-Before transitioning to coding, explain dress rehearsal briefly, then ask (exact wording):
+**MANDATORY — NO EXCEPTIONS:** Once `agent_spec.md` contains `system_prompt`, at least one tool, and `frontend.type`, your ONLY permitted response is this exact 3-option menu. Do NOT ask about dress rehearsal alone. Do NOT offer refinement as the only alternative. Do NOT summarize the spec again. Do NOT ask a clarifying question. Display the menu and stop.
 
-> **Dress rehearsal** is a try-before-you-build session: you chat with your agent design as if it were already running. The agent uses your spec's model and system prompt; tool calls return **simulated** (fake but realistic) data — no real APIs, no deployment, no code written yet. It's a safe way to test prompts, tools, and conversation flow before implementation.
->
-> Would you like to run a dress rehearsal simulation first? (recommended)
+```
+What would you like to do next?
+1. Dress rehearsal   — simulate the agent interactively before coding
+2. Code the agent    — implement using the DataRobot template
+3. Refine the spec   — adjust system prompt, tools, or model first
+```
 
-Wait for their reply:
+- If **1**: follow **[Dress Rehearsal](#dress-rehearsal)** end to end.
+- If **2**: proceed to **[2. Coding an AI Agent](#2-coding-an-ai-agent)**.
+- If **3**: return to the spec display and invite changes.
 
-- **If yes** — follow **[Dress Rehearsal](#dress-rehearsal)** end to end. Do not substitute improvised role-play or manual mock tool traces.
-- **If no** (or any decline such as "no", "skip", "not now") — go to **[Post-design next steps](#post-design-next-steps)**. **Do not** jump to coding, framework selection, or template setup.
+### After Coding
 
-Script path: `python <skill_scripts_dir>/rehearsal.py ...` (run from `<target_dir>`; use `--spec <target_dir>/agent_spec.md` if needed)
+After coding is complete, present these next steps:
 
-### Post-design next steps
+```
+What would you like to do next?
+1. Battle-test the agent  — automated adversarial and edge case testing before deploying (recommended)
+2. Test locally           — run the agent on your machine
+3. Revise                 — adjust the implementation
+4. Deploy                 — deploy the agent to DataRobot
+```
 
-After the user declines the initial rehearsal prompt — or after a dress rehearsal session ends — present this menu (exact wording):
-
-> What would you like to do next?
-> 1. **Run dress rehearsal** — simulate the agent before coding
-> 2. **Code the agent** — start implementation from `agent_spec.md`
-> 3. **Review / edit spec** — refine `agent_spec.md`
-
-Wait for their choice. **Do not** assume a default or proceed without a reply.
-
-| Choice | Action |
-|--------|--------|
-| 1 or "rehearsal" / "simulate" | Follow **[Dress Rehearsal](#dress-rehearsal)** |
-| 2 or "code" / "implement" | Follow **[2. Coding an AI Agent](#2-coding-an-ai-agent)** — read and follow [references/pre-coding-checklist.md](references/pre-coding-checklist.md) |
-| 3 or "review" / "edit spec" | Display `<target_dir>/agent_spec.md` as YAML, invite changes, update the file, then show this menu again |
-
-If the user's reply is unclear, re-display the menu and wait. Never skip straight to framework selection after a rehearsal decline.
+- If **1**: follow the instructions in `../agent-assist-simulate/SKILL.md` (one level up from this file, into the `agent-assist-simulate/` directory).
+- If **2**: read `AGENTS.md` for the local test command, display it in a code block, tell the user to run it in a new terminal. Do not run it yourself.
+- If **3**: continue coding.
+- If **4**: follow **[3. Deploying an AI Agent](#3-deploying-an-ai-agent)**.
 
 ---
 
 ## Dress Rehearsal
 
-Before running rehearsal, read and follow `references/dress-rehearsal.md` end to end.
+Simulate an `agent_spec.md` interactively before writing any code. Responses go through the DataRobot LLM Gateway; the rehearsal script handles API calls, state, and output. You orchestrate the loop, handle out-of-character commands, and produce the feedback report at the end.
 
-**Mandatory:**
-- Run the engine from this skill: `python <skill_scripts_dir>/rehearsal.py ...`
-- Preserve all exact prompts/menu text and turn-handling rules from `references/dress-rehearsal.md`
-- During rehearsal turns, display only the script output file contents
-- After rehearsal ends, produce the required report format, then return to **[Post-design next steps](#post-design-next-steps)**
+**Engine location:** `<skill_scripts_dir>/rehearsal.py` (relative to repository root).
+
+### Step 1 — Initialize the session
+
+```bash
+python <skill_scripts_dir>/rehearsal.py --init [--spec agent_spec.md]
+```
+
+If `agent_spec.md` does not exist and no path was provided, say so and stop.
+
+The script creates a unique session directory in the system temp dir and prints two lines:
+```
+session=<session_dir>
+output=<output_file>
+```
+
+Retain `session_dir` for all subsequent calls. Read the `output_file` and display its contents verbatim, then say:
+
+> You are now the **end user** of this agent. Type messages as a real user would.
+>
+> **Out-of-character commands:**
+> - `NOTE: <text>` — record a design observation
+> - `DONE` — end the session and generate your feedback report
+
+### Step 2 — Simulation loop
+
+Keep track of any notes and the number of turns as the session progresses — you'll need these for the report.
+
+**On each user message:**
+
+- If it starts with `NOTE:` — acknowledge the note, prompt for next message. Do not call the script.
+- If it is `DONE` — proceed to Step 3.
+- Otherwise — run the turn:
+
+```bash
+python <skill_scripts_dir>/rehearsal.py --session {session_dir} "{user_message}"
+```
+
+The script prints `output=<output_file>`. Read that file and display its contents verbatim. It will contain `[TOOL CALL]`, `[SIMULATED RETURN]`, and `[Agent]:` blocks as appropriate.
+
+If the script exits non-zero, display the error and ask whether to continue or abort.
+
+### Step 3 — Feedback report
+
+Before writing the report, review the session and consider each of these areas — only surface the ones where you have something concrete to say:
+
+- **System prompt** — wording, missing constraints, persona, tone
+- **Tools** — input/output scoping, missing or redundant tools, argument naming
+- **Model** — only flag if clearly wrong for the observed task complexity
+- **Example prompts** — additions or revisions based on what was tested
+- **Other** — edge cases, UX concerns, data dependency risks
+
+Then write the report in this format:
+
+```
+════════════════════════════════════════════
+  DRESS REHEARSAL REPORT
+════════════════════════════════════════════
+
+{1–2 sentences: what was tested and how the agent performed overall}
+{If notes were recorded: "Notes: " followed by each note on its own line, prefixed with —}
+
+Suggested changes:
+1. {specific, actionable change}
+2. {specific, actionable change}
+…
+{If nothing worth changing: "No changes recommended."}
+
+════════════════════════════════════════════
+```
+
+Then offer to implement any changes to `agent_spec.md`.
 
 ---
 
@@ -194,23 +222,63 @@ Before running rehearsal, read and follow `references/dress-rehearsal.md` end to
 
 ### Before Coding Begins
 
-Verify `<target_dir>/agent_spec.md` contains at minimum:
+Verify `agent_spec.md` contains at minimum:
 
 - `model` — a valid LLM Gateway model ID
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
 
-If `agent_spec.md` does not exist in `<target_dir>`, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update the spec before continuing. Do not start coding against an incomplete spec.
+If `agent_spec.md` does not exist, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update the spec before continuing. Do not start coding against an incomplete spec.
 
 ### Pre-coding Checklist
 
-Read and follow [references/pre-coding-checklist.md](references/pre-coding-checklist.md) end to end before writing or editing implementation code.
+1. **Read `agent_spec.md`** — it must exist (see gate above).
+2. Check if `AGENTS.md` exists in the template directory (default: current working directory).
+3. If `AGENTS.md` does **not** exist, prepare the template with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the template is properly set up and avoiding wasted effort coding on a broken foundation.
+   a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding.
+   b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
+   c. **Clone the template**: Run the helper script:
+   ```
+   python <skill_scripts_dir>/clone_template.py
+   ```
+   d. **Select the agentic framework**:
+
+   **STOP. Do NOT proceed until the user has replied with their framework choice.**
+
+   Ask the user (exact message):
+   > Which agentic framework would you like to use?
+   > 1. LangGraph
+   > 2. CrewAI
+   > 3. LlamaIndex
+   > 4. NeMo Agent Toolkit (NAT)
+   > 5. Base
+
+   Wait for the user's reply. Do not assume or default to any framework. If their next message is not a framework choice (silence, unrelated text), re-display the options and wait again — do not proceed with any other coding step. Once the user replies, map their choice to the corresponding value (`langgraph`, `crewai`, `llamaindex`, `nat`, `base`) and run:
+   ```
+   python <skill_scripts_dir>/select_framework.py \
+     --target-dir . \
+     --framework <value>
+   ```
+
+   e. **Validate the template**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
+   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
+   ```
+   python <skill_scripts_dir>/setup_template.py \
+     --llm-model <model-name> \
+     --target-dir .
+   ```
+
+   **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
+
+   g. **Re-read `AGENTS.md`** now that the template is ready.
+4. Recreate the TODO list based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
+
 
 ### Coding Rules
 
 - Implement by adapting the template code — do not write from scratch
-- Modify files only inside `<target_dir>` and its subdirectories
+- Modify files only inside the current directory and its subdirectories
 - Do not view `.env` files (`.env.template` files are OK)
 - Do not add code comments unless asked
 - Do not mock tool implementations unless they would be complex to implement
@@ -222,21 +290,14 @@ Read and follow [references/pre-coding-checklist.md](references/pre-coding-check
 - Always explain **why** the change is needed (purpose and impact) in 1–2 sentences before writing or editing a file
 - Invoke at most **one shell command per response** — wait for the result before invoking another
 
-### After Coding
-
-1. Read `<target_dir>/AGENTS.md` to find the local test command.
-2. Display the command in a code block.
-3. Tell the user: "Run this command in a **new terminal** in `<target_dir>` to test the agent locally."
-4. Do **not** run the command yourself.
-5. Present next steps: revise the implementation, or deploy to DataRobot (follow [references/pre-deployment-checklist.md](references/pre-deployment-checklist.md)).
 
 ---
 
 ## 3. Deploying an AI Agent
 
-Read and follow [references/pre-deployment-checklist.md](references/pre-deployment-checklist.md) end to end.
-
-If the user requests deploy in the same session without having coded, explain that implementation is required and offer **[2. Coding an AI Agent](#2-coding-an-ai-agent)**.
+- Read `AGENTS.md` for deployment instructions
+- Follow the instructions **strictly**
+- Do not deviate without user confirmation
 
 ---
 
@@ -260,13 +321,16 @@ Requires env vars: `DATAROBOT_API_TOKEN`, `DATAROBOT_ENDPOINT`
 
 Clones the DataRobot agent application template repository.
 
-Clones the template to a target directory (repository URL and tag are defined in the script):
+Clones the template to the current directory (repository URL and branch are hardcoded):
 ```bash
-python <scripts_dir>/clone_template.py \
-  --target-dir <target_dir>
+python <scripts_dir>/clone_template.py
 ```
 
-The canonical template URL is the `REPO_URL` constant in this script — reference it for remote comparison; do not hardcode the URL elsewhere.
+Clone to a specific directory:
+```bash
+python <scripts_dir>/clone_template.py \
+  --target-dir ./my-project
+```
 
 ### setup_template.py
 
@@ -275,7 +339,7 @@ Sets up a template repository for initializing a new agent project.
 ```bash
 python <scripts_dir>/setup_template.py \
   --llm-model <model-name> \
-  --target-dir <target_dir>
+  --target-dir .
 ```
 
 ### select_framework.py
@@ -286,7 +350,7 @@ Saves the chosen agentic framework to `.datarobot/answers/agent-agent.yml`
 ```bash
 python <scripts_dir>/select_framework.py \
   --framework langgraph \
-  --target-dir <target_dir>
+  --target-dir .
 ```
 
 Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
@@ -297,14 +361,13 @@ Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
 - If a tool returns an error, read the error message carefully before responding
 - For template-prep **warnings**: try to resolve yourself
 - For template-prep **errors**: return the message to the user and ask how to proceed
-- For `dr dependency check` failures: hard stop — return full output; do not attempt to resolve automatically (see [Dependency check session rule](#dependency-check-session-rule))
 - On unexpected errors, ask the user if they want to retry
 
 ---
 
 ## agent_spec.md Schema
 
-Write specs in YAML to `<target_dir>/agent_spec.md`. Fields are optional when the spec is still evolving.
+Write specs in YAML to `agent_spec.md` in the working directory. Fields are optional when the spec is still evolving.
 
 ```yaml
 model: "anthropic/claude-sonnet-4-5-20250929"   # DataRobot LLM Gateway model ID
@@ -362,7 +425,7 @@ Claude's built-in tools replace the plugin's custom Python tools:
 | `web_search` | WebSearch |
 | `get_web_page` | WebFetch |
 | `write_todos` / `read_todos` | TodoWrite |
-| `show_agent_spec` | Write to `<target_dir>/agent_spec.md` + display as YAML |
+| `show_agent_spec` | Write to `agent_spec.md` + display as YAML |
 | `prepare_to_code` | Bash (`git clone` + `dr start`) |
 | `list_available_models` | WebFetch (DataRobot API) |
 | `code_research` | Agent (Explore subagent) |
@@ -375,65 +438,6 @@ Claude's built-in tools replace the plugin's custom Python tools:
 - If it is unclear whether the request falls into one of the three categories, ask a clarifying question
 - If the user insists on a task outside these three categories, politely decline
 - If a user asks to code before designing, strongly encourage designing first
-- If a user requests deploy without coding in the same session, offer coding — do not deploy
-- Before running any CLI command or helper script, provide a clear explanation in 2-5 sentences. The explanation must include why this specific command is needed now, what it will check/change/create.
-- After the user declines dress rehearsal, always show **[Post-design next steps](#post-design-next-steps)** — never skip to framework selection or the pre-coding checklist
-- During **rehearsal turns**: display only the `output_file` contents — never add performance commentary or replace the script's bottom decoration / DONE hint
 - During **coding**: keep responses to 1–3 sentences; no introductions or conclusions
 - During **design**: be conversational and thorough
 
----
-
-## DataRobot CLI Setup
-
-The DataRobot CLI (`dr`) is required for managing DataRobot custom applications.
-
-### Verify Installation
-
-Check if the CLI is installed:
-
-```bash
-dr --version
-```
-
-Expected output: `DataRobot CLI version: v0.2.66` (or similar)
-
-### Install DataRobot CLI
-
-If not installed, run:
-
-**macOS/Linux:**
-```bash
-curl https://cli.datarobot.com/install | sh
-```
-
-**Windows:**
-```powershell
-irm https://cli.datarobot.com/winstall | iex
-```
-
-### Upgrade CLI
-
-If the CLI version is too old, run to upgrade:
-
-```bash
-dr self update --force
-```
-
-### Check Authentication Status
-
-Verify the CLI is authenticated:
-
-```bash
-dr auth check
-```
-
-### Authenticate
-
-If not authenticated, run:
-
-```bash
-dr auth login
-```
-
-This will guide the user through the authentication process interactively.
