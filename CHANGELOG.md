@@ -14,8 +14,7 @@ Each entry should be prefixed with the affected skill folder name (for example,
 ## [1.3.6] - 2028-07-14
 
 - `datarobot-agent-assist`: Implement pre-coding-checklist, pre-deployment-checklist & workspace-resolution flows.
-
-
+- `datarobot-llm-gateway`: New skill for configuring LLM integration for a DataRobot agent application. Interviews the user, writes `.datarobot/llm-config.json` and   `.secrets/llm-external.env`, then runs `sync_llm_env.py` to merge into `.env` and remove the intermediate config files on success. Supports `gateway`, `deployed`, `external`, and `blueprint-gateway` modes. The script reads it from `.env`/env and emits only the model catalog. `sync_llm_env.py`, validates `llm_deployment_id`, and backs up before force-overwriting credential templates.
 ## [1.3.5] - 2028-07-08
 
 - `datarobot-agent-assist`: Bumped application template version to 11.10.7.

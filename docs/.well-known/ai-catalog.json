@@ -160,6 +160,18 @@
         "scale or debug a DataRobot workload",
         "manage autoscaling and replicas for a DataRobot workload"
       ]
+    },
+    {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:llm-gateway",
+      "displayName": "datarobot-llm-gateway",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-llm-gateway/SKILL.md",
+      "description": "Configure LLM integration for a DataRobot agent application — switch between LLM Gateway, deployed LLM, external provider, or blueprint gateway modes and safely sync provider credentials into .env.",
+      "representativeQueries": [
+        "configure the LLM for my DataRobot agent",
+        "switch my agent to the DataRobot LLM Gateway",
+        "set up Azure OpenAI credentials for my DataRobot agent"
+      ]
     }
   ]
 }
