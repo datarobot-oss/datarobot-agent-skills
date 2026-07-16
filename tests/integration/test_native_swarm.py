@@ -374,10 +374,12 @@ def test_fixture_dispatch_is_always_one_at_a_time(tmp_path: Path) -> None:
 
     # Runner produces its first tool call.
     response_path.write_text(
-        json.dumps({
-            "type": "tool_call",
-            "tool_call": {"tool_name": "fetch_records", "args": {"limit": 5}},
-        }),
+        json.dumps(
+            {
+                "type": "tool_call",
+                "tool_call": {"tool_name": "fetch_records", "args": {"limit": 5}},
+            }
+        ),
         encoding="utf-8",
     )
     t1 = execution.submit(run_dir, response_path)
@@ -389,11 +391,13 @@ def test_fixture_dispatch_is_always_one_at_a_time(tmp_path: Path) -> None:
 
     # Submit the fixture response.
     response_path.write_text(
-        json.dumps({
-            "tool_name": fixture_input_data["tool_name"],
-            "args": fixture_input_data["args"],
-            "return_value": {"records": []},
-        }),
+        json.dumps(
+            {
+                "tool_name": fixture_input_data["tool_name"],
+                "args": fixture_input_data["args"],
+                "return_value": {"records": []},
+            }
+        ),
         encoding="utf-8",
     )
     t2 = execution.submit(run_dir, response_path)
@@ -436,12 +440,20 @@ def _drive_scenario_count_subprocesses(
     ):
         role = transition.get("role")
         if role == "runner":
-            if turns_completed < total_turns and tool_calls_this_turn < tool_calls_per_turn:
+            if (
+                turns_completed < total_turns
+                and tool_calls_this_turn < tool_calls_per_turn
+            ):
                 tool_seq += 1
-                transition = _submit({
-                    "type": "tool_call",
-                    "tool_call": {"tool_name": "fetch_records", "args": {"limit": tool_seq}},
-                })
+                transition = _submit(
+                    {
+                        "type": "tool_call",
+                        "tool_call": {
+                            "tool_name": "fetch_records",
+                            "args": {"limit": tool_seq},
+                        },
+                    }
+                )
                 tool_calls_this_turn += 1
             else:
                 tool_calls_this_turn = 0
@@ -449,18 +461,22 @@ def _drive_scenario_count_subprocesses(
                 transition = _submit({"type": "assistant_response", "content": "Done."})
         elif role == "fixture":
             fi = json.loads(Path(transition["input_path"]).read_text())
-            transition = _submit({
-                "tool_name": fi["tool_name"],
-                "args": fi["args"],
-                "return_value": {"records": []},
-            })
+            transition = _submit(
+                {
+                    "tool_name": fi["tool_name"],
+                    "args": fi["args"],
+                    "return_value": {"records": []},
+                }
+            )
         elif role == "evaluator":
-            transition = _submit({
-                "outcome": "passed",
-                "severity": "none",
-                "reason": "No breach.",
-                "evidence": [],
-            })
+            transition = _submit(
+                {
+                    "outcome": "passed",
+                    "severity": "none",
+                    "reason": "No breach.",
+                    "evidence": [],
+                }
+            )
         else:
             break
 

@@ -170,8 +170,8 @@ def main() -> None:
         "--server-url",
         default=None,
         help="URL of a running `dr opencode serve` instance (e.g. http://127.0.0.1:4096). "
-             "When set, workers attach to it instead of spawning their own process, "
-             "eliminating SQLite DB lock contention at high parallelism.",
+        "When set, workers attach to it instead of spawning their own process, "
+        "eliminating SQLite DB lock contention at high parallelism.",
     )
     args = parser.parse_args()
 
@@ -208,7 +208,9 @@ def main() -> None:
         cmd += ["--pure", message]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=args.timeout)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=args.timeout
+            )
         except subprocess.TimeoutExpired:
             error = "timeout"
             print(

@@ -66,12 +66,18 @@ def _run_worker(
     cmd = [
         sys.executable,
         str(_SCRIPTS_DIR / "gateway_worker.py"),
-        "--role-prompt", str(role_prompt),
-        "--input-path", str(input_path),
-        "--response-path", str(response_path),
-        "--model", model,
-        "--server-url", server_url,
-        "--timeout", str(timeout),
+        "--role-prompt",
+        str(role_prompt),
+        "--input-path",
+        str(input_path),
+        "--response-path",
+        str(response_path),
+        "--model",
+        model,
+        "--server-url",
+        server_url,
+        "--timeout",
+        str(timeout),
     ]
     if rejection_note:
         cmd += ["--rejection-note", rejection_note]
@@ -89,9 +95,12 @@ def _run_tool_executor(
     cmd = [
         sys.executable,
         str(_SCRIPTS_DIR / "tool_executor.py"),
-        "--input-path", str(input_path),
-        "--response-path", str(response_path),
-        "--tools-path", str(tools_path),
+        "--input-path",
+        str(input_path),
+        "--response-path",
+        str(response_path),
+        "--tools-path",
+        str(tools_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -106,8 +115,10 @@ def _submit(run_dir: Path, response_path: Path) -> tuple[dict[str, object], str 
             sys.executable,
             str(_SCRIPTS_DIR / "native_execution.py"),
             "submit",
-            "--run-dir", str(run_dir),
-            "--response", str(response_path),
+            "--run-dir",
+            str(run_dir),
+            "--response",
+            str(response_path),
         ],
         capture_output=True,
         text=True,
@@ -126,8 +137,10 @@ def _fail(run_dir: Path, reason: str) -> None:
             sys.executable,
             str(_SCRIPTS_DIR / "native_execution.py"),
             "fail",
-            "--run-dir", str(run_dir),
-            "--reason", reason,
+            "--run-dir",
+            str(run_dir),
+            "--reason",
+            reason,
         ],
         capture_output=True,
         text=True,
@@ -158,7 +171,9 @@ def _drive_scenario(
             ok = _run_tool_executor(current_input, current_response, tools_path)
         else:
             role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
-            ok = _run_worker(role_prompt, current_input, current_response, model, server_url, timeout)
+            ok = _run_worker(
+                role_prompt, current_input, current_response, model, server_url, timeout
+            )
 
         if not ok:
             _fail(run_dir, "worker subprocess failed")
@@ -167,11 +182,23 @@ def _drive_scenario(
         transition, err = _submit(run_dir, current_response)
         if err is not None:
             # One retry with rejection note
-            if current_role == "fixture" and tools_path is not None and _fixture_tool_name(current_input) in e2e_tools:
+            if (
+                current_role == "fixture"
+                and tools_path is not None
+                and _fixture_tool_name(current_input) in e2e_tools
+            ):
                 ok = _run_tool_executor(current_input, current_response, tools_path)
             else:
                 role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
-                ok = _run_worker(role_prompt, current_input, current_response, model, server_url, timeout, rejection_note=err)
+                ok = _run_worker(
+                    role_prompt,
+                    current_input,
+                    current_response,
+                    model,
+                    server_url,
+                    timeout,
+                    rejection_note=err,
+                )
             if not ok:
                 _fail(run_dir, err)
                 return "error"
@@ -253,9 +280,16 @@ def run(
                 status = future.result()
             except Exception as exc:
                 status = "error"
-                print(f"scenario {task.scenario_name}: unexpected error: {exc}", file=sys.stderr)
+                print(
+                    f"scenario {task.scenario_name}: unexpected error: {exc}",
+                    file=sys.stderr,
+                )
             statuses.append(status)
-            symbol = "✓ passed" if status == "passed" else ("✗ breach" if status in ("breach", "exhausted") else "! error")
+            symbol = (
+                "✓ passed"
+                if status == "passed"
+                else ("✗ breach" if status in ("breach", "exhausted") else "! error")
+            )
             print(
                 f"[{completed:3d}/{total}] {symbol:<10} {task.track:<12} {task.scenario_name} ({elapsed:.1f}s)",
                 file=sys.stderr,
@@ -271,6 +305,7 @@ def run(
     )
 
     return aggregate(spec_path, criteria_path, config_path, runs_dir, output_path)
+
 
 DEFAULT_IMPLEMENTATION_FILES = ("agent.py", "tools.py", "app.py")
 MAX_IMPLEMENTATION_CHARS = 1_000_000
@@ -369,9 +404,7 @@ def aggregate(
     resolved_runs_dir = _resolve_under_root(
         project_root, runs_dir, "swarm runs directory"
     )
-    resolved_output = _resolve_under_root(
-        project_root, output_path, "swarm results"
-    )
+    resolved_output = _resolve_under_root(project_root, output_path, "swarm results")
 
     config, _ = load_native_config(resolved_config)
     scenarios = load_criteria(resolved_criteria)
@@ -530,11 +563,19 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("spec", type=Path)
     run_parser.add_argument("--server-url", required=True)
     run_parser.add_argument("--model", required=True)
-    run_parser.add_argument("--criteria", type=Path, default=Path("evaluation_criteria.md"))
+    run_parser.add_argument(
+        "--criteria", type=Path, default=Path("evaluation_criteria.md")
+    )
     run_parser.add_argument("--config", type=Path, default=Path("agent_config.yaml"))
-    run_parser.add_argument("--runs-dir", type=Path, default=Path(".datarobot/swarm/runs"))
-    run_parser.add_argument("--output", type=Path, default=Path(".datarobot/swarm/results.json"))
-    run_parser.add_argument("--implementation", type=Path, action="append", default=None)
+    run_parser.add_argument(
+        "--runs-dir", type=Path, default=Path(".datarobot/swarm/runs")
+    )
+    run_parser.add_argument(
+        "--output", type=Path, default=Path(".datarobot/swarm/results.json")
+    )
+    run_parser.add_argument(
+        "--implementation", type=Path, action="append", default=None
+    )
     run_parser.add_argument("--tools-path", type=Path, default=None)
     run_parser.add_argument("--workers", type=int, default=20)
     run_parser.add_argument("--timeout", type=int, default=120)
