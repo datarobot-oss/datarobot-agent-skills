@@ -17,6 +17,6 @@ This skill covers building and deploying AI agents on DataRobot.
 ## Sub-skills
 
 - **[agent-assist-build](agent-assist-build/SKILL.md)** — Design, code, and deploy an AI agent on DataRobot. Covers `agent_spec.md` authoring, dress-rehearsal simulation, template-based coding, and deployment.
-- **[datarobot-agent-assist-simulate](../../datarobot-agent-assist-simulate/SKILL.md)** — Adversarially test and harden a deployed agent using swarm simulation, attack testing, convergence loops, and automated evaluation reporting.
+- **[agent-assist-simulate](agent-assist-simulate/SKILL.md)** — Adversarially test and harden a deployed agent using swarm simulation, attack testing, convergence loops, and automated evaluation reporting.
 
 Load the relevant sub-skill based on the user's intent.
