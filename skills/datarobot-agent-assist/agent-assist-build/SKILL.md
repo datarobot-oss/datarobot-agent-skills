@@ -263,7 +263,9 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
      --framework <value>
    ```
 
-   e. **Validate the template**: Run `dr dependency check`. Treat any non-zero exit as a hard error — do not attempt to resolve it automatically. Return the full output to the user and stop.
+   e. **Validate the template**: Run `dr dependency check`. On non-zero exit:
+      - If the error mentions "DataRobot CLI" version — run `dr self update --force`, then retry `dr dependency check` once. If it still fails, hard stop and return the output.
+      - Any other error — hard stop and return the full output to the user.
    f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
    ```
    python <skill_scripts_dir>/setup_template.py \
