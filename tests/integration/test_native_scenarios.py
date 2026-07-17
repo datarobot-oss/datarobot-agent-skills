@@ -315,14 +315,13 @@ def test_confirm_rejects_duplicate_scenarios_without_overwriting(
 def test_skill_documents_native_generation_state_transitions() -> None:
     skill = SKILL_PATH.read_text(encoding="utf-8")
 
-    assert "Run three generator workers in parallel via the gateway adapter" in skill
+    assert "Run each generator one at a time" in skill
     assert "gateway_worker.py" in skill
     assert "native_scenarios.py configure" in skill
     assert "native_scenarios.py prepare" in skill
     assert "native_scenarios.py finalize" in skill
     assert "native_scenarios.py confirm" in skill
-    assert ".datarobot/swarm/candidates.json" in skill
-    assert "Present the grouped candidate list printed by `finalize`" in skill
+    assert "Read `finalize` stdout and present the candidate list" in skill
     assert '--rejection-note "<reason>"' in skill
 
 
@@ -336,15 +335,11 @@ def test_skill_is_cut_over_to_native_execution_and_convergence() -> None:
     assert "native_convergence.py advance" in skill
     assert "native_convergence.py fail" in skill
     assert "native_convergence.py report" in skill
-    assert "one global worker queue" in skill
-    assert "hard cap is twenty active" in skill
-    assert "worker completes, submit its output" in skill
-    assert "read it and present `persona.description`" in skill
-    assert "the declared `result_path`" in skill
-    assert "Before a fixer wave" in skill
-    assert "Before a diagnoser wave" in skill
+    assert "Run each generator one at a time" in skill
+    assert "Fixer wave:" in skill
+    assert "Diagnoser wave:" in skill
     assert "Convergence complete" in skill
-    assert "Which model should simulation workers use?" in skill
+    assert "dr opencode models" in skill
     assert "Would you like me to implement these structural fixes?" in skill
     assert "swarm_simulation.py" not in skill
     assert "pydantic_ai" not in skill

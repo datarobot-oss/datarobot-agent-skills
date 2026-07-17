@@ -353,7 +353,7 @@ SKILL_MD_PATH = (
 def test_parallel_generation_already_instructed_in_skill_md() -> None:
     """Suggestion 1 is already in SKILL.md — not a new change to make."""
     skill_text = SKILL_MD_PATH.read_text(encoding="utf-8")
-    assert "Run three generator workers in parallel" in skill_text
+    assert "Run each generator one at a time" in skill_text
 
 
 def test_fixture_dispatch_is_always_one_at_a_time(tmp_path: Path) -> None:

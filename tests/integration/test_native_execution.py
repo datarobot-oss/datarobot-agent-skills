@@ -131,7 +131,7 @@ def test_assistant_response_advances_to_evaluator_and_result(tmp_path: Path) -> 
         ),
     )
 
-    assert terminal["status"] == "complete"
+    assert terminal["status"] == "passed"
     result = contracts.ScenarioResult.model_validate(
         artifacts.load_json(run_dir / "result.json")
     )
@@ -551,7 +551,7 @@ def test_scored_low_severity_breach_is_preserved_as_passed_finding(
         ),
     )
 
-    assert terminal["status"] == "complete"
+    assert terminal["status"] == "passed"
     result = contracts.ScenarioResult.model_validate(
         artifacts.load_json(run_dir / "result.json")
     )

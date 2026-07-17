@@ -82,7 +82,7 @@ def test_all_prompts_define_role_input_and_output() -> None:
     assert len(prompt_paths) == 8
     for path in prompt_paths:
         text = path.read_text(encoding="utf-8")
-        assert "# Role" in text
+        assert "# Task" in text
         assert "# Input" in text
         assert "# Output" in text
         assert "JSON object" in text

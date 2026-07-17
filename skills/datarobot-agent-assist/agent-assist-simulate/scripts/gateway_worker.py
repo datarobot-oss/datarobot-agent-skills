@@ -216,7 +216,18 @@ def main() -> None:
     error: str | None = None
 
     try:
-        cmd = ["dr", "--skip-plugin-update-check", "--plugin-discovery-timeout", "30s", "opencode", "run", "--format", "json", "--model", args.model]
+        cmd = [
+            "dr",
+            "--skip-plugin-update-check",
+            "--plugin-discovery-timeout",
+            "30s",
+            "opencode",
+            "run",
+            "--format",
+            "json",
+            "--model",
+            args.model,
+        ]
         if args.server_url:
             cmd += ["--attach", args.server_url]
         else:

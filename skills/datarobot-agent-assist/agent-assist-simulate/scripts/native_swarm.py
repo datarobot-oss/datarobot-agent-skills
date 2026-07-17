@@ -168,7 +168,12 @@ def _invoke_role(
         return _run_tool_executor(current_input, current_response, tools_path)
     role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
     return _run_worker(
-        role_prompt, current_input, current_response, model, server_url, timeout,
+        role_prompt,
+        current_input,
+        current_response,
+        model,
+        server_url,
+        timeout,
         rejection_note=rejection_note,
     )
 
@@ -189,14 +194,25 @@ def _drive_scenario(
 
     def invoke(rejection_note: str | None = None) -> bool:
         return _invoke_role(
-            current_role, current_input, current_response, model, server_url,
-            timeout, e2e_tools, tools_path, rejection_note=rejection_note,
+            current_role,
+            current_input,
+            current_response,
+            model,
+            server_url,
+            timeout,
+            e2e_tools,
+            tools_path,
+            rejection_note=rejection_note,
         )
 
     def fixture_fallback() -> bool:
         return _substitute_fixture_fallback(
-            run_dir, current_role, current_input, current_response,
-            tools_path, e2e_tools,
+            run_dir,
+            current_role,
+            current_input,
+            current_response,
+            tools_path,
+            e2e_tools,
         )
 
     while True:
@@ -342,15 +358,17 @@ def run(
         for i, task in enumerate(tasks):
             if i > 0:
                 time.sleep(0.5)
-            futures[pool.submit(
-                _drive_scenario,
-                task.model_dump(mode="json"),
-                model,
-                server_url,
-                timeout,
-                e2e_tools,
-                tools_path,
-            )] = task
+            futures[
+                pool.submit(
+                    _drive_scenario,
+                    task.model_dump(mode="json"),
+                    model,
+                    server_url,
+                    timeout,
+                    e2e_tools,
+                    tools_path,
+                )
+            ] = task
         for future in as_completed(futures):
             task = futures[future]
             completed += 1
@@ -656,7 +674,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--implementation", type=Path, action="append", default=None
     )
     run_parser.add_argument("--tools-path", type=Path, default=None)
-    run_parser.add_argument("--workers", type=int, default=4)
+    run_parser.add_argument("--workers", type=int, default=2)
     run_parser.add_argument("--timeout", type=int, default=120)
 
     return parser
