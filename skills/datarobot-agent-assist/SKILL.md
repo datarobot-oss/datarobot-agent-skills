@@ -92,6 +92,7 @@ Run in order before proceeding:
    - If missing, **ALWAYS RUN** the install command before proceeding
    - **ALWAYS RUN** the upgrade command before proceeding
    - If not authenticated, **ALWAYS RUN** the auth command before proceeding
+4. **Codespace** — run `python <skill_scripts_dir>/check_codespace.py` (no-op outside a Codespace). On non-zero exit, relay its message and stop; otherwise relay any exposed-ports warning it prints.
 
 ---
 

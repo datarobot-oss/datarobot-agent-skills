@@ -11,6 +11,10 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.3.8] - 2026-07-17
+
+- `datarobot-agent-assist`: Warn when the ports needed for local agent testing (5173, 8080, 8842) are not exposed inside a DataRobot Codespace, and stop with guidance when Agent Assist runs from an unsupported working directory. New `check_codespace.py` helper wired into the Pre-requisite Check; no-op outside a Codespace.
+
 ## [1.3.7] - 2026-07-14
 
 - `datarobot-external-agent-monitoring`: Fix PydanticAI instrumentation — modern PydanticAI makes OpenTelemetry instrumentation opt-in, so configuring a provider alone emitted no spans; document the required `Agent.instrument_all()` call.
