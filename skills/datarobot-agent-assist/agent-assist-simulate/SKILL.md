@@ -73,8 +73,16 @@ descriptions. Save to `user_context.txt` if provided. Skip if the user says "ski
 **Q5 — Model:** Run `dr opencode models` and present up to ten as a numbered list, with
 "Other — enter a model ID" as the last option. Store the choice as `<model>`.
 
-**Q6 — Selective tool execution (optional):** If `agent_spec.md` has any `is_readonly: true`
-tools, ask whether to call them for real or simulate all. Default simulate.
+**Q6 — Selective tool execution (optional):** Read the tool definitions in `agent_spec.md` and
+identify any that appear to be read-only — no writes, no side effects, names like `get_`, `list_`,
+`load_`, `fetch_`, `search_`. If any exist, ask:
+> "I can call these tools for real during simulation instead of generating fictional return values:
+> [list each with its description]
+> Run them for real, or simulate all? Default is simulate."
+
+If the user chooses real execution: edit `agent_spec.md` to add `is_readonly: true` on each
+approved tool, then pass `--execution-mode selective_e2e` to `native_scenarios.py configure`.
+If the user declines or no read-only tools exist, omit `--execution-mode` (defaults to simulated).
 
 **Start OpenCode server** (once, after model selection):
 

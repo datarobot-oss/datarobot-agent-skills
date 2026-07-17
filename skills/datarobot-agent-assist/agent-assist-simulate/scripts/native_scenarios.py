@@ -28,6 +28,7 @@ from artifacts import (
 from contracts import (
     ConvergenceConfig,
     EvaluationConfig,
+    ExecutionConfig,
     GroundingConfig,
     PersonaConfig,
     Scenario,
@@ -99,6 +100,7 @@ def configure(
     judge_mode: Literal["standard", "scored"],
     output_path: Path,
     model: str | None = None,
+    execution_mode: str = "simulated",
 ) -> Path:
     """Persist the public native configuration collected by the harness."""
     project_root = spec_path.resolve().parent
@@ -120,6 +122,7 @@ def configure(
             grounding=GroundingConfig(context_path=context_path),
             evaluation=EvaluationConfig(mode=judge_mode),
             convergence=ConvergenceConfig(max_iterations=iterations),
+            execution=ExecutionConfig(mode=execution_mode),
             model=model,
         ),
         resolved_output,
@@ -247,6 +250,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     configure_parser.add_argument("--model", default=None)
     configure_parser.add_argument(
+        "--execution-mode",
+        choices=["simulated", "selective_e2e"],
+        default="simulated",
+    )
+    configure_parser.add_argument(
         "--output", type=Path, default=Path("agent_config.yaml")
     )
 
@@ -288,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.judge_mode,
                 args.output,
                 args.model,
+                args.execution_mode,
             )
             print(f"config:{config_path}")
         elif args.command == "prepare":
