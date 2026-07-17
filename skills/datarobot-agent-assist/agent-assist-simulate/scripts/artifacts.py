@@ -38,7 +38,7 @@ def load_json(path: Path) -> Any:
 
 def read_generated_code(directory: Path | None = None) -> str | None:
     """Read a bounded implementation-code summary for scenario generation."""
-    priority = ["tools.py", "agent.py", "app.py"]
+    priority = ["tools.py", "agent.py", "myagent.py", "app.py"]
     candidates: list[Path] = []
     root = directory or Path.cwd()
     for name in priority:
@@ -183,15 +183,3 @@ def _resolve_project_file(project_root: Path, path: Path, label: str) -> Path:
     return resolved
 
 
-def update_spec_system_prompt(
-    path: Path, raw_spec_text: str, system_prompt: str
-) -> None:
-    """Persist a hardened system prompt without changing other spec fields."""
-    updated = yaml.safe_load(raw_spec_text)
-    updated["system_prompt"] = system_prompt
-    path.write_text(
-        yaml.dump(
-            updated, default_flow_style=False, sort_keys=False, allow_unicode=True
-        ),
-        encoding="utf-8",
-    )

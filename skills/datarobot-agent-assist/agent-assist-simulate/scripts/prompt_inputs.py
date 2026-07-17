@@ -7,10 +7,8 @@
 from contracts import (
     AgentSpec,
     AttemptedToolCall,
-    PromptPatchRecord,
     RunnerResult,
     Scenario,
-    ScenarioResult,
     ToolDef,
     ToolFixture,
     TranscriptEntry,
@@ -124,43 +122,3 @@ def evaluator_input(
     }
 
 
-def fixer_input(
-    breached_results: list[ScenarioResult],
-    current_system_prompt: str,
-    patches_applied: list[PromptPatchRecord],
-) -> dict[str, object]:
-    """Build one isolated prompt-hardening input package."""
-    return {
-        "breached_scenarios": [
-            {
-                "scenario_id": result.scenario.scenario_id,
-                "name": result.scenario.name,
-                "reason": result.breach_reason or result.evaluation_reason or "",
-                "evidence": list(result.evidence),
-                "transcript_excerpt": [
-                    entry.model_dump(mode="json") for entry in result.transcript[-3:]
-                ],
-            }
-            for result in breached_results
-        ],
-        "current_system_prompt": current_system_prompt,
-        "patches_applied_so_far": [
-            patch.model_dump(mode="json") for patch in patches_applied
-        ],
-    }
-
-
-def diagnoser_input(
-    result: ScenarioResult,
-    patches_applied: list[PromptPatchRecord],
-    final_system_prompt: str,
-) -> dict[str, object]:
-    """Build one isolated structural-diagnosis input package."""
-    return {
-        "scenario": result.scenario.model_dump(mode="json"),
-        "patches_applied": [patch.model_dump(mode="json") for patch in patches_applied],
-        "final_transcript": [
-            entry.model_dump(mode="json") for entry in result.transcript
-        ],
-        "final_system_prompt": final_system_prompt,
-    }

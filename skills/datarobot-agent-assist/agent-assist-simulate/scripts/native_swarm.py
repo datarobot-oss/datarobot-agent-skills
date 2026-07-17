@@ -404,7 +404,7 @@ def run(
     return aggregate(spec_path, criteria_path, config_path, runs_dir, output_path)
 
 
-DEFAULT_IMPLEMENTATION_FILES = ("agent.py", "tools.py", "app.py")
+DEFAULT_IMPLEMENTATION_FILES = ("agent.py", "myagent.py", "tools.py", "app.py")
 MAX_IMPLEMENTATION_CHARS = 1_000_000
 
 
@@ -568,7 +568,7 @@ def _resolve_implementation_files(
     if not candidates:
         raise ValueError(
             "no implementation files found; pass --implementation or add "
-            "agent.py, tools.py, or app.py"
+            "agent.py, myagent.py, tools.py, or app.py"
         )
     return [
         _resolve_project_file(project_root, path, "implementation file")

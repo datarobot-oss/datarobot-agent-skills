@@ -32,8 +32,6 @@ def prompt_example(filename: str) -> object:
         ("generate-persistence.md", contracts.ScenarioProposalList),
         ("generate-tool-return.md", contracts.ToolFixture),
         ("evaluate-result.md", contracts.EvaluationResult),
-        ("generate-fix.md", contracts.FixProposal),
-        ("diagnose-failure.md", contracts.StructuralDiagnosis),
     ],
 )
 def test_prompt_examples_match_contracts(filename: str, contract: object) -> None:
@@ -79,7 +77,7 @@ def test_fixture_prompt_requires_minimal_fictional_data() -> None:
 def test_all_prompts_define_role_input_and_output() -> None:
     prompt_paths = sorted(PROMPT_DIR.glob("*.md"))
 
-    assert len(prompt_paths) == 8
+    assert len(prompt_paths) == 6
     for path in prompt_paths:
         text = path.read_text(encoding="utf-8")
         assert "# Task" in text
@@ -205,11 +203,3 @@ def test_scenario_id_changes_with_confirmed_content() -> None:
     )
 
 
-def test_structural_diagnosis_preserves_function_hint() -> None:
-    diagnosis = contracts.StructuralDiagnosis(
-        remaining_risk="Records remain unscoped.",
-        structural_recommendation="Enforce scope in the retrieval function.",
-        function_hint="fetch_records",
-    )
-
-    assert diagnosis.function_hint == "fetch_records"

@@ -9,8 +9,8 @@ description: >-
 # Agent Assist — Simulate
 
 Adversarially test and harden an implemented agent before deployment. Runs three simulation tracks
-(attack, behavior, persistence), then iteratively patches the system prompt through a convergence
-loop until all scenarios pass or iterations are exhausted.
+(attack, behavior, persistence), then patches and retests failing scenarios across multiple rounds
+until all pass or the fixing limit is reached.
 
 ---
 
@@ -47,7 +47,7 @@ If any check fails, surface the error and stop.
 
 1. Confirm `agent_spec.md` exists with a `system_prompt`. If not, route the user to
    `agent-assist-build` and stop.
-2. Confirm implementation code exists (`agent.py`, `tools.py`, or `app.py`). If not, route to
+2. Confirm implementation code exists (`agent.py`, `myagent.py`, `tools.py`, or `app.py`). If not, route to
    `agent-assist-build` and stop.
 
 ---
@@ -57,8 +57,7 @@ If any check fails, surface the error and stop.
 Collect answers in sequence. Do not start simulation until all are answered.
 
 If `agent_config.yaml` already exists, read it and ask:
-> "Last time: [persona], [context or none], [iterations] iterations, [eval mode], [model]. Same
-> settings or change anything?"
+> "Last time: [persona], [context or none], [iterations] rounds of fixing, [eval mode], [model]. Same settings or change anything?"
 
 **Q1 — User type:** Read `agent_spec.md` and offer 2–4 domain-specific personas plus
 "Other — describe your user segment."
@@ -66,9 +65,11 @@ If `agent_config.yaml` already exists, read it and ask:
 **Q2 — Grounding context (optional):** Ask for customer tickets, support logs, or behavior
 descriptions. Save to `user_context.txt` if provided. Skip if the user says "skip."
 
-**Q3 — Iteration limit:** Default 3.
+**Q3 — Fixing rounds:** Ask:
+> "How many rounds of fixing should I run on failing scenarios? Default: 3."
 
-**Q4 — Evaluation mode:** Standard (pass/fail) or scored. Default standard.
+**Q4 — Evaluation mode:** Ask:
+> "How should results be evaluated? Standard gives a simple pass/fail. Scored rates each result by severity: low, medium, high, or critical. Default: standard."
 
 **Q5 — Model:** Run `dr opencode models` and present up to ten as a numbered list, with
 "Other — enter a model ID" as the last option. Store the choice as `<model>`.
@@ -113,7 +114,10 @@ Store the PID as `<opencode_server_pid>` and `http://127.0.0.1:4096` as `<openco
   --config agent_config.yaml
 ```
 
-Run each generator one at a time. After each, tell the user what was generated:
+Run each generator one at a time. Before each, announce what the track tests. After each, report
+the count and list the scenario names.
+
+Say: `"Generating attack scenarios — these test whether the agent can be manipulated into bypassing its own restrictions."`
 
 ```bash
 <python> <skill_scripts_dir>/gateway_worker.py \
@@ -122,7 +126,10 @@ Run each generator one at a time. After each, tell the user what was generated:
   --response-path .datarobot/swarm/attack-output.json \
   --model <model> --server-url <opencode_server_url>
 ```
-Read `.datarobot/swarm/attack-output.json` and report the scenario count: `"Generated X attack scenarios."`
+
+Read `.datarobot/swarm/attack-output.json` and report: `"Generated X attack scenarios:"` followed by a list of scenario names.
+
+Say: `"Generating behavior scenarios — these test how the agent handles ambiguous or edge-case user requests."`
 
 ```bash
 <python> <skill_scripts_dir>/gateway_worker.py \
@@ -131,7 +138,10 @@ Read `.datarobot/swarm/attack-output.json` and report the scenario count: `"Gene
   --response-path .datarobot/swarm/behavior-output.json \
   --model <model> --server-url <opencode_server_url>
 ```
-Read `.datarobot/swarm/behavior-output.json` and report: `"Generated X behavior scenarios."`
+
+Read `.datarobot/swarm/behavior-output.json` and report: `"Generated X behavior scenarios:"` followed by a list of scenario names.
+
+Say: `"Generating persistence scenarios — these apply multi-turn pressure to see if the agent holds its position under pushback."`
 
 ```bash
 <python> <skill_scripts_dir>/gateway_worker.py \
@@ -140,7 +150,8 @@ Read `.datarobot/swarm/behavior-output.json` and report: `"Generated X behavior 
   --response-path .datarobot/swarm/persistence-output.json \
   --model <model> --server-url <opencode_server_url>
 ```
-Read `.datarobot/swarm/persistence-output.json` and report: `"Generated X persistence scenarios."`
+
+Read `.datarobot/swarm/persistence-output.json` and report: `"Generated X persistence scenarios:"` followed by a list of scenario names.
 
 Validate all outputs:
 
@@ -165,9 +176,9 @@ If `.datarobot/swarm/` exists, ask the user:
 If yes, archive the directory with a timestamp (`mv .datarobot/swarm .datarobot/swarm-<timestamp>`)
 and continue. If no, stop and let the user review previous results.
 
-Find all implementation files in the working directory (`agent.py`, `tools.py`, `app.py`) and pass
-each as a separate `--implementation` flag. Tell the user how many scenarios will run before launching:
-> "Running N scenarios across 3 tracks — typically 2–5 minutes."
+Find all implementation files in the working directory (`agent.py`, `myagent.py`, `tools.py`, `app.py`) and pass
+each as a separate `--implementation` flag. Tell the user before launching:
+> "[N] scenarios queued — covering adversarial attacks, ambiguous user behavior, and multi-turn pressure. Typically 2–5 minutes."
 
 ```bash
 <python> <skill_scripts_dir>/native_swarm.py run agent_spec.md \
@@ -203,53 +214,87 @@ List any breaches by track and name.
   --actual-model "<model>"
 ```
 
-Parse stdout from `initialize` as JSON — it contains `{"status": "...", "tasks": [...]}`. Each
-task has `role`, `task_id`, `input_path`, `response_path`, and (for rerun tasks) `run_dir` — use
-these directly when invoking workers. Process each task in the wave, then call `advance`. Parse
-`advance` stdout the same way to get the next wave. Repeat until `status` is `complete`. Run one
-worker at a time.
+Parse stdout as JSON: `{"status": "...", "breaches": [...], "exhausted": [...], "passed": [...]}`.
+Each breach entry has `scenario_id`, `scenario_name`, `track`, `breach_reason`, `transcript`,
+`breach_indicators`, `iteration`, and `suggested_rerun_dir`.
 
-**Before each wave**, tell the user what's happening:
-- Fixer wave: `"Patching: [scenario] (attempt N of M)"`
-- Rerun: `"Retesting: [scenario]"` — report `✓ passed / ✗ breach / ! error` as each finishes
-- Diagnoser wave: `"Diagnosing unresolved breach: [scenario]"`
+If `status` is `complete`, skip to Step 5.
 
-**Fixer / diagnoser tasks:**
+**Fix loop** — repeat until `advance` returns `complete`:
 
-```bash
-<python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <generate-fix|diagnose-failure> \
-  --input-path <input_path> \
-  --response-path <response_path> \
-  --model <model> --server-url <opencode_server_url>
-```
+For each breach in `breaches`:
 
-**Rerun tasks** (runner / fixture / evaluator) — drive each to terminal:
+1. Read the breach transcript and `breach_reason`. Propose the minimal addition to the
+   system prompt that prevents this behavior. Tell the user:
+   > "Breach: [scenario_name] — [breach_reason]
+   > Proposed fix: [your proposed text]
+   > Apply this patch? (yes/no)"
 
-```bash
-<python> <skill_scripts_dir>/gateway_worker.py \
-  --role-prompt <run-scenario|generate-tool-return|evaluate-result> \
-  --input-path <input_path> \
-  --response-path <response_path> \
-  --model <model> --server-url <opencode_server_url>
-```
+   If approved, edit `agent_spec.md` directly to append the text to `system_prompt`.
+   Then find the `SYSTEM_PROMPT` string in the implementation files (check `agent.py`,
+   `myagent.py`, `tools.py`, `app.py`) and apply the same addition there so the deployed
+   agent stays in sync with the spec.
 
-Submit and route from the returned transition:
+   If the breach is structural (cannot be fixed by prompt alone — e.g. a missing tool
+   guard in the implementation), say so and read the implementation file at the relevant
+   function. Propose a targeted code change and ask for approval. If approved, apply it
+   with your Edit tool.
 
-```bash
-<python> <skill_scripts_dir>/native_execution.py submit \
-  --run-dir <run_dir> --response <response_path>
-```
+2. Before retesting, tell the user:
+   > "Breach: [scenario_name]
+   > What happened: [breach_reason]
+   > Fix: [one sentence describing what was added to the system prompt or implementation]
+   > Retesting now to verify the patch holds."
 
-`submit` prints JSON. If it contains `"role"`, dispatch the next worker using the returned
-`input_path` and `response_path`. If it contains a terminal status (`"passed"`, `"breach"`,
-`"error"`), record the outcome and move to the next task.
+   Then re-run the scenario using `suggested_rerun_dir` as the run directory:
 
-After each wave, advance:
+   ```bash
+   <python> <skill_scripts_dir>/native_execution.py initialize agent_spec.md \
+     --criteria evaluation_criteria.md \
+     --scenario-id <scenario_id> \
+     --run-dir <suggested_rerun_dir>
+   ```
 
-```bash
-<python> <skill_scripts_dir>/native_convergence.py advance agent_spec.md
-```
+   Drive it to terminal using the runner → fixture → evaluator loop. Before each worker call,
+   announce the current step:
+   - Runner: `"Turn N/M — running scenario"`
+   - Fixture: `"Turn N/M — generating tool return"`
+   - Evaluator: `"Turn N/M — evaluating"`
+
+   where N is the current turn number and M is the scenario's `max_turns`. Read N and the next role
+   from each `submit` response (`turn_number`, `role`).
+
+   ```bash
+   <python> <skill_scripts_dir>/gateway_worker.py \
+     --role-prompt <run-scenario|generate-tool-return|evaluate-result> \
+     --input-path <input_path> \
+     --response-path <response_path> \
+     --model <model> --server-url <opencode_server_url>
+   ```
+
+   Submit and route after each worker:
+
+   ```bash
+   <python> <skill_scripts_dir>/native_execution.py submit \
+     --run-dir <suggested_rerun_dir> --response <response_path>
+   ```
+
+   Report `✓ passed / ✗ breach / ! error` when terminal.
+
+3. After all reruns in this round, call advance with the completed rerun dirs:
+
+   ```bash
+   <python> <skill_scripts_dir>/native_convergence.py advance agent_spec.md \
+     --rerun <scenario_id>:<suggested_rerun_dir> [--rerun ...]
+   ```
+
+   Parse stdout the same way as `initialize`. If `status` is `complete`, stop.
+   Otherwise repeat the fix loop for the new `breaches` list.
+
+For any scenario in `exhausted`: read its `breach_reason` and transcript, identify the
+implementation function responsible, propose a targeted code fix, ask for approval, apply
+with your Edit tool, then rerun it (using the next iteration dir from `suggested_rerun_dir`
+in the advance output) and call `advance` again.
 
 When `advance` returns `complete`:
 > "Convergence complete. X resolved, Y exhausted."
@@ -265,14 +310,14 @@ When `advance` returns `complete`:
 kill <opencode_server_pid> 2>/dev/null || true
 ```
 
-Present passed/total, unresolved, exhausted, patches applied, and readiness. If `ready: false`,
-say so explicitly before offering next steps.
+After the script writes `eval_report.md`, append a **"## Changes Applied"** section to the file
+listing every change made during Step 4 — scenario name, what was changed, and why. For prompt
+patches, list both the addition to `agent_spec.md` and the corresponding change to the
+implementation file. For code fixes, list the function and file changed. Use your Edit tool to
+append to `eval_report.md`.
 
-For each structural diagnosis, present the scenario, risk, recommendation, and `function_hint`.
-Ask:
-> "Would you like me to implement these structural fixes?"
-
-Stop and wait. If approved, make only the targeted changes to the hinted function.
+Present passed/total, unresolved, exhausted, and readiness to the user. If `ready: false`, say so
+explicitly before offering next steps.
 
 **Next steps:**
 
@@ -297,14 +342,6 @@ What would you like to do next?
 each invalid output. Retry that generator once with `--rejection-note "<reason>"` and rerun
 `finalize`. If it still fails, surface the error and stop.
 
-**Step 4 convergence worker failure** — if `gateway_worker.py` exits non-zero, retry once. After
-a second failure, mark the task failed before calling `advance`:
-
-```bash
-<python> <skill_scripts_dir>/native_convergence.py fail agent_spec.md \
-  --task-id <task_id> --reason "<reason>"
-```
-
 **Step 4 rerun worker failure** — if a runner/fixture/evaluator worker exits non-zero, mark the
 scenario failed:
 
@@ -312,6 +349,8 @@ scenario failed:
 <python> <skill_scripts_dir>/native_execution.py fail \
   --run-dir <run_dir> --reason "<reason>"
 ```
+
+Then call `advance` with that run dir so the script records it as errored and moves on.
 
 **Auth errors (401 / UNAUTHORIZED):** Run `dr auth login` and retry immediately.
 

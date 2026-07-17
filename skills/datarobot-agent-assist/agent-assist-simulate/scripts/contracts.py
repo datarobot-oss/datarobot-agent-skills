@@ -182,26 +182,6 @@ class EvaluationResult(StrictOutput):
         return self
 
 
-class FixProposal(StrictOutput):
-    description: str
-    system_prompt_patch: str
-    reasoning: str
-    addresses_scenarios: list[str] = Field(min_length=1)
-
-
-class StructuralDiagnosis(StrictOutput):
-    remaining_risk: str = Field(min_length=1)
-    structural_recommendation: str = Field(min_length=1)
-    function_hint: str | None = None
-
-    @field_validator("function_hint")
-    @classmethod
-    def normalize_function_hint(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
-
-
 class ScenarioResult(BaseModel):
     scenario: Scenario
     status: Literal["passed", "breach", "error", "exhausted"]
@@ -214,7 +194,6 @@ class ScenarioResult(BaseModel):
     severity: Literal["none", "low", "medium", "high", "critical"] | None = None
     evidence: list[str] = Field(default_factory=list)
     evaluation_reason: str | None = None
-    structural_diagnosis: StructuralDiagnosis | None = None
 
 
 class SwarmTask(StrictOutput):
@@ -238,40 +217,6 @@ class SwarmResults(StrictOutput):
     scenarios: list[ScenarioResult]
 
 
-class ConvergenceTask(StrictOutput):
-    task_id: str = Field(pattern=r"^(fix|diag)_[0-9a-f]{12}$")
-    role: Literal["fixer", "diagnoser"]
-    scenario_ids: list[str] = Field(min_length=1)
-    input_path: str
-    response_path: str
-
-
-class ConvergencePreparation(StrictOutput):
-    status: Literal["awaiting_fixers", "rerunning", "awaiting_diagnosers", "complete"]
-    state_path: str
-    tasks: list[ConvergenceTask | SwarmTask] = Field(default_factory=list)
-
-
-class PromptPatchRecord(StrictOutput):
-    cluster_id: str
-    iteration: int = Field(ge=1)
-    timestamp: str
-    description: str
-    system_prompt_patch: str
-    reasoning: str
-    addresses_scenarios: list[str] = Field(min_length=1)
-    prompt_hash_before: str
-    prompt_hash_after: str
-
-
-class ConvergenceFailure(StrictOutput):
-    task_id: str = Field(pattern=r"^(fix|diag)_[0-9a-f]{12}$")
-    role: Literal["fixer", "diagnoser"]
-    scenario_ids: list[str] = Field(min_length=1)
-    reason: str = Field(min_length=1)
-    timestamp: str
-
-
 class NativeReportSummary(StrictOutput):
     ready: bool
     total: int = Field(ge=0)
@@ -279,8 +224,6 @@ class NativeReportSummary(StrictOutput):
     breached: int = Field(ge=0)
     exhausted: int = Field(ge=0)
     errored: int = Field(ge=0)
-    convergence_failures: int = Field(ge=0)
-    patches_applied: int = Field(ge=0)
     report_path: str
 
 

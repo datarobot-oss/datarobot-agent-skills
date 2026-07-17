@@ -333,14 +333,10 @@ def test_skill_is_cut_over_to_native_execution_and_convergence() -> None:
     assert "native_execution.py fail" in skill
     assert "native_convergence.py initialize" in skill
     assert "native_convergence.py advance" in skill
-    assert "native_convergence.py fail" in skill
     assert "native_convergence.py report" in skill
     assert "Run each generator one at a time" in skill
-    assert "Fixer wave:" in skill
-    assert "Diagnoser wave:" in skill
     assert "Convergence complete" in skill
     assert "dr opencode models" in skill
-    assert "Would you like me to implement these structural fixes?" in skill
     assert "swarm_simulation.py" not in skill
     assert "pydantic_ai" not in skill
     assert "dr auth check" in skill

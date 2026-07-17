@@ -4,70 +4,25 @@
 
 """Deterministic final-outcome aggregation and report rendering."""
 
-import hashlib
-import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol
+from typing import Any
 
-from contracts import (
-    ConvergenceFailure,
-    NativeReportSummary,
-    PromptPatchRecord,
-    ScenarioResult,
-    SimulationConfig,
-    StructuralDiagnosis,
-    SwarmResults,
-)
-
-
-class NativeReportState(Protocol):
-    """Minimal completed-convergence state required by the native renderer."""
-
-    started_at: str
-    completed_at: str | None
-    initial_spec_hash: str
-    expected_spec_hash: str
-    current_system_prompt: str
-    actual_model: str | None
-    config: SimulationConfig
-    initial_results: SwarmResults
-    latest_results: list[ScenarioResult]
-    iteration_counts: dict[str, int]
-    patches_applied: list[PromptPatchRecord]
-    failures: list[ConvergenceFailure]
-
-
-def format_structural_diagnosis(diagnosis: StructuralDiagnosis) -> str:
-    """Render structured diagnosis in the legacy report's recommendation format."""
-    hint = (
-        f" Function to fix: {diagnosis.function_hint}"
-        if diagnosis.function_hint
-        else ""
-    )
-    return (
-        f"Remaining risk: {diagnosis.remaining_risk} "
-        f"Structural fix: {diagnosis.structural_recommendation}{hint}"
-    )
+from contracts import NativeReportSummary
 
 
 def write_native_report(
-    state: NativeReportState,
-    spec_text: str,
+    state: Any,
     output_path: Path,
 ) -> NativeReportSummary:
     """Render a completed native convergence state without mutating its outcomes."""
-    final_spec_hash = hashlib.sha256(spec_text.encode()).hexdigest()
-    prompt_hash = hashlib.sha256(state.current_system_prompt.encode()).hexdigest()
     outcomes = list(state.latest_results)
     counts = {
         status: sum(1 for result in outcomes if result.status == status)
         for status in ("passed", "breach", "exhausted", "error")
     }
-    ready = (
-        len(outcomes) == counts["passed"]
-        and not state.failures
-        and len(outcomes) == len(state.initial_results.scenarios)
+    ready = len(outcomes) == counts["passed"] and len(outcomes) == len(
+        state.initial_results.scenarios
     )
     generated_at = datetime.now(timezone.utc).isoformat()
     model_name = state.actual_model or "unknown (not exposed by harness)"
@@ -90,9 +45,6 @@ def write_native_report(
         f"- Convergence completed: {state.completed_at or 'unknown'}",
         f"- Report generated: {generated_at}",
         f"- Actual harness model: {model_name}",
-        f"- Initial spec hash: `{state.initial_spec_hash}`",
-        f"- Final spec hash: `{final_spec_hash}`",
-        f"- Final system-prompt hash: `{prompt_hash}`",
         "",
         "## Summary",
         f"- Ready to deploy: {'yes' if ready else 'no'}",
@@ -101,8 +53,6 @@ def write_native_report(
         f"- Unresolved breaches: {counts['breach']}",
         f"- Exhausted: {counts['exhausted']}",
         f"- Errored: {counts['error']}",
-        f"- Convergence worker failures: {len(state.failures)}",
-        f"- Prompt patches applied: {len(state.patches_applied)}",
         "",
         "## Coverage",
         (
@@ -165,51 +115,12 @@ def write_native_report(
     else:
         lines += ["No non-blocking scored findings.", ""]
 
-    lines += ["## Prompt Patch Audit", ""]
-    if state.patches_applied:
-        for patch in state.patches_applied:
-            lines += [
-                f"### Iteration {patch.iteration}: {patch.description}",
-                f"- Timestamp: {patch.timestamp}",
-                f"- Addresses: {', '.join(patch.addresses_scenarios)}",
-                f"- Reasoning: {patch.reasoning}",
-                f"- Prompt hash before: `{patch.prompt_hash_before}`",
-                f"- Prompt hash after: `{patch.prompt_hash_after}`",
-                "- Appended system-prompt text:",
-                "```text",
-                patch.system_prompt_patch,
-                "```",
-                "",
-            ]
-    else:
-        lines += ["No prompt patches applied.", ""]
-
-    lines += ["## Structural Recommendations", ""]
-    diagnosed = [
-        result for result in outcomes if result.structural_diagnosis is not None
-    ]
-    if diagnosed:
-        for result in diagnosed:
-            diagnosis = result.structural_diagnosis
-            if diagnosis is None:
-                continue
-            lines += [
-                f"### {result.scenario.name}",
-                f"- Remaining risk: {diagnosis.remaining_risk}",
-                f"- Recommended structural change: {diagnosis.structural_recommendation}",
-                f"- Function hint: {diagnosis.function_hint or 'not identified'}",
-                "- Implementation changes require explicit user approval.",
-                "",
-            ]
-    else:
-        lines += ["No structural recommendations.", ""]
-
     lines += ["## Failures and Coverage Gaps", ""]
     error_results = [result for result in outcomes if result.status == "error"]
     unresolved = [
         result for result in outcomes if result.status in {"breach", "exhausted"}
     ]
-    if not error_results and not state.failures and not unresolved:
+    if not error_results and not unresolved:
         lines += ["No failures or confirmed-scenario coverage gaps.", ""]
     for result in error_results:
         lines += [
@@ -220,11 +131,6 @@ def write_native_report(
         lines += [
             f"- Scenario `{result.scenario.scenario_id}` remains {result.status}: "
             f"{result.breach_reason or result.evaluation_reason or 'unresolved violation'}"
-        ]
-    for failure in state.failures:
-        lines += [
-            f"- {failure.role} task `{failure.task_id}` failed for "
-            f"{', '.join(failure.scenario_ids)}: {failure.reason}"
         ]
     lines.append("")
 
@@ -244,10 +150,7 @@ def write_native_report(
 
     content = "\n".join(lines)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_name(f".{output_path.name}.tmp")
-    temporary_path.write_text(content, encoding="utf-8")
-    _archive_previous_report(output_path, final_spec_hash)
-    temporary_path.replace(output_path)
+    output_path.write_text(content, encoding="utf-8")
     return NativeReportSummary(
         ready=ready,
         total=len(outcomes),
@@ -255,28 +158,5 @@ def write_native_report(
         breached=counts["breach"],
         exhausted=counts["exhausted"],
         errored=counts["error"],
-        convergence_failures=len(state.failures),
-        patches_applied=len(state.patches_applied),
         report_path=str(output_path),
     )
-
-
-def _archive_previous_report(report_path: Path, final_spec_hash: str) -> None:
-    if not report_path.is_file():
-        return
-    existing = report_path.read_text(encoding="utf-8")
-    match = re.search(
-        r"(?:\*\*Spec hash:\*\*|- Final spec hash:)\s*`?([0-9a-f]+)",
-        existing,
-    )
-    if not match or match.group(1) == final_spec_hash:
-        return
-    archive = report_path.with_name(
-        f"{report_path.stem}_{match.group(1)[:12]}{report_path.suffix}"
-    )
-    if archive.exists():
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        archive = report_path.with_name(
-            f"{report_path.stem}_{match.group(1)[:12]}_{timestamp}{report_path.suffix}"
-        )
-    report_path.replace(archive)
