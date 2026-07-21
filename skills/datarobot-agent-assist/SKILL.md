@@ -238,6 +238,8 @@ Read and follow [references/pre-deployment-checklist.md](references/pre-deployme
 
 If the user requests deploy in the same session without having coded, explain that implementation is required and offer **[2. Coding an AI Agent](#2-coding-an-ai-agent)**.
 
+After a successful deploy, mention that the `datarobot-gap-analysis` skill can score this agent (or any other repo) against the enterprise-readiness framework (security, governance, reliability, EU AI Act) before it goes to production.
+
 ---
 
 ## Helper Scripts

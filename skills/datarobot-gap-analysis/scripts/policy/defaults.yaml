@@ -1,0 +1,120 @@
+---
+# Enterprise-Readiness Gap Analysis — Default Policy
+#
+# These are opinionated, sensible defaults. An IT admin / team supplies their
+# own policy file (via --policy or the DATAROBOT runtime parameter GAP_POLICY)
+# which is DEEP-MERGED over these defaults:
+#   - scalars are overridden
+#   - lists are REPLACED (not concatenated) unless the key ends in `_add`
+#   - missing keys fall back to these defaults
+#
+# Semantics:
+#   libraries.allow  -> empty list means "allow all"; non-empty = strict allowlist
+#   *.deny           -> always enforced
+#   models.allow     -> glob patterns ('*' wildcard) of approved model ids
+
+it_admin:
+
+  python:
+    # ITA-001 — minimum acceptable Python version
+    min_version: "3.11"
+
+  libraries:
+    # ITA-002 — empty allow = allow-all; add entries to enforce a strict allowlist
+    allow: []
+    # Packages/usages that are never permitted
+    deny:
+      - "telnetlib" # insecure protocol
+      - "ftplib" # insecure protocol
+      - "pycrypto" # unmaintained, known CVEs (use 'cryptography')
+    # Packages that MUST be present
+    require: []
+
+  models:
+    # AIG-003 / ITA-003 — approved LLM model ids (glob patterns)
+    allow:
+      - "anthropic/claude-*"
+      - "datarobot/*"
+      - "openai/gpt-5*"
+      - "openai/gpt-4.1*"
+      - "google/gemini-2.5*"
+
+  licenses:
+    # ITA-004 — denied OSS licenses (SPDX ids)
+    deny:
+      - "GPL-2.0"
+      - "GPL-3.0"
+      - "AGPL-3.0"
+      - "SSPL-1.0"
+
+  base_images:
+    # ITA-005 — approved container base images (glob patterns)
+    allow:
+      - "python:3.11*"
+      - "python:3.12*"
+      - "python:3.13*"
+      - "datarobot/*"
+
+regulatory:
+  # Which regulatory packs (Layer 4) to run. Extensible: add gdpr, soc2, nist_ai_rmf.
+  packs:
+    - "eu_ai_act"
+  # Declared/assumed risk tier for EU AI Act mapping context (informational):
+  #   prohibited | high | limited | minimal | gpai | unknown
+  eu_ai_act_risk_tier: "unknown"
+
+# Per-condition severity overrides (key = condition id)
+severity_overrides: {}
+# Example:
+# SEC-004: critical
+
+scan:
+  # Globs excluded from all scanning
+  exclude:
+    - "**/.git/**"
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/venv/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/__pycache__/**"
+    - "**/*.min.js"
+  # Cap on file size (bytes) fed to the LLM per Layer-2 check
+  max_file_bytes: 200000
+
+posture:
+  # Remediation-posture decision gate (patch vs re-platform). The score is the share of
+  # weighted risk that comes from STRUCTURAL gaps (architectural deficiencies that can't be
+  # surgically patched). See src/gap_analysis/posture.py.
+  patch_max: 0.25 # score <= this -> PATCH (patch in place)
+  replatform_min: 0.50 # score >= this -> RE-PLATFORM (migrate to af-components)
+  replatform_structural_count: 4 # this many high/critical structural gaps forces RE-PLATFORM
+  max_drivers: 8 # how many structural drivers to list in the report
+
+report:
+  # Severities that constitute a "fail" — reserved for future CI gating
+  fail_on:
+    - "critical"
+    - "high"
+  # Include advisory (no-fix) findings in the report body
+  include_advisory: true
+
+remediation:
+  # Master switch for the fix phase
+  enabled: true
+  # Fix tiers the agent is permitted to apply automatically once the user approves
+  allow_fix_types:
+    - "auto"
+    - "assisted"
+  # Risk classes that may be applied in a blanket "fix all" (no explicit ids). Business-
+  # logic-touching fixes are intentionally excluded so they are only applied when a human
+  # names the condition id — protecting business logic in someone else's agent.
+  #   plumbing       — config/manifests/scaffolding only (safe to sweep)
+  #   business_logic — edits application code (require explicit per-finding opt-in)
+  auto_apply_risk:
+    - "plumbing"
+  # Branch name template for fixes ({id} -> condition id, {ts} -> run timestamp)
+  branch_template: "gap-fixes/{ts}"
+  # NEVER push or open a PR without explicit, separate user approval
+  auto_push: false
+  open_pull_request: false

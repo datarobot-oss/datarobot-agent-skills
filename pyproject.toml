@@ -32,6 +32,7 @@ exclude = [
     "skills/datarobot-predictions",
     "skills/datarobot-model-training",
     "skills/datarobot-external-agent-monitoring",
+    "skills/datarobot-gap-analysis",
 ]
 check_untyped_defs = true
 disallow_any_generics = true

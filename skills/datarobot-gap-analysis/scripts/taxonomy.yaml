@@ -1,0 +1,631 @@
+---
+# Enterprise-Readiness Gap Analysis — Condition Registry
+#
+# The single source of truth for what the agent looks for. Add a condition here
+# (no code change) and the orchestrator will pick it up.
+#
+# Fields per condition:
+#   id            stable identifier (PILLAR-NNN)
+#   pillar        SEC | IDN | AIG | OPS | REL | ITA | POL
+#   layer         1 = deterministic scanner
+#                 2 = LLM reasoning over code
+#                 3 = conformance vs. policy YAML
+#                 4 = regulatory mapping
+#   severity      critical | high | medium | low   (default; policy can override)
+#   title         short human-readable name
+#   description   what the gap is / why it matters
+#   files_glob    which files to feed the detector (list of globs)
+#   relational    true if the check needs >1 file group or is skipped-with-warning
+#   detector      L1: scanner name | L2/L4: prompts/<file> | L3: conformance rule key
+#   remediation   one-line guidance shown in the report
+#   fix_type      auto | assisted | advisory   (drives the remediation phase)
+#   fix_strategy  template/codemod name (auto) or prompts/<fix file> (assisted) or null
+#   fix_risk      OPTIONAL plumbing | business_logic | none — blast radius of the fix.
+#                 Defaults from fix_type (auto->plumbing, assisted->business_logic,
+#                 advisory->none); set explicitly to override (e.g. an assisted fix that
+#                 only swaps a config value is plumbing, not business_logic).
+#   structural    OPTIONAL true if this gap is an architectural deficiency that cannot be
+#                 surgically patched. Feeds the remediation-posture (patch vs re-platform)
+#                 decision. Any advisory finding at high/critical is treated as structural.
+
+version: 1
+
+conditions:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pillar 1 — Security (SEC)
+  # ─────────────────────────────────────────────────────────────────────
+  - id: SEC-001
+    pillar: SEC
+    layer: 2
+    severity: critical
+    title: Secret reachable by the LLM context
+    description: >
+      A credential value (API key, token, password) flows into a prompt, system message, or tool description that reaches
+      the model at inference time, exposing it to logging, prompt-injection exfiltration, and the model provider.
+    files_glob: ["**/config.py", "**/auth.py", "**/agent.py", "**/prompt*.py", "**/*prompt*", "**/system_message*"]
+    relational: true
+    detector: prompts/sec-001-secret-in-context.md
+    remediation: Inject secrets only into the API client/transport layer, never into model-visible text.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: SEC-002
+    pillar: SEC
+    layer: 1
+    severity: critical
+    title: Long-lived static API key in code/config
+    description: >
+      Credential-shaped strings hardcoded in source or config (vendor keys such as sk-, AKIA…, xox…, ghp_, AIza…, or generic
+      api_key/secret/token = "…") with no refresh/broker call.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.js", "**/*.json", "**/*.yaml", "**/*.yml", "**/*.env*", "**/*.toml"]
+    relational: false
+    detector: detect-secrets
+    remediation: Move the secret to an environment variable / secret manager and rotate it.
+    fix_type: auto
+    fix_strategy: secret_to_env_var
+
+  - id: SEC-003
+    pillar: SEC
+    layer: 1
+    severity: critical
+    title: Secret in committed env vars / plaintext config
+    description: >
+      Credential patterns found specifically in checked-in configuration (.env, *.yaml, *.json, docker-compose*) that leak
+      through version control history and CI logs.
+    files_glob: ["**/.env*", "**/*.yaml", "**/*.yml", "**/*.json", "**/docker-compose*"]
+    relational: false
+    detector: detect-secrets
+    remediation: Remove from VCS, add to .gitignore, rotate, and load from a secret store.
+    fix_type: auto
+    fix_strategy: secret_to_env_var
+
+  - id: SEC-004
+    pillar: SEC
+    layer: 1
+    severity: high
+    title: Secret logged or printed
+    description: >
+      A credential-shaped string passed to a logging/print/trace call (print(...), console.log(...), logger.x(...)). L1 surfaces
+      the candidate; a L2 pass confirms it is truly sensitive.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.js"]
+    relational: false
+    detector: detect-secrets
+    remediation: Remove the secret from log statements; redact before logging.
+    fix_type: assisted
+    fix_strategy: prompts/fix-sec-004-redact-log.md
+
+  - id: SEC-006
+    pillar: SEC
+    layer: 1
+    severity: high
+    title: Same secret across environments
+    description: >
+      Identical credential values appearing in more than one environment's config (dev.env, staging.yaml, prod.yaml) — extract
+      all secrets and flag exact duplicates across environments.
+    files_glob: ["**/dev*", "**/staging*", "**/prod*", "**/*.env*"]
+    relational: true
+    detector: detect-secrets
+    remediation: Use distinct per-environment credentials; never share prod secrets with lower envs.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: SEC-010
+    pillar: SEC
+    layer: 1
+    severity: high
+    title: Dependency vulnerabilities / known CVEs
+    description: >
+      Declared dependencies have known published vulnerabilities.
+    files_glob: ["**/requirements*.txt", "**/pyproject.toml", "**/poetry.lock", "**/package.json", "**/package-lock.json",
+      "**/uv.lock"]
+    relational: false
+    detector: pip-audit
+    remediation: Upgrade affected packages to the patched versions.
+    fix_type: auto
+    fix_strategy: bump_vulnerable_dependency
+
+  - id: SEC-011
+    pillar: SEC
+    layer: 2
+    severity: high
+    title: Injection risk (prompt / command / deserialization / SSRF)
+    description: >
+      Untrusted input reaches a dangerous sink — shell execution, eval, unsafe deserialization (pickle/yaml.load), SQL string
+      concatenation, server-side request building, or an LLM prompt without sanitization.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.js"]
+    relational: false
+    detector: prompts/sec-011-injection.md
+    remediation: Validate/parameterize inputs; use safe loaders; isolate untrusted content from instructions.
+    fix_type: assisted
+    fix_strategy: prompts/fix-sec-011-injection.md
+
+  - id: SEC-012
+    pillar: SEC
+    layer: 2
+    severity: medium
+    title: Missing input validation on tool inputs & external data
+    description: >
+      Tool/function inputs and external API responses are consumed without type/range/schema validation.
+    files_glob: ["**/tools.py", "**/tools/**", "**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/sec-012-input-validation.md
+    remediation: Add schema validation (e.g. pydantic) at trust boundaries.
+    fix_type: assisted
+    fix_strategy: prompts/fix-sec-012-validation.md
+
+  - id: SEC-013
+    pillar: SEC
+    layer: 2
+    severity: high
+    title: Weak or missing encryption / TLS verification disabled
+    description: >
+      Plaintext transport, disabled certificate verification (verify=False), weak ciphers/hashes, or secrets/data persisted
+      unencrypted.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.js"]
+    relational: false
+    detector: prompts/sec-013-encryption.md
+    remediation: Enforce TLS with verification; encrypt data at rest; drop weak algorithms.
+    fix_type: assisted
+    fix_strategy: prompts/fix-sec-013-encryption.md
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pillar 1 — Identity (IDN)
+  # ─────────────────────────────────────────────────────────────────────
+  - id: IDN-001
+    pillar: IDN
+    layer: 2
+    severity: high
+    title: Agent authenticates as a human / shared account
+    description: >
+      The agent uses a personal access token, a human user's OAuth token, or a single shared service account rather than its
+      own dedicated workload/agent identity.
+    files_glob: ["**/auth.py", "**/client.py", "**/agent.py", "**/main.py"]
+    relational: false
+    detector: prompts/idn-001-human-identity.md
+    remediation: Provision a dedicated workload identity (e.g. service account / OIDC) for the agent.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: IDN-002
+    pillar: IDN
+    layer: 2
+    severity: medium
+    title: No credential rotation / no token expiry
+    description: >
+      Credentials are static with no rotation mechanism or expiry handling.
+    files_glob: ["**/auth.py", "**/client.py", "**/config.py"]
+    relational: false
+    detector: prompts/idn-002-rotation.md
+    remediation: Use short-lived tokens with automatic refresh/rotation.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: IDN-003
+    pillar: IDN
+    layer: 2
+    severity: high
+    title: Over-permissioned identity
+    description: >
+      Scopes/roles/permissions granted to the agent are broader than the tools and resources it actually uses (admin, wildcard
+      scopes, '*' resources).
+    files_glob: ["**/permissions.yaml", "**/*iam*", "**/*policy*", "**/manifest*", "**/scopes*", "**/tools.py", "**/tools/**"]
+    relational: true
+    detector: prompts/idn-003-over-permissioned.md
+    remediation: Reduce granted scopes to the minimum the code actually exercises.
+    fix_type: assisted
+    fix_strategy: prompts/fix-idn-003-narrow-scope.md
+
+  - id: IDN-004
+    pillar: IDN
+    layer: 2
+    severity: medium
+    title: No least-privilege boundary / missing RBAC on actions
+    description: >
+      High-impact actions are not gated by role/permission checks; no authorization boundary between callers and privileged
+      operations.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/idn-004-rbac.md
+    remediation: Add authorization checks before privileged actions; separate roles.
+    fix_type: advisory
+    fix_strategy: null
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pillar 2 — AI/LLM Governance (AIG)
+  # ─────────────────────────────────────────────────────────────────────
+  - id: AIG-001
+    pillar: AIG
+    layer: 2
+    severity: high
+    title: No guardrails (toxicity / PII / jailbreak / output filtering)
+    description: >
+      Model inputs/outputs pass through with no moderation, PII redaction, jailbreak detection, or output validation.
+    files_glob: ["**/agent.py", "**/*llm*", "**/*model*", "**/prompt*"]
+    relational: false
+    detector: prompts/aig-001-guardrails.md
+    remediation: Add input/output guardrails (moderation, PII filter, jailbreak checks).
+    fix_type: assisted
+    fix_strategy: prompts/fix-aig-001-guardrails.md
+    structural: true # guardrails belong in the agent architecture, not a point patch
+
+  - id: AIG-002
+    pillar: AIG
+    layer: 2
+    severity: medium
+    title: Model not version-pinned (floating model id)
+    description: >
+      The model identifier has no version/date suffix, so behavior can drift silently when the provider updates the alias.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.yaml", "**/*.yml", "**/*.toml"]
+    relational: false
+    detector: prompts/aig-002-model-pinning.md
+    remediation: Pin the model to a dated/versioned id.
+    fix_type: auto
+    fix_strategy: pin_model_version
+
+  - id: AIG-003
+    pillar: AIG
+    layer: 3
+    severity: high
+    title: Unapproved LLM provider/model used
+    description: >
+      A model is used that is not on the organization's approved-model allowlist in the policy file.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.yaml", "**/*.yml", "**/*.toml"]
+    relational: false
+    detector: models_allowlist
+    remediation: Switch to an approved model from the policy allowlist.
+    fix_type: assisted
+    fix_strategy: prompts/fix-aig-003-approved-model.md
+    fix_risk: plumbing # swaps a model id; does not touch business logic
+
+  - id: AIG-004
+    pillar: AIG
+    layer: 2
+    severity: medium
+    title: No evaluation / eval harness for prompts
+    description: >
+      No automated evaluation or regression tests covering prompt/agent behavior.
+    files_glob: ["**/eval*", "**/test*", "**/*.py"]
+    relational: false
+    detector: prompts/aig-004-evals.md
+    remediation: Add an eval/regression suite for prompts and agent trajectories.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: AIG-005
+    pillar: AIG
+    layer: 2
+    severity: high
+    title: No human-in-the-loop for high-risk/irreversible actions
+    description: >
+      The agent can take irreversible or high-impact actions (delete, pay, send, deploy) without a human approval gate.
+    files_glob: ["**/tools.py", "**/tools/**", "**/agent.py", "**/*.py"]
+    relational: false
+    detector: prompts/aig-005-human-in-loop.md
+    remediation: Add an approval/confirmation gate before irreversible actions.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: AIG-006
+    pillar: AIG
+    layer: 2
+    severity: medium
+    title: No cost/token controls or rate limiting on model calls
+    description: >
+      Model calls have no max-token caps, budget limits, or rate limiting, risking runaway cost.
+    files_glob: ["**/*llm*", "**/*model*", "**/agent.py", "**/*.py"]
+    relational: false
+    detector: prompts/aig-006-cost-controls.md
+    remediation: Set max-token limits, budgets, and rate limiting on model calls.
+    fix_type: assisted
+    fix_strategy: prompts/fix-aig-006-cost-controls.md
+
+  - id: AIG-007
+    pillar: AIG
+    layer: 2
+    severity: medium
+    title: No grounding/citation; hallucination risk on factual output
+    description: >
+      Factual outputs are produced without retrieval grounding or source citation.
+    files_glob: ["**/agent.py", "**/*rag*", "**/*retriev*", "**/*.py"]
+    relational: false
+    detector: prompts/aig-007-grounding.md
+    remediation: Ground factual answers in retrieved sources and cite them.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: AIG-008
+    pillar: AIG
+    layer: 2
+    severity: low
+    title: Prompts not versioned/externalized
+    description: >
+      System/instruction prompts are hardcoded inline with no versioning or externalization, hindering review and rollback.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/aig-008-prompt-versioning.md
+    remediation: Externalize prompts to versioned files/registry.
+    fix_type: advisory
+    fix_strategy: null
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pillar 3 — Ops & Reliability (OPS, REL)
+  # ─────────────────────────────────────────────────────────────────────
+  - id: OPS-001
+    pillar: OPS
+    layer: 2
+    severity: medium
+    title: No structured logging / audit trail of agent actions
+    description: >
+      Agent actions and tool calls are not logged in a structured, auditable form.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/ops-001-logging.md
+    remediation: Add structured logging with an audit trail of tool calls/decisions.
+    fix_type: assisted
+    fix_strategy: prompts/fix-ops-001-logging.md
+    structural: true # observability is cross-cutting; favors re-platform when absent
+
+  - id: OPS-002
+    pillar: OPS
+    layer: 2
+    severity: medium
+    title: No tracing/telemetry (OpenTelemetry / DataRobot monitoring)
+    description: >
+      No distributed tracing or telemetry export for observability and monitoring.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/ops-002-tracing.md
+    remediation: Instrument with OpenTelemetry / DataRobot agent monitoring.
+    fix_type: assisted
+    fix_strategy: prompts/fix-ops-002-tracing.md
+    structural: true # tracing/telemetry is cross-cutting; favors re-platform when absent
+
+  - id: OPS-003
+    pillar: OPS
+    layer: 2
+    severity: low
+    title: No health checks / metrics endpoints
+    description: >
+      Service exposes no health/readiness or metrics endpoints.
+    files_glob: ["**/*.py", "**/*.ts", "**/main.py", "**/app.py"]
+    relational: false
+    detector: prompts/ops-003-health.md
+    remediation: Add health/readiness and metrics endpoints.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: REL-001
+    pillar: REL
+    layer: 1
+    severity: high
+    title: No tests or low coverage
+    description: >
+      The repository has no test suite (or negligible coverage).
+    files_glob: ["**/test*", "**/tests/**", "**/*_test.*", "**/*.spec.*"]
+    relational: false
+    detector: tests_presence
+    remediation: Add a unit/integration test suite with meaningful coverage.
+    fix_type: auto
+    fix_strategy: scaffold_test_stub
+
+  - id: REL-002
+    pillar: REL
+    layer: 1
+    severity: medium
+    title: No CI/CD pipeline
+    description: >
+      No continuous integration configuration found.
+    files_glob: ["**/.github/workflows/**", "**/.gitlab-ci.yml", "**/azure-pipelines.yml", "**/Jenkinsfile"]
+    relational: false
+    detector: ci_presence
+    remediation: Add a CI pipeline running lint, tests, and security scans.
+    fix_type: auto
+    fix_strategy: scaffold_ci_workflow
+
+  - id: REL-003
+    pillar: REL
+    layer: 2
+    severity: medium
+    title: No error handling / retries / timeouts on external calls
+    description: >
+      External/API/model calls lack try-except, retries, timeouts, or circuit breakers.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/rel-003-resilience.md
+    remediation: Add timeouts, bounded retries with backoff, and error handling on external calls.
+    fix_type: assisted
+    fix_strategy: prompts/fix-rel-003-resilience.md
+    structural: true # resilience (retries/timeouts/fallback) is an architecture concern
+
+  - id: REL-004
+    pillar: REL
+    layer: 2
+    severity: low
+    title: No graceful degradation / fallback path
+    description: >
+      No fallback behavior when a dependency or model is unavailable.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/rel-004-fallback.md
+    remediation: Add fallback/degraded-mode handling for dependency failures.
+    fix_type: advisory
+    fix_strategy: null
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pillar 4 — IT Conformance (ITA) — all driven by policy YAML
+  # ─────────────────────────────────────────────────────────────────────
+  - id: ITA-001
+    pillar: ITA
+    layer: 3
+    severity: high
+    title: Python version below required minimum
+    description: >
+      The declared/target Python version is below the policy minimum.
+    files_glob: ["**/pyproject.toml", "**/setup.py", "**/setup.cfg", "**/.python-version", "**/runtime.txt", "**/Dockerfile"]
+    relational: false
+    detector: python_min_version
+    remediation: Raise the project's Python version to the policy minimum.
+    fix_type: auto
+    fix_strategy: pin_python_version
+
+  - id: ITA-002
+    pillar: ITA
+    layer: 3
+    severity: medium
+    title: Disallowed library used / required library missing
+    description: >
+      A dependency or import is on the deny list, not on a non-empty allow list, or a required library is missing.
+    files_glob: ["**/requirements*.txt", "**/pyproject.toml", "**/package.json", "**/*.py"]
+    relational: false
+    detector: libraries_allow_deny
+    remediation: Remove disallowed libraries; add required ones per policy.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: ITA-003
+    pillar: ITA
+    layer: 3
+    severity: high
+    title: Unapproved LLM model (IT-admin view)
+    description: >
+      A model id is not on the IT-admin approved-model allowlist. Mirrors AIG-003 from the conformance angle.
+    files_glob: ["**/*.py", "**/*.ts", "**/*.yaml", "**/*.yml", "**/*.toml"]
+    relational: false
+    detector: models_allowlist
+    remediation: Use an approved model id from the policy.
+    fix_type: assisted
+    fix_strategy: prompts/fix-aig-003-approved-model.md
+    fix_risk: plumbing # swaps a model id; does not touch business logic
+
+  - id: ITA-004
+    pillar: ITA
+    layer: 3
+    severity: medium
+    title: OSS license non-compliance
+    description: >
+      A dependency carries a license on the policy deny list (e.g. copyleft).
+    files_glob: ["**/requirements*.txt", "**/pyproject.toml", "**/package.json"]
+    relational: false
+    detector: license_check
+    remediation: Replace dependencies with denied licenses; obtain legal approval if required.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: ITA-005
+    pillar: ITA
+    layer: 3
+    severity: medium
+    title: Unapproved base image / runtime
+    description: >
+      A Dockerfile FROM image is not on the approved base-image allowlist.
+    files_glob: ["**/Dockerfile", "**/*.dockerfile", "**/containerfile"]
+    relational: false
+    detector: base_image_allowlist
+    remediation: Switch to an approved base image.
+    fix_type: assisted
+    fix_strategy: prompts/fix-ita-005-base-image.md
+    fix_risk: plumbing # swaps a Dockerfile base image; does not touch business logic
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Pillar 4 — Regulatory Policy (POL) — EU AI Act control mapping
+  # ─────────────────────────────────────────────────────────────────────
+  - id: POL-001
+    pillar: POL
+    layer: 4
+    severity: high
+    title: EU AI Act — risk classification not established
+    description: >
+      No documented determination of the system's EU AI Act risk tier (prohibited / high-risk / limited / minimal) or GPAI
+      status.
+    files_glob: ["**/*.md", "**/docs/**", "**/*.py"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#risk-classification
+    remediation: Document the risk classification and applicable obligations.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: POL-002
+    pillar: POL
+    layer: 4
+    severity: medium
+    title: EU AI Act — transparency/disclosure obligation unmet
+    description: >
+      Users are not informed they are interacting with an AI system, and AI-generated content is not marked, where required.
+    files_glob: ["**/*.md", "**/docs/**", "**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#transparency
+    remediation: Add AI-interaction disclosure and content marking.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: POL-003
+    pillar: POL
+    layer: 4
+    severity: medium
+    title: EU AI Act — technical documentation absent
+    description: >
+      Required technical documentation (intended purpose, design, data, capabilities/limits) is missing.
+    files_glob: ["**/*.md", "**/docs/**", "**/MODEL_CARD*", "**/model_card*"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#technical-documentation
+    remediation: Produce technical documentation / model card per Annex IV.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: POL-004
+    pillar: POL
+    layer: 4
+    severity: medium
+    title: EU AI Act — record-keeping / event logging insufficient
+    description: >
+      The system does not automatically log events/traces sufficient for traceability over its lifecycle.
+    files_glob: ["**/*.py", "**/*.ts"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#record-keeping
+    remediation: Add lifecycle event logging for traceability (links to OPS-001/002).
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: POL-005
+    pillar: POL
+    layer: 4
+    severity: high
+    title: EU AI Act — human oversight not provided
+    description: >
+      No mechanism for human oversight/intervention over the AI system's operation.
+    files_glob: ["**/*.py", "**/*.ts", "**/docs/**"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#human-oversight
+    remediation: Provide human oversight controls (links to AIG-005).
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: POL-006
+    pillar: POL
+    layer: 4
+    severity: medium
+    title: EU AI Act — accuracy/robustness/cybersecurity not evidenced
+    description: >
+      No evidence of accuracy metrics, robustness testing, or cybersecurity measures appropriate to the system.
+    files_glob: ["**/*.md", "**/docs/**", "**/eval*", "**/test*"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#accuracy-robustness
+    remediation: Document accuracy/robustness evaluation and cybersecurity measures.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: POL-007
+    pillar: POL
+    layer: 4
+    severity: critical
+    title: EU AI Act — prohibited practice indicator
+    description: >
+      Signals of an Article 5 prohibited practice (e.g. social scoring, manipulative techniques, untargeted facial scraping,
+      biometric categorization of sensitive traits).
+    files_glob: ["**/*.md", "**/docs/**", "**/*.py"]
+    relational: false
+    detector: prompts/pol-eu-ai-act.md#prohibited-practices
+    remediation: Cease/redesign any prohibited practice; seek legal review immediately.
+    fix_type: advisory
+    fix_strategy: null

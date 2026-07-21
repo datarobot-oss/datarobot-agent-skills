@@ -160,6 +160,18 @@
         "scale or debug a DataRobot workload",
         "manage autoscaling and replicas for a DataRobot workload"
       ]
+    },
+    {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:gap-analysis",
+      "displayName": "datarobot-gap-analysis",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-gap-analysis/SKILL.md",
+      "description": "Score any agent repository against a 40-factor enterprise-readiness framework (security, governance, reliability, EU AI Act) and patch or guide the fixing of every gap found.",
+      "representativeQueries": [
+        "run a gap analysis on an agent repository",
+        "check an agent for enterprise readiness and security gaps",
+        "map an agent's code against EU AI Act requirements"
+      ]
     }
   ]
 }

@@ -11,6 +11,11 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-20
+
+- `datarobot-gap-analysis`: New skill. Scores any agent repository (DataRobot-built or not) against a 40-factor enterprise-readiness framework across seven risk pillars (Security, Identity, AI Governance, Reliability, Ops, IT Conformance, Regulatory & Policy) and four evaluation layers (deterministic scanning, dependency/supply-chain analysis, LLM-based code reasoning, configuration conformance), recommends a Patch/Hybrid/Re-platform remediation path, and can apply safe fixes on a dedicated branch. Vendors the `gap-analysis` engine prototype; hands off structural re-platform cases to `datarobot-agent-assist`.
+- `datarobot-agent-assist`: Mention `datarobot-gap-analysis` as a follow-up step after a successful deploy.
+
 ## [1.3.7] - 2026-07-14
 
 - `datarobot-external-agent-monitoring`: Fix PydanticAI instrumentation — modern PydanticAI makes OpenTelemetry instrumentation opt-in, so configuring a provider alone emitted no spans; document the required `Agent.instrument_all()` call.
