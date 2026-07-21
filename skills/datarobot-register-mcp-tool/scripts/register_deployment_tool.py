@@ -15,12 +15,13 @@ Usage:
 import argparse
 import os
 import sys
+from typing import Any
 
 TOOL_NAME = "tool"
 TOOL_VALUE = "tool"
 
 
-def _has_tool_tag(tags) -> bool:
+def _has_tool_tag(tags: list[dict[str, Any]] | None) -> bool:
     return any(
         (t.get("name") == TOOL_NAME and t.get("value") == TOOL_VALUE)
         for t in (tags or [])
@@ -34,7 +35,7 @@ def _already_tagged_error(exc: Exception) -> bool:
     )
 
 
-def tag_as_tool(deployment) -> list[dict]:
+def tag_as_tool(deployment: Any) -> list[dict[str, Any]]:
     """Idempotently tag a deployment `tool=tool` via the SDK's create_tag.
 
     The DataRobot SDK exposes deployment tags through dedicated methods

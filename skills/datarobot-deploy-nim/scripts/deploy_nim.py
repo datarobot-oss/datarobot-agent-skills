@@ -16,6 +16,7 @@ Usage:
 import argparse
 import os
 import sys
+from typing import Any
 import time
 
 READY_STATUSES = {"active"}
@@ -30,7 +31,7 @@ def deployment_failed(status: str | None) -> bool:
     return (status or "").lower() in FAILED_STATUSES
 
 
-def pick_serverless_pe(pes: list[dict]) -> dict | None:
+def pick_serverless_pe(pes: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not pes:
         return None
     for pe in pes:
@@ -44,7 +45,7 @@ def pick_serverless_pe(pes: list[dict]) -> dict | None:
 
 def build_deploy_payload(
     model_package_id: str, label: str, prediction_environment_id: str
-) -> dict:
+) -> dict[str, str]:
     if not prediction_environment_id:
         raise ValueError("a serverless GPU prediction_environment_id is required")
     return {

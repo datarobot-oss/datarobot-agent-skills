@@ -11,11 +11,12 @@ Usage:
 import argparse
 import json
 import sys
+from typing import Any
 
 
 def build_client_config(
     host: str, deployment_id: str | None, hosted: bool, client: str
-) -> dict:
+) -> dict[str, Any]:
     # client param (claude/cursor) is accepted for forward-compatibility; currently emitted config is identical
     host = host.rstrip("/")
     if hosted:

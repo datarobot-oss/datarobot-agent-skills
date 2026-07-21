@@ -13,9 +13,10 @@ Usage:
 import argparse
 import os
 import sys
+from typing import Any
 
 
-def filter_gpu_bundles(bundles: list) -> list:
+def filter_gpu_bundles(bundles: list[Any]) -> list[Any]:
     gpu = [b for b in bundles if getattr(b, "has_gpu", False)]
     return sorted(
         gpu,
@@ -24,8 +25,8 @@ def filter_gpu_bundles(bundles: list) -> list:
 
 
 def pick_nim_template(
-    templates: list[dict], name_substr: str | None = None
-) -> dict | None:
+    templates: list[dict[str, Any]], name_substr: str | None = None
+) -> dict[str, Any] | None:
     if not templates:
         return None
     if name_substr is None:

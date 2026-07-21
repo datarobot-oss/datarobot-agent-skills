@@ -11,12 +11,13 @@ Usage:
 
 import json
 import sys
+from typing import Any
 
 ALLOWED_KEYS = {"path_params", "query_params", "data", "json"}
 FLAT_KEYS = {"path_params", "query_params"}
 
 
-def _is_flat_object(prop: dict) -> bool:
+def _is_flat_object(prop: dict[str, Any]) -> bool:
     """A flat object: every property is a JSON primitive (no object/array)."""
     if prop.get("type") == "array":
         return False
@@ -26,7 +27,7 @@ def _is_flat_object(prop: dict) -> bool:
     return True
 
 
-def _data_leaf_errors(prop: dict, path: str = "data") -> list[str]:
+def _data_leaf_errors(prop: dict[str, Any], path: str = "data") -> list[str]:
     """`data` (form/raw body) allows nested objects, but every leaf must be a
     string and arrays are not allowed (form encoding does not preserve types)."""
     errors: list[str] = []
@@ -43,7 +44,7 @@ def _data_leaf_errors(prop: dict, path: str = "data") -> list[str]:
     return errors
 
 
-def validate_tool_schema(schema: dict, allow_empty: bool = False) -> list[str]:
+def validate_tool_schema(schema: Any, allow_empty: bool = False) -> list[str]:
     errors: list[str] = []
     if not isinstance(schema, dict):
         return ["schema must be a JSON object"]
@@ -70,7 +71,7 @@ def validate_tool_schema(schema: dict, allow_empty: bool = False) -> list[str]:
     return errors
 
 
-def _load(path: str) -> dict:
+def _load(path: str) -> Any:
     import yaml  # local import; only needed for the file path mode
 
     with open(path) as fh:

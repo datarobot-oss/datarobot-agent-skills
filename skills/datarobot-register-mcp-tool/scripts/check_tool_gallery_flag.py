@@ -13,11 +13,12 @@ Usage:
 
 import os
 import sys
+from typing import Any
 
 FLAG = "ENABLE_MCP_TOOLS_GALLERY_SUPPORT"
 
 
-def is_tool_gallery_enabled(client) -> bool:
+def is_tool_gallery_enabled(client: Any) -> bool:
     resp = client.post(
         "entitlements/evaluate/",
         data={"entitlements": [{"name": FLAG}]},

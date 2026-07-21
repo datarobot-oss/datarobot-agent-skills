@@ -17,11 +17,12 @@ import argparse
 import os
 import re
 import sys
+from typing import Any
 
 DEPLOYMENT_TOOL_CATEGORY = "USER_TOOL_DEPLOYMENT"
 
 
-def _as_dict(obj) -> dict:
+def _as_dict(obj: Any) -> dict[str, Any]:
     """Normalize meta/annotations to a plain dict (fastmcp may return a model)."""
     if obj is None:
         return {}
@@ -29,7 +30,7 @@ def _as_dict(obj) -> dict:
         return obj
     if hasattr(obj, "model_dump"):
         try:
-            return obj.model_dump()
+            return dict(obj.model_dump())
         except Exception:  # noqa: BLE001
             pass
     try:
@@ -55,11 +56,11 @@ def expected_tool_name(
 
 
 def find_deployment_tool(
-    tools: list[dict],
+    tools: list[dict[str, Any]],
     label: str | None,
     deployment_id: str,
     metadata_name: str | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     want = expected_tool_name(label, deployment_id, metadata_name)
     dep_tools = [
         t
@@ -83,7 +84,7 @@ def find_deployment_tool(
 
 
 def assert_tool_present(
-    tools: list[dict],
+    tools: list[dict[str, Any]],
     label: str | None,
     deployment_id: str,
     metadata_name: str | None = None,
@@ -91,7 +92,7 @@ def assert_tool_present(
     return find_deployment_tool(tools, label, deployment_id, metadata_name) is not None
 
 
-def list_tools(mcp_url: str, token: str) -> list[dict]:
+def list_tools(mcp_url: str, token: str) -> list[dict[str, Any]]:
     """Connect to the MCP server (streamable-HTTP) and return tools as dicts.
 
     Uses fastmcp's high-level client. NOTE: confirm the installed fastmcp's
@@ -103,12 +104,12 @@ def list_tools(mcp_url: str, token: str) -> list[dict]:
     from fastmcp import Client
     from fastmcp.client.transports import StreamableHttpTransport
 
-    async def _run() -> list[dict]:
+    async def _run() -> list[dict[str, Any]]:
         transport = StreamableHttpTransport(
             mcp_url, headers={"Authorization": f"Bearer {token}"}
         )
         async with Client(transport) as client:
-            out = []
+            out: list[dict[str, Any]] = []
             for t in await client.list_tools():
                 out.append(
                     {
@@ -137,7 +138,7 @@ def main(argv: list[str]) -> int:
     )
     deployment = dr.Deployment.get(args.deployment_id)
     label = getattr(deployment, "label", None)
-    tools = list_tools(args.mcp_url, os.getenv("DATAROBOT_API_TOKEN"))
+    tools = list_tools(args.mcp_url, os.getenv("DATAROBOT_API_TOKEN") or "")
     tool = find_deployment_tool(tools, label, args.deployment_id)
     if tool:
         print(

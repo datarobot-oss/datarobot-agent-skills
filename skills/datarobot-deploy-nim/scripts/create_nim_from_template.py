@@ -18,8 +18,11 @@ import sys
 
 
 def build_nim_create_payload(
-    template_id, resource_bundle_id, secret_config_id=None, container_tag_override=None
-) -> dict:
+    template_id: str,
+    resource_bundle_id: str,
+    secret_config_id: str | None = None,
+    container_tag_override: str | None = None,
+) -> dict[str, str]:
     if not template_id or not resource_bundle_id:
         raise ValueError("template_id and resource_bundle_id are required")
     body = {"templateId": template_id, "resourceBundleId": resource_bundle_id}

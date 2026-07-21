@@ -3,7 +3,7 @@
 from emit_client_config import build_client_config
 
 
-def test_hosted_url_uses_globalmcp_path():
+def test_hosted_url_uses_globalmcp_path() -> None:
     cfg = build_client_config(
         "https://app.datarobot.com", None, hosted=True, client="cursor"
     )
@@ -11,7 +11,7 @@ def test_hosted_url_uses_globalmcp_path():
     assert url == "https://app.datarobot.com/api/v2/genai/globalmcp/mcp"
 
 
-def test_self_hosted_url_uses_directaccess_path():
+def test_self_hosted_url_uses_directaccess_path() -> None:
     cfg = build_client_config(
         "https://app.datarobot.com", "dep123", hosted=False, client="cursor"
     )
@@ -19,7 +19,7 @@ def test_self_hosted_url_uses_directaccess_path():
     assert url == "https://app.datarobot.com/deployments/dep123/directAccess/mcp/"
 
 
-def test_self_hosted_requires_deployment_id():
+def test_self_hosted_requires_deployment_id() -> None:
     import pytest
 
     with pytest.raises(ValueError):
@@ -28,7 +28,7 @@ def test_self_hosted_requires_deployment_id():
         )
 
 
-def test_auth_header_present():
+def test_auth_header_present() -> None:
     cfg = build_client_config(
         "https://app.datarobot.com", None, hosted=True, client="cursor"
     )
