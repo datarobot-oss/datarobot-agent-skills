@@ -11,11 +11,27 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
-## [1.4.0] - 2026-07-01
+## [1.4.0] - 2026-07-21
 
 - `datarobot-define-tool-schema`: New skill — author and validate the `model-metadata.yaml inputSchema` that makes a custom deployment callable as an MCP tool.
 - `datarobot-register-mcp-tool`: New skill — register an existing deployment as an MCP tool (tag, surface on hosted/self-hosted MCP, feature-flag check, verify, emit client config).
 - `datarobot-deploy-nim`: New skill — deploy an NVIDIA NIM with a GPU resource bundle and expose it as an MCP tool.
+
+## [1.3.8] - 2026-07-17
+
+- `datarobot-agent-assist`: Warn when the ports needed for local agent testing (5173, 8080, 8842) are not exposed inside a DataRobot Codespace, and stop with guidance when Agent Assist runs from an unsupported working directory. New `check_codespace.py` helper wired into the Pre-requisite Check; no-op outside a Codespace.
+
+## [1.3.7] - 2026-07-14
+
+- `datarobot-external-agent-monitoring`: Fix PydanticAI instrumentation — modern PydanticAI makes OpenTelemetry instrumentation opt-in, so configuring a provider alone emitted no spans; document the required `Agent.instrument_all()` call.
+
+## [1.3.6] - 2028-07-14
+
+- `datarobot-agent-assist`: Implement pre-coding-checklist, pre-deployment-checklist & workspace-resolution flows.
+
+## [1.3.5] - 2028-07-08
+
+- `datarobot-agent-assist`: Bumped application template version to 11.10.7.
 
 ## [1.3.4] - 2028-07-01
 

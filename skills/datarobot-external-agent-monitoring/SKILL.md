@@ -36,7 +36,7 @@ Use this skill when an existing DataRobot user has built an agent elsewhere and 
 | LangChain / LangGraph | `langchain` or `langgraph` in deps/imports | Auto-instrumentor + standard setup |
 | CrewAI | `crewai` in deps/imports | Auto-instrumentor + standard setup |
 | LlamaIndex | `llama-index` or `llama_index` in deps/imports | Auto-instrumentor + standard setup |
-| PydanticAI | `pydantic-ai` or `pydantic_ai` in deps/imports | Standard setup (respects global TracerProvider) |
+| PydanticAI | `pydantic-ai` or `pydantic_ai` in deps/imports | Standard setup + required `Agent.instrument_all()` (instrumentation is opt-in) |
 | Generic Python | None of the above detected | Manual span instrumentation |
 
 ## Workflow
