@@ -63,8 +63,8 @@ DEFAULT_HOST = "https://app.datarobot.com"
 # STATUS (from live testing 2026-07):
 #   ✓ A self-initiated /authorize with client_id + screen_hint/initial_display
 #     DOES render the lean DataRobot signup page (confirmed live).
-#   ? Email pre-fill: the page ignores OIDC `login_hint`; we also pass a plain
-#     `email` param (see build_signup_url) — pending live confirmation.
+#   ✓ Email pre-fill: the page reads `autofill_email` from extraParams (NOT
+#     `login_hint`/`email`); `enforce_email` pre-fills and locks the field.
 #   ? End-to-end state: NOT yet confirmed that completing signup round-trips
 #     through /account/oidc/callback (which may validate a `state`/`nonce` that
 #     only exists when the *app* initiates). Reaching the form != the callback
@@ -138,13 +138,12 @@ def build_signup_url(host: str, email: str, mode: str) -> tuple[str, str]:
             "initial_display": "signup",
         }
         if email:
-            # `login_hint` is the OIDC standard, but the custom DataRobot signup
-            # page doesn't appear to read it. Also send a plain `email` param —
-            # Auth0 forwards unknown /authorize params through to the page (same
-            # path screen_hint/initial_display took). One of these should land in
-            # the email box; both are harmless if ignored.
-            params["login_hint"] = email
-            params["email"] = email
+            # The custom DataRobot signup page reads the email box from the
+            # `autofill_email` extraParam (confirmed in its JS bundle:
+            # `g=a.autofill_email … y={email:g||h}`). It ignores the OIDC
+            # `login_hint` and a plain `email` param. Use `enforce_email` instead
+            # if you want the field pre-filled AND locked (read-only).
+            params["autofill_email"] = email
         query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
         return f"{US_AUTH_DOMAIN}/authorize?{query}", "deeplink"
 
