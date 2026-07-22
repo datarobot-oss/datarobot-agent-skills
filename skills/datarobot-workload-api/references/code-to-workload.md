@@ -152,10 +152,19 @@ The agent should default to `generated` unless the user explicitly asks otherwis
 
 User edits source → `dr artifact code sync` → `dr artifact build create` → wait for `COMPLETED` → **redeploy the running workload onto the new build.**
 
-How you redeploy depends on whether the artifact ID changes:
+`code sync` + `build create` keep the **same artifact ID** and just advance its `imageUri`. A workload already running does **not** auto-adopt the new build — it keeps its original image until you trigger a redeploy. Two rolling options (zero-downtime at `replicaCount`/`minCount` ≥ 2; a single replica has a brief gap — fine for dev/iteration):
 
-- **Rebuilding the SAME artifact (the usual C2W loop).** `code sync` + `build create` keep the same artifact ID and just advance its `imageUri` — so `POST /workloads/{wid}/replacement/` is **rejected** (`422` "candidate artifact ID matches current artifact"; replacement needs a *different* artifact). Redeploy with **`dr workload stop` → `dr workload start`**: start re-reads the artifact's current spec and its latest `COMPLETED` build. Brief downtime — fine for single-replica dev/iteration.
-- **Zero-downtime.** Create or clone a *new* draft artifact, sync+build it, then `POST /workloads/{wid}/replacement/` onto that new artifact ID (see SKILL.md section 4). This is the only way to roll without a stop.
+- **`PATCH /workloads/{wid}/settings/` (works on any cluster version).** Re-send the runtime body (same shape `GET /workloads/{wid}/settings/` returns); re-sending even the current values unchanged triggers a rolling redeploy that re-reads the artifact's current spec and its latest `COMPLETED` build's `imageUri`. Returns `202`.
+
+  ```
+  PATCH /api/v2/workloads/{wid}/settings/   → 202, rolling redeploy onto the rebuilt image
+  {"runtime": {"containerGroups": [{"name": "default", "replicaCount": 1,
+    "containers": [{"name": "main", "resourceAllocation": {"cpu": 0.5, "memory": "512MB"}}]}]}}
+  ```
+
+- **`POST /workloads/{wid}/replacement/` onto the same draft artifact** — allowed for **draft** artifacts as of **RAPTOR-18806 (workload-api #1074)**; previously it was rejected with `422 "Cannot replace with the same artifact"`. Adds explicit `warmupDurationMinutes` / `keepOldVersionMinutes` controls (see SKILL.md section 4). Until #1074 ships in the target cluster, same-artifact replacement still 422s for drafts — use the settings-PATCH above. **Locked** artifacts always require a *different* artifact.
+
+Switching to a **different** artifact (promote a newly locked version to production, or a clone) is always `POST /workloads/{wid}/replacement/` onto the new artifact ID.
 
 Do **not** PATCH the artifact spec (env/probes) *between* `build create` and `COMPLETED` — it clobbers the pending `imageUri` auto-populate and you redeploy on the old image (see lifecycle-flows.md). Make spec edits before the build, or after `COMPLETED` with a fresh `GET`.
 

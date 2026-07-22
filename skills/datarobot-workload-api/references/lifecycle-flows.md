@@ -15,21 +15,26 @@ create  →  iterate (PATCH while draft)  →  lock  →  rolling replacement
 - When `locked`: artifact becomes immutable. Any edit requires `POST /artifacts/{id}/clone/` (produces a new draft in the same artifact repository), then PATCH on the clone.
 - Once locked, to deploy changes you trigger a **rolling replacement** on the workload (`POST /workloads/{wid}/replacement/`). Promote is the alternative for the in-place draft→locked case.
 
-## Replacement preconditions — two rejections agents hit
+## Replacement preconditions — and the draft same-artifact exception (RAPTOR-18806)
 
-`POST /workloads/{id}/replacement/` enforces **two** preconditions the spec doesn't spell out. Both must hold or the call is rejected:
+`POST /workloads/{id}/replacement/` enforces two preconditions the spec doesn't spell out:
 
-1. **The candidate must be a DIFFERENT artifact than the one running.** Passing the current `artifactId` (e.g. after PATCH-ing or rebuilding the draft the workload already runs) returns **HTTP 422**: `{"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}`. Replacement means "swap to another artifact version" — it is never how you apply an in-place edit to the current one.
-2. **Status must match.** **HTTP 400** `{"detail": "Artifact status mismatch: ..."}` unless the candidate's status matches the running artifact's.
+1. **Status must match.** **HTTP 400** `{"detail": "Artifact status mismatch: ..."}` unless the candidate's status matches the running artifact's (draft↔draft, locked↔locked).
+2. **Same-artifact rule — being relaxed for drafts.** Passing the *current* `artifactId` returns **HTTP 422** `{"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}` for **locked** artifacts, always. For **drafts** it was also rejected, but workload-api **#1074 (RAPTOR-18806) allows same-artifact replacement when the artifact is a draft** — so the C2W rebuild-then-replace loop works. Until #1074 has shipped in the target cluster, treat draft same-artifact replacement as still-422 and roll via `PATCH /settings/` (below).
 
-| Workload currently runs | Goal | Do this |
-|---|---|---|
-| draft | apply an in-place change (env/probes/port or a new build) to the **same** draft | PATCH/rebuild that draft, then `stop` → `start` (NOT replacement — same artifact ID 422s) |
-| draft | zero-downtime swap | clone or create a **new** draft, change it, build it, `POST /replacement/` onto the **new** draft (draft↔draft) |
-| draft | lock the same artifact in place | `POST /workloads/{id}/promote/` (no restart) |
-| locked | deploy new content | clone → patch the draft → lock the new draft → `POST /replacement/` onto the clone (locked↔locked) |
+Neither rule is in the spec's path docs. There is no `dr workload replacement` CLI subcommand; replacement is REST-only.
 
-Neither rule is in the spec's path docs — agents have to know them from the error responses or from this reference. There is no `dr workload replacement` CLI subcommand; replacement is REST-only.
+### Applying a change to the SAME draft a workload runs
+
+`code sync` + `build create` (or a spec PATCH) keep the same artifact ID; a running workload does **not** auto-adopt the change — trigger a redeploy. Options, all rolling (zero-downtime at `replicaCount`/`minCount` ≥ 2; a single replica has a brief gap):
+
+| Goal | Do this |
+|---|---|
+| roll onto the latest build / spec (works on **any** cluster version) | `PATCH /workloads/{id}/settings/` — re-send the runtime body (same shape `GET /workloads/{id}/settings/` returns; even unchanged values trigger the roll). It re-reads the artifact's current spec + its latest `COMPLETED` build's `imageUri`. Returns `202`. |
+| same, but want explicit warmup / rollback-window controls | `POST /replacement/` onto the same draft — **after #1074/RAPTOR-18806**; 422s before it ships |
+| lock the running draft in place | `POST /workloads/{id}/promote/` (no restart) |
+| switch to a different / newly-locked artifact | `POST /replacement/` onto the other artifact ID |
+| locked → new content | clone → patch the draft → lock the new draft → `POST /replacement/` onto the clone |
 
 ## Promote — in-place lock without restart
 
@@ -39,7 +44,7 @@ Neither rule is in the spec's path docs — agents have to know them from the er
 - Workload's `artifactId` keeps pointing at the same artifact (now locked).
 - Running pods are NOT restarted. Traffic uninterrupted.
 
-If you also need a rolling *restart* to apply new env vars from a recent PATCH, do **not** reach for `POST /replacement/` with the same artifact ID — that 422s ("candidate artifact ID matches current artifact"). To restart the workload onto the same artifact's current spec, use `stop` → `start` (brief downtime). The intent split: promote = "the running version IS production"; replacement = "deploy a *different* artifact".
+If you also need a rolling *restart* to apply new env vars from a recent PATCH, roll the workload onto the (same) draft's current spec with `PATCH /workloads/{wid}/settings/` — re-send the runtime body (even unchanged values trigger the rolling redeploy). Same-artifact `POST /replacement/` also works for drafts once #1074/RAPTOR-18806 ships. The intent split: promote = "the running version IS production"; replacement = "deploy a *different* artifact" (or the same draft, post-#1074); settings-PATCH = "restart onto the same artifact's latest spec/build".
 
 ## PATCH on multi-container artifacts replaces the whole `containerGroups` array
 

@@ -288,17 +288,16 @@ An **artifact** is the immutable-after-lock definition of what a workload runs (
 
 ## Picking the right path
 
-To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. **Key rule most agents get wrong: `POST /replacement/` requires a *different* artifact than the one running — you cannot replace an artifact with itself** (see the two ways below).
+To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. A running workload does **not** auto-adopt a rebuild — it keeps its current image until you redeploy.
 
-- **Draft, brief downtime acceptable (simplest):** PATCH the draft in place (and/or rebuild its image), then redeploy with **`dr workload stop` → `dr workload start`**. Start re-reads the artifact's current spec + its latest `COMPLETED` build. Do **NOT** try `POST /replacement/` here — the candidate artifact ID equals the current one and it 422s (see below).
-- **Draft, zero-downtime required:** the running artifact ID must change. Clone (`POST /artifacts/{id}/clone/`) or create a *new* draft, apply the changes there, build it, then `POST /replacement/` onto that new artifact ID.
-- **Locked:** clone → PATCH the clone → lock it → `POST /replacement/` onto the clone. (The clone is a different artifact, so replacement is valid.)
+- **Draft — apply an in-place change or a rebuild to the *same* draft (the C2W loop).** PATCH/rebuild the draft, then roll the workload onto it with **`PATCH /workloads/{id}/settings/`**: re-send the runtime body (same shape `GET /workloads/{id}/settings/` returns — even re-sending the *current* values unchanged triggers the roll), and it redeploys re-reading the artifact's current spec + its latest `COMPLETED` build's `imageUri`. Returns `202`, rolling → zero-downtime at `replicaCount`/`minCount` ≥ 2 (brief gap on a single replica; fine for dev). **As of RAPTOR-18806 (workload-api #1074), `POST /replacement/` onto the *same* draft artifact also works** (and adds `warmupDurationMinutes`/`keepOldVersionMinutes` controls); until that ships it 422s for same-artifact — use the settings-PATCH.
+- **Locked, or switching to a *different* artifact.** `POST /replacement/` onto the other artifact ID. For locked-in-place edits: clone (`POST /artifacts/{id}/clone/`) → PATCH the clone → lock it → replace onto the clone. A locked artifact can **not** be replaced by itself.
 
 **Lock an artifact:** `dr artifact lock <id>` (v0.2.74+) — equivalent to `PATCH /artifacts/{id}/ {"status": "locked"}`. No `POST /artifacts/{id}/lock/`. For a draft already running on a workload, use `promote` (no restart).
 
-**Two replacement preconditions the API enforces (check both before calling):**
-- **Different artifact.** `422 {"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}` if `artifactId` equals the running one. Applying an in-place change to the *same* draft is a `stop`/`start`, not a replacement.
+**Replacement preconditions the API enforces (check before calling):**
 - **Status match.** `400 {"detail": "Artifact status mismatch: ..."}` unless the candidate's status matches the running one's: draft↔draft, locked↔locked.
+- **Same-artifact rule (changing — mind your cluster's version).** Replacing an artifact with *itself* returns `422 {"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}` for **locked** artifacts always, and for **drafts** too until RAPTOR-18806 (#1074) ships — after which same-artifact replacement is **allowed for drafts** (the intended C2W iteration path). When unsure, `PATCH /settings/` rolls onto the latest build regardless of status/version.
 
 There is **no `dr workload replacement` CLI subcommand** — replacement is REST-only (`POST /workloads/{id}/replacement/`).
 
@@ -339,7 +338,7 @@ httpx.post(f"{base}/workloads/{wid}/replacement/", headers=headers, json={
 
 Then `python scripts/wait_for_replacement.py <workload_id>` to monitor.
 
-**Preconditions (both enforced, see "Picking the right path"):** `new_artifact_id` must be a *different* artifact than the one running (same ID → `422` "candidate artifact ID matches current artifact") and must match its status (draft↔draft / locked↔locked, else `400`). To apply a change to the *same* draft the workload runs, `stop`/`start` instead — replacement can't target the current artifact.
+**Preconditions (see "Picking the right path"):** status must match (draft↔draft / locked↔locked, else `400`). Same-artifact replacement 422s for **locked** artifacts (and for drafts until RAPTOR-18806/#1074 ships in your cluster); after #1074 a draft may replace itself — the C2W iteration path. To roll the *same* draft onto its latest build without replacement, `PATCH /workloads/{id}/settings/` (re-send the runtime body — even unchanged values trigger the rolling redeploy).
 
 `GET /workloads/{id}/replacement/` returns **404** when no active replacement (body: `{"detail": "There is no active replacement for this workload."}`) — that's "no replacement in progress", not an error. Cancel an in-progress one with `DELETE`. **Not idempotent**: calling `POST` while one is in progress queues a second swap — always check via the script first.
 
