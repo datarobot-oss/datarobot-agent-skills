@@ -9,7 +9,7 @@ You are helping set up DataRobot for local development. Before installing anythi
 
 ## Step 1: Pre-Flight Check (Detect Existing Installation)
 
-Build a checklist of what is already installed before doing any installation work. Run each check and record the result. Skip any install step in Steps 3-7 whose check below already passes.
+Build a checklist of what is already installed before doing any installation work. Run each check and record the result. Skip any install step in Steps 3-6 whose check below already passes.
 
 ```bash
 # Required tools — record version for each, or "missing"
@@ -43,7 +43,7 @@ fi
 Compare each detected version to the minimums in the table in Step 3. Tell the user:
 - What is already installed and at acceptable versions (skip)
 - What is missing or below minimum version (install)
-- Whether dr-cli is already authenticated (skip Step 6 if so, but confirm with user)
+- Whether dr-cli is already authenticated (skip the login portion of Step 5 if so, but confirm with user)
 
 Only proceed past this step after presenting the diff to the user so they can confirm.
 
@@ -157,32 +157,61 @@ uv pip install datarobot datarobot-predict
 
 If the user prefers `pip` directly, the same pattern applies — they must create and activate a venv first, then run `pip install datarobot datarobot-predict` inside it. Never instruct the user to run `pip install --break-system-packages` against the system Python.
 
-## Step 5: Get API Key
+## Step 5: Get Access & Authenticate
 
-If the user does not already have a DataRobot Personal API key:
+This step gets the user authenticated with as little friction as possible. `dr auth login` already captures the API key automatically via the browser: it opens `<host>/account/developer-tools?cliRedirect=true`, and that page hands the key back to the CLI's local listener on `localhost:51164`. **Never ask the user to copy and paste an API key by hand.**
 
-1. Open: https://app.datarobot.com/account/developer-tools
-2. Use the **Personal API keys** tab (NOT Application or Agent keys).
-3. Wait for the user to provide the key.
-
-## Step 6: Authenticate with dr-cli
-
-If Step 1 showed `~/.config/datarobot/drconfig.yaml` already exists, ask the user if they want to re-authenticate or keep the existing credentials. Otherwise run:
+First, detect whether this machine is already authenticated:
 
 ```bash
-dr auth login
+python skills/datarobot-setup/scripts/signup_and_authenticate.py check --json
 ```
 
-This persists credentials in `~/.config/datarobot/drconfig.yaml`.
+- Exit `0` (`"authenticated": true`) -> already set up. Skip the rest of this step and continue to Step 6.
+- Exit `2` -> not authenticated. Continue below.
 
-Optionally, offer to add these to the user's shell rc file (~/.zshrc, ~/.bashrc) for SDK use:
+Then ask the user which situation they're in:
+
+> **Do you already have a DataRobot account?** (yes / no — I'll start a free trial)
+
+### Path A — Brand-new user (no account): guided trial signup
+
+The trial is free (30 days, no credit card). Keep the user in the terminal: open a pre-filled signup page, let them complete the one unavoidable browser step, then capture the key automatically.
+
+1. **Open signup** (email pre-filled from `git config user.email`):
+
+   ```bash
+   python skills/datarobot-setup/scripts/signup_and_authenticate.py signup
+   ```
+
+   Tell the user the fastest path is **"Sign up with GitHub or Google"** — it skips email verification entirely. Otherwise they enter an email, click the verification link, and set a password.
+
+2. **Wait for the user.** Do not proceed until they confirm they've reached the DataRobot welcome/onboarding screen. This also gives the trial org time to finish provisioning.
+
+3. **Capture the key** — now that the browser has an authenticated session, `dr auth login` collapses to a single "Authorize" click:
+
+   ```bash
+   python skills/datarobot-setup/scripts/signup_and_authenticate.py login
+   ```
+
+### Path B — Existing account: authenticate directly
+
+```bash
+python skills/datarobot-setup/scripts/signup_and_authenticate.py login
+```
+
+This runs `dr auth login`, opens the browser, and stores the key in `~/.config/datarobot/drconfig.yaml`. If the user is on EU, JP, or self-managed DataRobot, pass their URL, for example `--host https://app.eu.datarobot.com`.
+
+### Optional: export env vars for the Python SDK
+
+`dr auth login` writes `drconfig.yaml`, which is used by the CLI. The Python SDK also reads these env vars. Offer to add them to the user's shell rc file (`~/.zshrc`, `~/.bashrc`):
 
 ```bash
 export DATAROBOT_ENDPOINT="<endpoint-url>"
 export DATAROBOT_API_TOKEN="<api-token>"
 ```
 
-## Step 7: Install Agent Assist Plugin
+## Step 6: Install Agent Assist Plugin
 
 Skip if Step 1 showed the `assist` plugin already installed. Otherwise:
 
@@ -190,7 +219,7 @@ Skip if Step 1 showed the `assist` plugin already installed. Otherwise:
 dr plugin install assist
 ```
 
-## Step 8: Verify Installation
+## Step 7: Verify Installation
 
 1. **CLI and plugins**:
    ```bash
@@ -204,7 +233,7 @@ dr plugin install assist
    ```
    if this fails due to the source command not working, try it without activating the venv
 
-## Step 9: Print Summary
+## Step 8: Print Summary
 
 Summarize:
 - Tools installed this session vs. tools already present
