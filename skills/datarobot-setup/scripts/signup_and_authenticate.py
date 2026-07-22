@@ -56,16 +56,22 @@ import webbrowser
 DEFAULT_HOST = "https://app.datarobot.com"
 
 # --- Auth0 signup deep-link (US cloud) -------------------------------------
-# Captured from a live trial signup HAR. Lands the user directly on the signup
-# form with the email pre-filled. These values are specific to the US-cloud
-# public app; EU/JP or self-managed installs use a different Auth0 tenant and
-# client, so deep-link mode is only attempted when --host is the US cloud.
+# Values captured from a live trial signup HAR. These are specific to the
+# US-cloud public app; EU/JP or self-managed installs use a different Auth0
+# tenant and client, so deep-link mode is only attempted when --host is US cloud.
 #
-# CAVEAT (validate on a live run before making this the default): the app's
-# /account/oidc/callback may validate an OIDC `state` that only exists when the
-# *app* initiates the flow. A self-initiated authorize URL can therefore fail at
-# the callback with an invalid-state error. If that happens, use --mode app
-# (the robust default) which lets the app initiate and set state itself.
+# STATUS (from live testing 2026-07): deep-link mode is NOT known to work
+# end-to-end and is kept only for experimentation. Two walls were observed:
+#   1. `/account/oidc/redirect` strictly allow-lists its query params and
+#      rejects display hints ("initial_display is not allowed key", etc.), so
+#      the app cannot be asked to render the signup screen.
+#   2. A self-initiated /authorize reaches Auth0, but the app's
+#      /account/oidc/callback validates an OIDC `state`/`nonce` that only exists
+#      when the *app* initiates the flow — so completing signup is expected to
+#      fail at the callback.
+# Reaching the lean CLI-native signup form almost certainly needs a small
+# platform change (e.g. allow-list a `screen_hint=signup` param on
+# /account/oidc/redirect). Until then, --mode app is the default.
 US_AUTH_DOMAIN = "https://login.datarobot.com"
 US_CLIENT_ID = "xRJctzk4frlytI32DsAYHs0dhd7FQBli"
 
@@ -118,11 +124,17 @@ def build_signup_url(host: str, email: str, mode: str) -> tuple[str, str]:
             # No known Auth0 tenant/client for non-US hosts; stay robust.
             return f"{host}/account/oidc/redirect", "app"
         params = {
-            "client": US_CLIENT_ID,
-            "protocol": "oauth2",
+            # Auth0 /authorize requires `client_id` (NOT `client`, which is the
+            # classic hosted-login page param). Getting this wrong yields
+            # "invalid_request: Missing required parameter: client_id".
+            "client_id": US_CLIENT_ID,
             "response_type": "code",
             "redirect_uri": f"{host}/account/oidc/callback",
             "scope": "openid email profile",
+            # Ask Auth0 to render signup. `screen_hint` is the New Universal
+            # Login key; `initial_display` is the classic Lock key. Send both;
+            # Auth0 ignores unknown /authorize params (unlike the app's redirect).
+            "screen_hint": "signup",
             "initial_display": "signup",
         }
         if email:
@@ -208,6 +220,10 @@ def cmd_check(args) -> int:
 def cmd_signup(args) -> int:
     email = args.email or git_email()
     url, mode_used = build_signup_url(args.host, email, args.mode)
+    if getattr(args, "print_url", False):
+        # Just emit the URL (for fast iteration / piping); don't open a browser.
+        print(url)
+        return 0
     opened = open_browser(url)
     print_signup_guidance(url, opened, mode_used)
     return 0
@@ -278,6 +294,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--json", action="store_true", help="Machine-readable output (check only)."
+    )
+    parser.add_argument(
+        "--print-url",
+        action="store_true",
+        help="signup only: print the URL instead of opening a browser.",
     )
     args = parser.parse_args()
 
