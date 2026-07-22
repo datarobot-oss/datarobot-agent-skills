@@ -137,7 +137,7 @@ def _submit(run_dir: Path, response_path: Path) -> tuple[dict[str, object], str 
 
 
 def _fail(run_dir: Path, reason: str) -> None:
-    subprocess.run(
+    result = subprocess.run(
         [
             sys.executable,
             str(_SCRIPTS_DIR / "native_execution.py"),
@@ -150,6 +150,12 @@ def _fail(run_dir: Path, reason: str) -> None:
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0:
+        print(
+            f"warning: _fail subprocess exited {result.returncode} for {run_dir}: "
+            f"{result.stderr.strip() or result.stdout.strip()}",
+            file=sys.stderr,
+        )
 
 
 def _invoke_role(
