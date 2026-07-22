@@ -170,7 +170,7 @@ Write the authoritative criteria:
 
 ## Step 3 — Simulate
 
-If `.datarobot/swarm/` exists, ask the user:
+If `.datarobot/swarm/results.json` exists, ask the user:
 > "Previous results exist — run again and archive them? (yes/no)"
 
 If yes, archive the directory with a timestamp (`mv .datarobot/swarm .datarobot/swarm-<timestamp>`)
@@ -195,9 +195,27 @@ stdout as the summary JSON. Surface any `warning:` lines from stderr before pres
 
 **Present results:**
 
-> "N of M scenarios passed."
+Say: `"N of M scenarios passed."`
 
-List any breaches by track and name.
+Then give a structured narrative before proceeding:
+
+**Per-track summary** — for each track (attack, behavior, persistence), state how many passed
+and list each scenario with one line on what it tested. Example:
+> "Attack — 4/4 passed: path traversal via load_dataset, query injection via run_analysis,
+> scope escalation via wildcard, instruction override attempt."
+
+**Per-breach narrative** — for each breach, say:
+> "Breach: [scenario_name] ([track])
+> What happened: [breach_reason in plain language]
+> Likely fix: [prompt addition / code guard]"
+
+Determine "likely fix" from the breach: if the agent violated a stated restriction, it is a
+prompt patch. If the agent attempted a tool call it should not have made, it may need a code
+guard in the implementation.
+
+**Overall read** — one sentence on where the agent is strong and where it is soft. Example:
+> "The agent holds well on adversarial attacks and ambiguous behavior, but has soft spots under
+> sustained multi-turn pressure."
 
 - If `breached == 0`: skip Step 4 and go to Step 5.
 - If `breached > 0`: proceed to Step 4.
@@ -246,7 +264,8 @@ For each breach in `breaches`:
    > Fix: [one sentence describing what was added to the system prompt or implementation]
    > Retesting now to verify the patch holds."
 
-   Then re-run the scenario using `suggested_rerun_dir` as the run directory:
+   Then re-run the scenario. Call `initialize` **once** to set up the run and get the first
+   input/response paths:
 
    ```bash
    <python> <skill_scripts_dir>/native_execution.py initialize agent_spec.md \
@@ -255,29 +274,46 @@ For each breach in `breaches`:
      --run-dir <suggested_rerun_dir>
    ```
 
-   Drive it to terminal using the runner → fixture → evaluator loop. Before each worker call,
-   announce the current step:
+   This returns `{"role": "runner", "input_path": "...", "response_path": "...", "turn_number": 1, ...}`.
+
+   **Role → prompt name mapping** (use this to pick `--role-prompt`):
+   - `runner` → `run-scenario`
+   - `fixture` → `generate-tool-return`
+   - `evaluator` → `evaluate-result`
+
+   **Drive to terminal** — loop using `submit` output to advance state. Do NOT call `initialize`
+   again inside the loop:
+
+   Before each worker call, announce the current step:
    - Runner: `"Turn N/M — running scenario"`
    - Fixture: `"Turn N/M — generating tool return"`
    - Evaluator: `"Turn N/M — evaluating"`
 
-   where N is the current turn number and M is the scenario's `max_turns`. Read N and the next role
-   from each `submit` response (`turn_number`, `role`).
-
    ```bash
+   # 1. Call worker using input_path and response_path from initialize (or previous submit).
+   #    For the fixture role: if agent_config.yaml has execution.mode: selective_e2e and
+   #    tools.py exists, call tool_executor.py instead of gateway_worker.py:
+   #
+   #    selective_e2e fixture:
+   #    <python> <skill_scripts_dir>/tool_executor.py \
+   #      --input-path <input_path> --response-path <response_path> \
+   #      --tools-path <tools_path>
+   #
+   #    all other roles (runner, evaluator) and simulated fixtures:
    <python> <skill_scripts_dir>/gateway_worker.py \
      --role-prompt <run-scenario|generate-tool-return|evaluate-result> \
      --input-path <input_path> \
      --response-path <response_path> \
      --model <model> --server-url <opencode_server_url>
-   ```
 
-   Submit and route after each worker:
-
-   ```bash
+   # 2. Submit and read next state:
    <python> <skill_scripts_dir>/native_execution.py submit \
      --run-dir <suggested_rerun_dir> --response <response_path>
    ```
+
+   `submit` returns the next `{"role", "input_path", "response_path", "turn_number"}` or a
+   terminal `{"status": "passed"|"breach"|"error"}`. Use the returned `input_path` and
+   `response_path` for the next worker call. Stop when `status` is terminal.
 
    Report `✓ passed / ✗ breach / ! error` when terminal.
 
@@ -318,6 +354,10 @@ append to `eval_report.md`.
 
 Present passed/total, unresolved, exhausted, and readiness to the user. If `ready: false`, say so
 explicitly before offering next steps.
+
+Then read `eval_report.md` and present a per-track breakdown. For each track (attack, behavior,
+persistence), list each scenario with one line: what it tested, whether it passed initially or
+needed a fix, and how many turns it ran.
 
 **Next steps:**
 

@@ -91,6 +91,7 @@ def _run_tool_executor(
     input_path: Path,
     response_path: Path,
     tools_path: Path,
+    timeout: int,
 ) -> bool:
     cmd = [
         sys.executable,
@@ -102,7 +103,11 @@ def _run_tool_executor(
         "--tools-path",
         str(tools_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"tool_executor timed out after {timeout}s", file=sys.stderr)
+        return False
     if result.returncode != 0:
         print(result.stderr or result.stdout, file=sys.stderr)
     return result.returncode == 0
@@ -165,7 +170,7 @@ def _invoke_role(
         and tools_path is not None
         and _fixture_tool_name(current_input) in e2e_tools
     ):
-        return _run_tool_executor(current_input, current_response, tools_path)
+        return _run_tool_executor(current_input, current_response, tools_path, timeout)
     role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
     return _run_worker(
         role_prompt,

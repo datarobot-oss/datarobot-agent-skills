@@ -26,6 +26,9 @@ def _load_tools_module(tools_path: Path) -> object:
         print(f"cannot load module from: {tools_path}", file=sys.stderr)
         sys.exit(1)
     module = importlib.util.module_from_spec(spec)
+    project_dir = str(tools_path.parent)
+    if project_dir not in sys.path:
+        sys.path.insert(0, project_dir)
     try:
         spec.loader.exec_module(module)
     except Exception as exc:
