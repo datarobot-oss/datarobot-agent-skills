@@ -160,6 +160,42 @@
         "scale or debug a DataRobot workload",
         "manage autoscaling and replicas for a DataRobot workload"
       ]
+    },
+    {
+      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:define-tool-schema",
+      "displayName": "datarobot-define-tool-schema",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-define-tool-schema/SKILL.md",
+      "description": "Author and validate the model-metadata.yaml inputSchema that makes a custom DataRobot deployment callable as an MCP tool.",
+      "representativeQueries": [
+        "define the tool schema for my DataRobot deployment",
+        "validate my deployment's MCP tool interface",
+        "write the inputSchema for model-metadata.yaml"
+      ]
+    },
+    {
+      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:register-mcp-tool",
+      "displayName": "datarobot-register-mcp-tool",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-register-mcp-tool/SKILL.md",
+      "description": "Register an existing DataRobot deployment as an MCP tool and surface it to Claude, Cursor, or any MCP client without writing custom glue code.",
+      "representativeQueries": [
+        "use my DataRobot deployment as a tool in Claude",
+        "expose this deployment to Cursor over MCP",
+        "I tagged my deployment but it's not showing up as a tool"
+      ]
+    },
+    {
+      "identifier": "urn:ai:github.com:datarobot-oss:datarobot-agent-skills:deploy-nim",
+      "displayName": "datarobot-deploy-nim",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-deploy-nim/SKILL.md",
+      "description": "Deploy an NVIDIA NIM on DataRobot with a GPU resource bundle and expose it as an MCP tool callable from Claude or any MCP client.",
+      "representativeQueries": [
+        "deploy a NIM on DataRobot and use it as a tool",
+        "stand up an NVIDIA NIM with a GPU on DataRobot",
+        "expose my NIM to Claude over MCP"
+      ]
     }
   ]
 }

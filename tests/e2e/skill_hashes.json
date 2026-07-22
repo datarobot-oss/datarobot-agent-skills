@@ -1,1 +1,5 @@
-{}
+{
+  "skills/datarobot-define-tool-schema/SKILL.md": "de735c86814476d8ae3d005334470fbd",
+  "skills/datarobot-deploy-nim/SKILL.md": "d3fa31d39ff128aa03dc1d5ce258f22f",
+  "skills/datarobot-register-mcp-tool/SKILL.md": "a70b5f0e3e0bbae270b053d1494b2190"
+}
