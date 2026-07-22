@@ -150,7 +150,7 @@ def fix_location(app):
         def sr(status, headers, exc=None):
             headers = [
                 (k, PREFIX + v if k.lower() == "location"
-                       and v.startswith("/") and not v.startswith(PREFIX + "/") else v)
+                       and v.startswith("/") and v != PREFIX and not v.startswith(PREFIX + "/") else v)
                 for k, v in headers
             ]
             return start_response(status, headers, exc)
