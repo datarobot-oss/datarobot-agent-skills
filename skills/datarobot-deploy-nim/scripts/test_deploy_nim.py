@@ -19,10 +19,14 @@ def test_deployment_ready_and_failed() -> None:
     assert deployment_failed("active") is False
 
 
-def test_pick_serverless_prefers_datarobot_platform() -> None:
+def test_pick_serverless_prefers_datarobot_serverless_platform() -> None:
     pes = [
-        {"id": "pe1", "platform": "aws", "name": "ext"},
-        {"id": "pe2", "platform": "datarobot", "name": "Serverless"},
+        {"id": "pe1", "platform": "datarobot", "name": "legacy eks wrapper"},
+        {
+            "id": "pe2",
+            "platform": "datarobotServerless",
+            "name": "manufacturing-pod NIMs",
+        },
     ]
     chosen = pick_serverless_pe(pes)
     assert chosen is not None and chosen["id"] == "pe2"

@@ -35,7 +35,7 @@ def pick_serverless_pe(pes: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not pes:
         return None
     for pe in pes:
-        if (pe.get("platform") or "").lower() == "datarobot":
+        if (pe.get("platform") or "").lower() == "datarobotserverless":
             return pe
     for pe in pes:
         if "serverless" in (pe.get("name") or "").lower():
