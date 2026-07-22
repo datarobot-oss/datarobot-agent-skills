@@ -100,7 +100,7 @@ def configure(
     judge_mode: Literal["standard", "scored"],
     output_path: Path,
     model: str | None = None,
-    execution_mode: str = "simulated",
+    execution_mode: Literal["simulated", "selective_e2e"] = "simulated",
 ) -> Path:
     """Persist the public native configuration collected by the harness."""
     project_root = spec_path.resolve().parent

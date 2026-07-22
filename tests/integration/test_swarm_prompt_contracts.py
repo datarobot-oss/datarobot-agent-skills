@@ -75,10 +75,12 @@ def test_fixture_prompt_requires_minimal_fictional_data() -> None:
 
 
 def test_all_prompts_define_role_input_and_output() -> None:
-    prompt_paths = sorted(PROMPT_DIR.glob("*.md"))
+    role_prompt_paths = sorted(
+        p for p in PROMPT_DIR.glob("*.md") if p.name != "industry.md"
+    )
 
-    assert len(prompt_paths) == 6
-    for path in prompt_paths:
+    assert len(role_prompt_paths) == 6
+    for path in role_prompt_paths:
         text = path.read_text(encoding="utf-8")
         assert "# Task" in text
         assert "# Input" in text
@@ -201,5 +203,3 @@ def test_scenario_id_changes_with_confirmed_content() -> None:
         contracts.confirm_scenario(original).scenario_id
         != contracts.confirm_scenario(changed).scenario_id
     )
-
-

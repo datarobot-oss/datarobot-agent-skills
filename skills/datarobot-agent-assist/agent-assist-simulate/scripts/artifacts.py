@@ -181,5 +181,3 @@ def _resolve_project_file(project_root: Path, path: Path, label: str) -> Path:
     if not resolved.is_file():
         raise ValueError(f"{label} does not exist or is not a file: {resolved}")
     return resolved
-
-

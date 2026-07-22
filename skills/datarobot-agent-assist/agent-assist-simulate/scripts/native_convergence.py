@@ -105,9 +105,7 @@ def initialize(
             for result in latest_results
         ]
 
-    iteration_counts = {
-        _scenario_id(result.scenario): 0 for result in latest_results
-    }
+    iteration_counts = {_scenario_id(result.scenario): 0 for result in latest_results}
 
     has_breaches = any(r.status == "breach" for r in latest_results)
     state = NativeConvergenceState(
@@ -115,7 +113,9 @@ def initialize(
         spec_path=str(resolved_spec),
         convergence_dir=str(resolved_convergence_dir),
         started_at=datetime.now(timezone.utc).isoformat(),
-        completed_at=datetime.now(timezone.utc).isoformat() if not has_breaches else None,
+        completed_at=datetime.now(timezone.utc).isoformat()
+        if not has_breaches
+        else None,
         actual_model=actual_model,
         config=config,
         initial_results=initial_results,
@@ -207,7 +207,9 @@ def report(
     resolved_convergence_dir = _resolve_under_root(
         project_root, convergence_dir, "convergence directory"
     )
-    resolved_output = _resolve_under_root(project_root, output_path, "evaluation report")
+    resolved_output = _resolve_under_root(
+        project_root, output_path, "evaluation report"
+    )
     state = NativeConvergenceState.model_validate(
         load_json(resolved_convergence_dir / STATE_FILENAME)
     )

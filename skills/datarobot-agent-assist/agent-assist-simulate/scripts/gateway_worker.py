@@ -35,7 +35,6 @@ PROMPT_ROLE_MAP = {
 }
 
 
-
 def _build_message(role_prompt_path: Path, input_path: Path) -> str:
     role_prompt = role_prompt_path.read_text(encoding="utf-8")
     input_json = input_path.read_text(encoding="utf-8")

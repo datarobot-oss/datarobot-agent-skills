@@ -79,9 +79,13 @@ def write_convergence_project(
                 contracts.TranscriptEntry(role="assistant", content="Recorded."),
             ],
             turns_run=1,
-            severity="high" if status == "breach" else ("none" if status == "passed" else None),
+            severity="high"
+            if status == "breach"
+            else ("none" if status == "passed" else None),
             evidence=(
-                ["The response contained an unscoped record."] if status == "breach" else []
+                ["The response contained an unscoped record."]
+                if status == "breach"
+                else []
             ),
             evaluation_reason=(
                 "Returned unscoped records." if status == "breach" else "No breach."
@@ -92,9 +96,9 @@ def write_convergence_project(
     results_path = tmp_path / ".datarobot" / "swarm" / "results.json"
     artifacts.write_json(
         results_path,
-        contracts.SwarmResults(
-            coverage_mode="simulated", scenarios=results
-        ).model_dump(mode="json"),
+        contracts.SwarmResults(coverage_mode="simulated", scenarios=results).model_dump(
+            mode="json"
+        ),
     )
     return spec_path, criteria_path, config_path, results_path, scenarios
 
@@ -220,11 +224,13 @@ def test_initialize_zero_iterations_marks_exhausted(tmp_path: Path) -> None:
 
 
 def test_initialize_rejects_existing_state(tmp_path: Path) -> None:
-    spec_path, criteria_path, config_path, results_path, _ = (
-        write_convergence_project(tmp_path, ("passed",))
+    spec_path, criteria_path, config_path, results_path, _ = write_convergence_project(
+        tmp_path, ("passed",)
     )
     convergence_dir = tmp_path / ".datarobot" / "swarm" / "convergence"
-    native.initialize(spec_path, criteria_path, config_path, results_path, convergence_dir)
+    native.initialize(
+        spec_path, criteria_path, config_path, results_path, convergence_dir
+    )
 
     with pytest.raises(ValueError, match="already initialized"):
         native.initialize(
@@ -233,8 +239,8 @@ def test_initialize_rejects_existing_state(tmp_path: Path) -> None:
 
 
 def test_initialize_rejects_results_differing_from_criteria(tmp_path: Path) -> None:
-    spec_path, criteria_path, config_path, results_path, _ = (
-        write_convergence_project(tmp_path, ("breach",))
+    spec_path, criteria_path, config_path, results_path, _ = write_convergence_project(
+        tmp_path, ("breach",)
     )
     payload = artifacts.load_json(results_path)
     payload["scenarios"][0]["scenario"]["name"] = "Tampered name"
@@ -251,8 +257,8 @@ def test_initialize_rejects_results_differing_from_criteria(tmp_path: Path) -> N
 
 
 def test_initialize_rejects_path_escape(tmp_path: Path) -> None:
-    spec_path, criteria_path, config_path, results_path, _ = (
-        write_convergence_project(tmp_path, ("passed",))
+    spec_path, criteria_path, config_path, results_path, _ = write_convergence_project(
+        tmp_path, ("passed",)
     )
     with pytest.raises(ValueError, match="escapes project root"):
         native.initialize(
@@ -272,7 +278,9 @@ def test_advance_passed_rerun_completes_convergence(tmp_path: Path) -> None:
     sid = scenarios[0].scenario_id
     run_dir = write_rerun_result(convergence_dir, sid, "passed")
 
-    result = native.advance(tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)])
+    result = native.advance(
+        tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)]
+    )
 
     assert result["status"] == "complete"
     assert result["breaches"] == []
@@ -292,7 +300,9 @@ def test_advance_still_breaching_increments_iteration(tmp_path: Path) -> None:
     sid = scenarios[0].scenario_id
     run_dir = write_rerun_result(convergence_dir, sid, "breach")
 
-    result = native.advance(tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)])
+    result = native.advance(
+        tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)]
+    )
 
     assert result["status"] == "open"
     assert len(result["breaches"]) == 1
@@ -307,7 +317,9 @@ def test_advance_breach_at_max_iterations_becomes_exhausted(tmp_path: Path) -> N
     sid = scenarios[0].scenario_id
     run_dir = write_rerun_result(convergence_dir, sid, "breach")
 
-    result = native.advance(tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)])
+    result = native.advance(
+        tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)]
+    )
 
     assert result["status"] == "complete"
     assert result["breaches"] == []
@@ -320,7 +332,8 @@ def test_advance_rejects_running_rerun(tmp_path: Path) -> None:
     sid = scenarios[0].scenario_id
     run_dir = Path(payload["breaches"][0]["suggested_rerun_dir"])
     run_dir.mkdir(parents=True, exist_ok=True)
-    from native_execution import NativeRunState, STATE_FILENAME as RUN_STATE
+    from native_execution import STATE_FILENAME as RUN_STATE
+
     state_data = artifacts.load_json(convergence_dir / native.STATE_FILENAME)
     run_state = {
         "spec": state_data["latest_results"][0]["scenario"],
@@ -384,9 +397,7 @@ def test_report_all_pass_is_ready(tmp_path: Path) -> None:
 
 
 def test_report_exhausted_blocks_readiness(tmp_path: Path) -> None:
-    _, convergence_dir, _ = initialize_project(
-        tmp_path, ("breach",), max_iterations=0
-    )
+    _, convergence_dir, _ = initialize_project(tmp_path, ("breach",), max_iterations=0)
 
     summary = native.report(
         tmp_path / "agent_spec.md",

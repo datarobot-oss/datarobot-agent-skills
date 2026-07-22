@@ -120,5 +120,3 @@ def evaluator_input(
             fixture.model_dump(mode="json") for fixture in runner_result.fixture_history
         ],
     }
-
-

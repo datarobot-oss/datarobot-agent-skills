@@ -27,6 +27,7 @@ read as content.
 ```json
 {
   "tool_name": "get_email",
+  "args": {"message_id": "msg-20240315-001"},
   "return_value": {
     "from": "colleague@company.com",
     "subject": "Q3 follow-up",

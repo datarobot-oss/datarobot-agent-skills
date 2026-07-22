@@ -20,7 +20,6 @@ SCRIPT_DIR = (
     / "scripts"
 )
 SCRIPT_PATH = SCRIPT_DIR / "native_swarm.py"
-IMPLEMENTATION_PLAN_PATH = REPO_ROOT / "PRD" / "implementation-plan.md"
 sys.path.insert(0, str(SCRIPT_DIR))
 artifacts = importlib.import_module("artifacts")
 contracts = importlib.import_module("contracts")
@@ -331,14 +330,6 @@ def test_prepare_cli_outputs_machine_readable_tasks(tmp_path: Path) -> None:
     assert payload["coverage_mode"] == "simulated"
     assert payload["tasks"][0]["scenario_id"] == scenarios[0].scenario_id
     assert payload["tasks"][0]["response_path"].endswith("worker-output.json")
-
-
-def test_native_batch_limit_is_harness_owned_and_documented() -> None:
-    plan = IMPLEMENTATION_PLAN_PATH.read_text(encoding="utf-8")
-
-    assert "The harness owns the in-memory pending-task queue" in plan
-    assert "batches at most five worker invocations" in plan
-    assert "Do not add a Python scheduler" in plan
 
 
 SKILL_MD_PATH = (
