@@ -58,9 +58,34 @@ responses. So the app has two seemingly contradictory needs:
 
 A thin **prefix shim** reconciles the two: tell the app its external mount point
 is the prefix (fixes outbound), and route on the stripped path the app actually
-received (fixes inbound). Pass the prefix in via an env var
-(`WORKLOAD_BASE_PATH`) set from `dr workload endpoint <id>` so the image stays
-generic.
+received (fixes inbound).
+
+**Derive the prefix from `WORKLOAD_ID` — don't pass it in.** The endpoint path is
+always `/api/v2/endpoints/workloads/<workload-id>`, and DataRobot **auto-injects
+the managed env var `WORKLOAD_ID`** into every workload container. Build the
+prefix from it at startup — no extra env var to plumb through, and it stays
+correct across rebuilds/replacements (the workload ID never changes):
+
+```python
+import os
+PREFIX = f"/api/v2/endpoints/workloads/{os.environ['WORKLOAD_ID']}"  # no trailing slash
+```
+
+(That's the same path `dr workload endpoint <id>` prints, minus scheme/host — no
+need to fetch or hardcode it.)
+
+> **Caveat — proton-id URL paths need an explicit override.** The
+> `WORKLOAD_ID`-derived prefix only matches the workload-id endpoint
+> (`/api/v2/endpoints/workloads/<workload-id>/`). The same workload is also
+> addressable by a **proton-id** path (`/protons/<proton-id>/…` — e.g. how
+> internal routing/health probes reach it), and that prefix is different *and*
+> changes on every replacement (each roll creates a new proton). The proton ID
+> is **not** injected into the container env, so it can't be derived at startup
+> like `WORKLOAD_ID` is. If you actually need to serve under the proton-id path,
+> set the base-path prefix **explicitly** via your own env var
+> (e.g. `WORKLOAD_BASE_PATH`) instead of deriving it — and update it whenever the
+> proton changes. For the normal browser-facing workload-id endpoint, the
+> `WORKLOAD_ID` derivation above is all you need.
 
 **Preferred: use the framework's mount setting (no custom code).** Most WSGI /
 ASGI apps already implement exactly this via `SCRIPT_NAME` / `root_path`:
@@ -69,8 +94,6 @@ ASGI apps already implement exactly this via `SCRIPT_NAME` / `root_path`:
 # WSGI (Flask/Django/Bottle/...). The edge already stripped the prefix, so
 # PATH_INFO is the in-mount path; SCRIPT_NAME tells the app its external mount,
 # and the framework prepends it to url_for()/redirect()/static URLs.
-PREFIX = os.environ["WORKLOAD_BASE_PATH"].rstrip("/")   # e.g. /api/v2/endpoints/workloads/<id>
-
 def prefix_shim(app):
     def wrapped(environ, start_response):
         environ["SCRIPT_NAME"] = PREFIX          # outbound URLs + redirects now carry PREFIX
@@ -81,9 +104,9 @@ application = prefix_shim(application)
 ```
 
 - **ASGI** (FastAPI/Starlette): the same idea is built in — run
-  `uvicorn --root-path "$WORKLOAD_BASE_PATH"` (or set `root_path` on the app).
-  Starlette prepends `root_path` to `url_for`/redirects and routes on the
-  received path.
+  `uvicorn --root-path "/api/v2/endpoints/workloads/$WORKLOAD_ID"` (or set
+  `root_path` on the app from the env var). Starlette prepends `root_path` to
+  `url_for`/redirects and routes on the received path.
 - **Streamlit / Shiny / SPA**: use the base-path option
   (`--server.baseUrlPath`, `server.rootUrl`, `<base href>`), no middleware.
 
@@ -206,8 +229,8 @@ app problem (sub-path/CSRF).
 
 ## Minimal checklist for "serve my web app through the endpoint"
 
-1. Read the prefix from `dr workload endpoint <id>`; feed it to the app as a
-   base-path env var.
+1. Build the prefix at startup from the auto-injected `WORKLOAD_ID`:
+   `/api/v2/endpoints/workloads/$WORKLOAD_ID` (no extra env var to pass).
 2. Set the app's base-path/root-path to that prefix; add an inbound
    prefix-restoring shim (or a reverse-proxy rewrite) if the framework couples
    inbound routing to the base-path.
