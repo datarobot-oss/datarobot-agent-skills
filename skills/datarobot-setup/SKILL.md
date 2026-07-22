@@ -159,7 +159,11 @@ If the user prefers `pip` directly, the same pattern applies — they must creat
 
 ## Step 5: Get Access & Authenticate
 
-This step gets the user authenticated with as little friction as possible. `dr auth login` already captures the API key automatically via the browser: it opens `<host>/account/developer-tools?cliRedirect=true`, and that page hands the key back to the CLI's local listener on `localhost:51164`. **Never ask the user to copy and paste an API key by hand.**
+Get the user authenticated with as little friction as possible. `dr auth login`
+already captures the API key automatically through the browser — it opens
+`<host>/account/developer-tools?cliRedirect=true`, and that page returns the key
+to the CLI's local listener on `localhost:51164`. **Never ask the user to copy
+and paste an API key by hand.**
 
 First, detect whether this machine is already authenticated:
 
@@ -168,31 +172,46 @@ python skills/datarobot-setup/scripts/signup_and_authenticate.py check --json
 ```
 
 - Exit `0` (`"authenticated": true`) -> already set up. Skip the rest of this step and continue to Step 6.
-- Exit `2` -> not authenticated. Continue below.
-
-Then ask the user which situation they're in:
+- Exit `2` -> not authenticated. Ask the user:
 
 > **Do you already have a DataRobot account?** (yes / no — I'll start a free trial)
 
 ### Path A — Brand-new user (no account): guided trial signup
 
-The trial is free (30 days, no credit card). Keep the user in the terminal: open a pre-filled signup page, let them complete the one unavoidable browser step, then capture the key automatically.
+The trial is free (30 days, no credit card). Drop the user straight onto the
+lean signup page — no marketing form to hunt for.
 
-1. **Open signup** (email pre-filled from `git config user.email`):
+1. **Open signup:**
 
    ```bash
-   python skills/datarobot-setup/scripts/signup_and_authenticate.py signup
+   python skills/datarobot-setup/scripts/signup_and_authenticate.py signup --mode deeplink
    ```
 
-   Tell the user the fastest path is **"Sign up with GitHub or Google"** — it skips email verification entirely. Otherwise they enter an email, click the verification link, and set a password.
+   Tell the user the fastest path is **"Sign up with GitHub or Google"** — it
+   skips email verification and setting a password. The browser journey is:
 
-2. **Wait for the user.** Do not proceed until they confirm they've reached the DataRobot welcome/onboarding screen. This also gives the trial org time to finish provisioning.
+   - **GitHub/Google:** authorize -> *Tell us about yourself* -> welcome screen.
+   - **Email:** enter email -> click the verification link we email -> set a
+     password -> *Tell us about yourself* -> welcome screen.
 
-3. **Capture the key** — now that the browser has an authenticated session, `dr auth login` collapses to a single "Authorize" click:
+   The **"Tell us about yourself"** page (name, company, title, country) is a
+   required step that finishes provisioning the trial. Have the user fill it in
+   normally — do **not** attempt to skip or auto-fill it.
+
+2. **Wait for the user.** Do not proceed until they confirm they've reached the
+   DataRobot welcome/onboarding screen.
+
+3. **Capture the key** — the browser now has an authenticated session, so
+   `dr auth login` collapses to one "Authorize" click and stores the key:
 
    ```bash
    python skills/datarobot-setup/scripts/signup_and_authenticate.py login
    ```
+
+   > Note: `--mode deeplink` is validated end-to-end for **email** signup. The
+   > **GitHub/Google** path through the deep-link is not yet confirmed; if it
+   > errors at the callback, re-run signup with `--mode app` (its login screen
+   > offers the same Google/GitHub buttons and signs up cleanly).
 
 ### Path B — Existing account: authenticate directly
 
@@ -200,14 +219,15 @@ The trial is free (30 days, no credit card). Keep the user in the terminal: open
 python skills/datarobot-setup/scripts/signup_and_authenticate.py login
 ```
 
-This runs `dr auth login`, opens the browser, and stores the key in `~/.config/datarobot/drconfig.yaml`. If the user is on EU, JP, or self-managed DataRobot, pass their URL, for example `--host https://app.eu.datarobot.com`.
+For EU/JP/self-managed, pass the URL, e.g. `--host https://app.eu.datarobot.com`.
 
 ### Optional: export env vars for the Python SDK
 
-`dr auth login` writes `drconfig.yaml`, which is used by the CLI. The Python SDK also reads these env vars. Offer to add them to the user's shell rc file (`~/.zshrc`, `~/.bashrc`):
+The same two variables the SDK reads. Offer to add them to the user's shell rc
+(`~/.zshrc`, `~/.bashrc`):
 
 ```bash
-export DATAROBOT_ENDPOINT="<endpoint-url>"
+export DATAROBOT_ENDPOINT="<endpoint-url>"     # e.g. https://app.datarobot.com/api/v2
 export DATAROBOT_API_TOKEN="<api-token>"
 ```
 

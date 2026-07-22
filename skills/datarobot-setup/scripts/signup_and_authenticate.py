@@ -77,6 +77,9 @@ DEFAULT_HOST = "https://app.datarobot.com"
 #     /`email` do nothing on the initial trial-signup screen.
 #   ✗ `/account/oidc/redirect` strictly allow-lists params and rejects display
 #     hints, so the app itself cannot be asked to show signup.
+#   • Every new-user path (email AND social) passes through a required
+#     "Tell us about yourself" (/tell-us) lead-capture form before onboarding.
+#     It is an intentional gate — do NOT bypass or auto-fill it.
 US_AUTH_DOMAIN = "https://login.datarobot.com"
 US_CLIENT_ID = "xRJctzk4frlytI32DsAYHs0dhd7FQBli"
 
