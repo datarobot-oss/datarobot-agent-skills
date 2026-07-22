@@ -60,18 +60,18 @@ DEFAULT_HOST = "https://app.datarobot.com"
 # US-cloud public app; EU/JP or self-managed installs use a different Auth0
 # tenant and client, so deep-link mode is only attempted when --host is US cloud.
 #
-# STATUS (from live testing 2026-07): deep-link mode is NOT known to work
-# end-to-end and is kept only for experimentation. Two walls were observed:
-#   1. `/account/oidc/redirect` strictly allow-lists its query params and
-#      rejects display hints ("initial_display is not allowed key", etc.), so
-#      the app cannot be asked to render the signup screen.
-#   2. A self-initiated /authorize reaches Auth0, but the app's
-#      /account/oidc/callback validates an OIDC `state`/`nonce` that only exists
-#      when the *app* initiates the flow — so completing signup is expected to
-#      fail at the callback.
-# Reaching the lean CLI-native signup form almost certainly needs a small
-# platform change (e.g. allow-list a `screen_hint=signup` param on
-# /account/oidc/redirect). Until then, --mode app is the default.
+# STATUS (from live testing 2026-07):
+#   ✓ A self-initiated /authorize with client_id + screen_hint/initial_display
+#     DOES render the lean DataRobot signup page (confirmed live).
+#   ? Email pre-fill: the page ignores OIDC `login_hint`; we also pass a plain
+#     `email` param (see build_signup_url) — pending live confirmation.
+#   ? End-to-end state: NOT yet confirmed that completing signup round-trips
+#     through /account/oidc/callback (which may validate a `state`/`nonce` that
+#     only exists when the *app* initiates). Reaching the form != the callback
+#     accepting our state — run one full signup->onboarding->`dr auth login`.
+#   ✗ `/account/oidc/redirect` strictly allow-lists params and rejects display
+#     hints, so the app itself cannot be asked to show signup.
+# `--mode app` stays the default until the end-to-end run passes.
 US_AUTH_DOMAIN = "https://login.datarobot.com"
 US_CLIENT_ID = "xRJctzk4frlytI32DsAYHs0dhd7FQBli"
 
@@ -138,7 +138,13 @@ def build_signup_url(host: str, email: str, mode: str) -> tuple[str, str]:
             "initial_display": "signup",
         }
         if email:
+            # `login_hint` is the OIDC standard, but the custom DataRobot signup
+            # page doesn't appear to read it. Also send a plain `email` param —
+            # Auth0 forwards unknown /authorize params through to the page (same
+            # path screen_hint/initial_display took). One of these should land in
+            # the email box; both are harmless if ignored.
             params["login_hint"] = email
+            params["email"] = email
         query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
         return f"{US_AUTH_DOMAIN}/authorize?{query}", "deeplink"
 
