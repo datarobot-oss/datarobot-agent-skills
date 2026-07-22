@@ -295,11 +295,7 @@ To change a running workload's image / env vars / probes / port, find its curren
 
 **Lock an artifact:** `dr artifact lock <id>` (v0.2.74+) — equivalent to `PATCH /artifacts/{id}/ {"status": "locked"}`. No `POST /artifacts/{id}/lock/`. For a draft already running on a workload, use `promote` (no restart).
 
-**Replacement preconditions the API enforces (check before calling):**
-- **Status match.** `400 {"detail": "Artifact status mismatch: ..."}` unless the candidate's status matches the running one's: draft↔draft, locked↔locked.
-- **Same-artifact rule (changing — mind your cluster's version).** Replacing an artifact with *itself* returns `422 {"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}` for **locked** artifacts always, and for **drafts** too until RAPTOR-18806 (#1074) ships — after which same-artifact replacement is **allowed for drafts** (the intended C2W iteration path). When unsure, `PATCH /settings/` rolls onto the latest build regardless of status/version.
-
-There is **no `dr workload replacement` CLI subcommand** — replacement is REST-only (`POST /workloads/{id}/replacement/`).
+**Replacement preconditions:** the candidate's status must match the running artifact's (draft↔draft / locked↔locked, else `400`); replacing an artifact with *itself* `422`s for locked always and for drafts until RAPTOR-18806 (#1074) ships (then drafts may self-replace). No `dr workload replacement` CLI — REST-only. Exact error strings, the version transition, and the full same-draft redeploy matrix are in `references/lifecycle-flows.md`.
 
 **Promote (no restart):** `POST /workloads/{wid}/promote/` (empty body, returns 200) locks the draft the workload is currently running, in place. No pod restart. Only valid if the workload already runs that artifact — for a *different* one, use replacement.
 
@@ -314,10 +310,7 @@ The Workload API does **not yet accept image-pull credentials at workload creati
 
 Poll either path with `python scripts/wait_for_build.py <artifact_id> <build_id>`. Only drafts can build.
 
-**`imageUri` is build-managed — don't fight it:**
-- On build `COMPLETED` the platform **auto-populates the artifact's `imageUri`**. Do **not** set it by hand: `PATCH`-ing `imageUri` yourself returns `422 {"detail": "Image URI '...' is not permitted on this cluster."}` (only build-produced images are allowed).
-- Do **not PATCH the artifact spec while a build is in progress.** A spec PATCH is a read-modify-write of the whole spec, so it writes back the *pre-build* `imageUri` and clobbers the pending auto-populate — the workload then redeploys on the **old** image. Sequence it: make spec edits (env/probes) *before* `build create`, or *after* `COMPLETED` — and in the after case re-`GET` the artifact first so your PATCH carries the fresh `imageUri`.
-- After `COMPLETED`, `GET` the artifact and confirm `imageUri` advanced to the new build before redeploying.
+**`imageUri` is build-managed:** the build auto-populates it on `COMPLETED` — never `PATCH` it by hand (`422` "not permitted on this cluster"), and never PATCH the artifact spec *while a build is in progress* (a whole-spec write sends back the pre-build `imageUri` and clobbers the pending update → redeploys the old image). Sequence spec edits before `build create` or after `COMPLETED` (re-`GET` first), and confirm `imageUri` advanced before redeploying. Detail in `references/lifecycle-flows.md`.
 
 > **C2W is preview / feature-flagged** — needs `ENABLE_WORKLOAD_API_CONTAINERS=true` on the org and `DATAROBOT_CLI_FEATURE_WORKLOAD=true` client-side. Steps may change before GA.
 
