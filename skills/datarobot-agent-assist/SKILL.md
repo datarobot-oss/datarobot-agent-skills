@@ -50,6 +50,15 @@ Read `agent-assist-simulate/SKILL.md` for option 3. Also use directly when the u
 Swarm simulation is post-coding only. If implementation code exists, skip the menu and go straight
 to the Pre-flight Check. Otherwise, explain that the agent must be implemented first and route the
 user to option 2.
+Run in order before proceeding:
+
+1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
+2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
+3. **DataRobot CLI** — follow **DataRobot CLI Setup** at the bottom:
+   - If missing, **ALWAYS RUN** the install command before proceeding
+   - **ALWAYS RUN** the upgrade command before proceeding
+   - If not authenticated, **ALWAYS RUN** the auth command before proceeding
+4. **Codespace** — run `python <skill_scripts_dir>/check_codespace.py` (no-op outside a Codespace). On non-zero exit, relay its message and stop; otherwise relay any exposed-ports warning it prints.
 
 ---
 
