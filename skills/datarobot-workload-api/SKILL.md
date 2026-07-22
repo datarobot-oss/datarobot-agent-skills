@@ -47,6 +47,7 @@ The SKILL.md is the operational core. Detail an agent needs occasionally lives i
 - `references/schema-reference.md` — OpenAPI schemas worth looking up, credential type → key mappings, public-spec path-key quirks
 - `references/lifecycle-flows.md` — artifact draft → lock → production flow rules and behavioral gotchas
 - `references/code-to-workload.md` — deploy from source code (no Dockerfile authoring): `dr` CLI commands, `codeRef`, Execution Environments, generated vs provided Dockerfile modes, iterate-rebuild loop
+- `references/web-uis-behind-the-edge.md` — serving a browser-facing web app (UI + backend) through the endpoint: the edge gateway strips the path prefix, gates auth, and hijacks `Authorization`; disable the app's own auth and trust the edge; sub-path hosting; CSRF; WebSockets
 
 ## OpenAPI spec is source of truth
 
@@ -109,6 +110,27 @@ Raw fallback when CLI unavailable: `httpx.post(f"{base}/workloads/", headers=hea
 - `port` MUST be `>= 1024`. The container must actually listen on it (set via image env vars or entrypoint).
 - Image must include a **linux/amd64** manifest. Apple Silicon defaults to ARM64 and crash-loops with `exec format error`. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t <ref> --push .`.
 - Status lifecycle: `submitted` → `provisioning` → `launching` → `running` (happy path); `updating` during rolling redeploys; `errored` recoverable; `failed`/`terminated` unrecoverable. Full table in `references/status-vocabulary.md`.
+
+## Serving a browser-facing web UI through the endpoint
+
+If the container serves a **web app (UI + its own backend/API/WebSocket)** that
+users open in a browser via `dr workload endpoint <id>` — not just a headless
+service — the DataRobot edge gateway changes what the app must do. It serves the
+app under a path prefix (`…/api/v2/endpoints/workloads/<id>/`) and:
+
+- **strips that prefix inbound** (the container sees `/…`), while NOT rewriting
+  the app's outbound URLs/redirects — so the app must be sub-path aware;
+- **is itself the auth gate** (a DataRobot login is required to reach it), and
+  **hijacks the `Authorization` header** (treats it as a DataRobot API key →
+  `401 {"message":"Invalid API key"}`, request never reaches the container);
+- **passes WebSockets through** (`wss://` upgrades work).
+
+The winning pattern: set the app's base-path to the prefix (+ re-add it inbound),
+**disable the app's own auth and let the edge authenticate**, disable the app's
+CSRF check (shared-origin cookie collisions), and probe an unauthenticated path.
+Full guidance, per-symptom diagnostics, and a checklist are in
+`references/web-uis-behind-the-edge.md`. (Headless machine-to-machine services
+don't need any of this.)
 
 ## "Update the workload" disambiguation
 
@@ -266,11 +288,19 @@ An **artifact** is the immutable-after-lock definition of what a workload runs (
 
 ## Picking the right path
 
-To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. If `draft`: PATCH in place → `POST /workloads/{id}/replacement/`. If `locked`: clone → PATCH the clone → lock it → `POST /workloads/{id}/replacement/`.
+To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. **Key rule most agents get wrong: `POST /replacement/` requires a *different* artifact than the one running — you cannot replace an artifact with itself** (see the two ways below).
+
+- **Draft, brief downtime acceptable (simplest):** PATCH the draft in place (and/or rebuild its image), then redeploy with **`dr workload stop` → `dr workload start`**. Start re-reads the artifact's current spec + its latest `COMPLETED` build. Do **NOT** try `POST /replacement/` here — the candidate artifact ID equals the current one and it 422s (see below).
+- **Draft, zero-downtime required:** the running artifact ID must change. Clone (`POST /artifacts/{id}/clone/`) or create a *new* draft, apply the changes there, build it, then `POST /replacement/` onto that new artifact ID.
+- **Locked:** clone → PATCH the clone → lock it → `POST /replacement/` onto the clone. (The clone is a different artifact, so replacement is valid.)
 
 **Lock an artifact:** `dr artifact lock <id>` (v0.2.74+) — equivalent to `PATCH /artifacts/{id}/ {"status": "locked"}`. No `POST /artifacts/{id}/lock/`. For a draft already running on a workload, use `promote` (no restart).
 
-**Replacement status-match rule:** `400 {"detail": "Artifact status mismatch: ..."}` unless the new artifact's status matches the running one's. draft↔draft, locked↔locked. Check before calling.
+**Two replacement preconditions the API enforces (check both before calling):**
+- **Different artifact.** `422 {"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}` if `artifactId` equals the running one. Applying an in-place change to the *same* draft is a `stop`/`start`, not a replacement.
+- **Status match.** `400 {"detail": "Artifact status mismatch: ..."}` unless the candidate's status matches the running one's: draft↔draft, locked↔locked.
+
+There is **no `dr workload replacement` CLI subcommand** — replacement is REST-only (`POST /workloads/{id}/replacement/`).
 
 **Promote (no restart):** `POST /workloads/{wid}/promote/` (empty body, returns 200) locks the draft the workload is currently running, in place. No pod restart. Only valid if the workload already runs that artifact — for a *different* one, use replacement.
 
@@ -284,6 +314,11 @@ The Workload API does **not yet accept image-pull credentials at workload creati
 2. **Code-to-Workload (C2W)** — when you can't publish (no local Docker, no public registry, admin can't add pull credentials). `dr` CLI v0.2.74+ uploads source (`dr artifact code init` + `sync`), `dr artifact build create` triggers a platform build that pushes to DataRobot's **internal** registry and populates `imageUri`. From there, identical to bring-your-own-image. Full flow in `references/code-to-workload.md`.
 
 Poll either path with `python scripts/wait_for_build.py <artifact_id> <build_id>`. Only drafts can build.
+
+**`imageUri` is build-managed — don't fight it:**
+- On build `COMPLETED` the platform **auto-populates the artifact's `imageUri`**. Do **not** set it by hand: `PATCH`-ing `imageUri` yourself returns `422 {"detail": "Image URI '...' is not permitted on this cluster."}` (only build-produced images are allowed).
+- Do **not PATCH the artifact spec while a build is in progress.** A spec PATCH is a read-modify-write of the whole spec, so it writes back the *pre-build* `imageUri` and clobbers the pending auto-populate — the workload then redeploys on the **old** image. Sequence it: make spec edits (env/probes) *before* `build create`, or *after* `COMPLETED` — and in the after case re-`GET` the artifact first so your PATCH carries the fresh `imageUri`.
+- After `COMPLETED`, `GET` the artifact and confirm `imageUri` advanced to the new build before redeploying.
 
 > **C2W is preview / feature-flagged** — needs `ENABLE_WORKLOAD_API_CONTAINERS=true` on the org and `DATAROBOT_CLI_FEATURE_WORKLOAD=true` client-side. Steps may change before GA.
 
@@ -303,6 +338,8 @@ httpx.post(f"{base}/workloads/{wid}/replacement/", headers=headers, json={
 ```
 
 Then `python scripts/wait_for_replacement.py <workload_id>` to monitor.
+
+**Preconditions (both enforced, see "Picking the right path"):** `new_artifact_id` must be a *different* artifact than the one running (same ID → `422` "candidate artifact ID matches current artifact") and must match its status (draft↔draft / locked↔locked, else `400`). To apply a change to the *same* draft the workload runs, `stop`/`start` instead — replacement can't target the current artifact.
 
 `GET /workloads/{id}/replacement/` returns **404** when no active replacement (body: `{"detail": "There is no active replacement for this workload."}`) — that's "no replacement in progress", not an error. Cancel an in-progress one with `DELETE`. **Not idempotent**: calling `POST` while one is in progress queues a second swap — always check via the script first.
 

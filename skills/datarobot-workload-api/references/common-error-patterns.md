@@ -140,3 +140,16 @@ When you don't know which pattern applies:
 4. **No specific signal anywhere?** Pull the latest events — the platform's perspective often has the answer the runtime view doesn't.
 
 If steps 1-4 don't yield a specific cause, the issue is in the application code — report logs to the user, don't guess.
+
+## Web UI served through the endpoint behaves wrong
+
+If the workload runs but a **browser-facing web app** served through
+`dr workload endpoint <id>` misbehaves — 404s on assets/API, redirects to the
+DataRobot login (`…?next=%2F`), `401 {"message":"Invalid API key"}` on API
+calls, a login that never sticks, `403 "XSRF cookie does not match"`, or a
+browser Basic-auth "Sign in" modal — the cause is the edge gateway, not a crash.
+Key tell: **a failing request that does NOT appear in `dr workload logs` was
+rejected by the edge before reaching the container** (auth/`Authorization`
+issue). See `references/web-uis-behind-the-edge.md` for the full symptom→fix
+table; the short version is: make the app sub-path aware, disable the app's own
+auth and CSRF, and let the DataRobot edge authenticate.

@@ -150,7 +150,14 @@ The agent should default to `generated` unless the user explicitly asks otherwis
 
 ## Iteration loop
 
-User edits source → `dr artifact code sync` → `dr artifact build create` → wait for `COMPLETED` → `POST /workloads/{wid}/replacement/` to roll the running workload onto the new image (see SKILL.md section 4 for the replacement shape).
+User edits source → `dr artifact code sync` → `dr artifact build create` → wait for `COMPLETED` → **redeploy the running workload onto the new build.**
+
+How you redeploy depends on whether the artifact ID changes:
+
+- **Rebuilding the SAME artifact (the usual C2W loop).** `code sync` + `build create` keep the same artifact ID and just advance its `imageUri` — so `POST /workloads/{wid}/replacement/` is **rejected** (`422` "candidate artifact ID matches current artifact"; replacement needs a *different* artifact). Redeploy with **`dr workload stop` → `dr workload start`**: start re-reads the artifact's current spec and its latest `COMPLETED` build. Brief downtime — fine for single-replica dev/iteration.
+- **Zero-downtime.** Create or clone a *new* draft artifact, sync+build it, then `POST /workloads/{wid}/replacement/` onto that new artifact ID (see SKILL.md section 4). This is the only way to roll without a stop.
+
+Do **not** PATCH the artifact spec (env/probes) *between* `build create` and `COMPLETED` — it clobbers the pending `imageUri` auto-populate and you redeploy on the old image (see lifecycle-flows.md). Make spec edits before the build, or after `COMPLETED` with a fresh `GET`.
 
 Each `dr artifact code sync` creates a new catalog version. Each build produces a new image. The artifact tracks the current image. `dr artifact code versions` lists the catalog versions for an artifact (i.e. its code history); `dr artifact code checkout <version_id>` downloads a previous version into `.wapi/.checkouts/` for read-only inspection or rollback.
 

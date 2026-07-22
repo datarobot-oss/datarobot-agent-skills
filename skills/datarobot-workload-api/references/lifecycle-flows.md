@@ -15,18 +15,21 @@ create  →  iterate (PATCH while draft)  →  lock  →  rolling replacement
 - When `locked`: artifact becomes immutable. Any edit requires `POST /artifacts/{id}/clone/` (produces a new draft in the same artifact repository), then PATCH on the clone.
 - Once locked, to deploy changes you trigger a **rolling replacement** on the workload (`POST /workloads/{wid}/replacement/`). Promote is the alternative for the in-place draft→locked case.
 
-## Replacement status-match rule
+## Replacement preconditions — two rejections agents hit
 
-The API rejects `POST /workloads/{id}/replacement/` with **HTTP 400** unless the new artifact's status matches the currently-running artifact's:
+`POST /workloads/{id}/replacement/` enforces **two** preconditions the spec doesn't spell out. Both must hold or the call is rejected:
 
-| Workload currently runs | New artifact must be | Use |
+1. **The candidate must be a DIFFERENT artifact than the one running.** Passing the current `artifactId` (e.g. after PATCH-ing or rebuilding the draft the workload already runs) returns **HTTP 422**: `{"detail": ["Cannot replace with the same artifact — candidate artifact ID matches current artifact."]}`. Replacement means "swap to another artifact version" — it is never how you apply an in-place edit to the current one.
+2. **Status must match.** **HTTP 400** `{"detail": "Artifact status mismatch: ..."}` unless the candidate's status matches the running artifact's.
+
+| Workload currently runs | Goal | Do this |
 |---|---|---|
-| draft | draft | `POST /workloads/{id}/replacement/` |
-| draft | want to lock the same artifact | `POST /workloads/{id}/promote/` (no restart) |
-| locked | locked | `POST /workloads/{id}/replacement/` |
-| locked | want new content | clone → patch the draft → lock the new draft → `POST /workloads/{id}/replacement/` |
+| draft | apply an in-place change (env/probes/port or a new build) to the **same** draft | PATCH/rebuild that draft, then `stop` → `start` (NOT replacement — same artifact ID 422s) |
+| draft | zero-downtime swap | clone or create a **new** draft, change it, build it, `POST /replacement/` onto the **new** draft (draft↔draft) |
+| draft | lock the same artifact in place | `POST /workloads/{id}/promote/` (no restart) |
+| locked | deploy new content | clone → patch the draft → lock the new draft → `POST /replacement/` onto the clone (locked↔locked) |
 
-This rule is enforced server-side but isn't called out in the spec's path documentation — agents have to know it from the error response or from this reference.
+Neither rule is in the spec's path docs — agents have to know them from the error responses or from this reference. There is no `dr workload replacement` CLI subcommand; replacement is REST-only.
 
 ## Promote — in-place lock without restart
 
@@ -36,7 +39,7 @@ This rule is enforced server-side but isn't called out in the spec's path docume
 - Workload's `artifactId` keeps pointing at the same artifact (now locked).
 - Running pods are NOT restarted. Traffic uninterrupted.
 
-If you also need a rolling restart in addition to the lock (e.g. to pick up new env vars from a recent PATCH), follow with `POST /workloads/{wid}/replacement/` using the same artifact ID. The intent split: promote = "the running version IS production"; replacement = "deploy a different version".
+If you also need a rolling *restart* to apply new env vars from a recent PATCH, do **not** reach for `POST /replacement/` with the same artifact ID — that 422s ("candidate artifact ID matches current artifact"). To restart the workload onto the same artifact's current spec, use `stop` → `start` (brief downtime). The intent split: promote = "the running version IS production"; replacement = "deploy a *different* artifact".
 
 ## PATCH on multi-container artifacts replaces the whole `containerGroups` array
 
@@ -48,7 +51,8 @@ Also: don't include `spec.type` in PATCH bodies — it's a read-only discriminat
 
 If the artifact was created with `imageBuildConfig` referencing source code in DataRobot Files, the platform can build the image. Triggered with `POST /artifacts/{id}/builds/`; poll via `scripts/wait_for_build.py`. Two non-spec behaviors:
 
-- On success, the platform **populates the artifact's `imageUri` automatically**. Re-`GET` the artifact to see it; don't PATCH it manually. If both `imageBuildConfig` and `imageUri` are supplied at create time, the build overwrites `imageUri` on completion.
+- On success, the platform **populates the artifact's `imageUri` automatically**. Re-`GET` the artifact to see it. Do **not** set `imageUri` by hand — a manual `PATCH` of it returns `422 {"detail": "Image URI '...' is not permitted on this cluster."}` (only build-produced images are allowed). If both `imageBuildConfig` and `imageUri` are supplied at create time, the build overwrites `imageUri` on completion.
+- **Do not PATCH the artifact spec while a build is in progress.** A spec PATCH is a whole-spec read-modify-write, so it sends back the *pre-build* `imageUri` and clobbers the completion's auto-populate — the artifact keeps pointing at the **old** image and the next deploy silently runs stale code. Sequence spec edits (env/probes) *before* `build create`, or *after* `COMPLETED` with a fresh `GET` so the PATCH carries the new `imageUri`. After `COMPLETED`, confirm `imageUri` advanced before redeploying.
 - Status sequence: `PENDING` → `IN_PROGRESS` → `BUILT` → `COMPLETED` (or → `FAILED`). **`BUILT` is intermediate** — image built locally but not yet pushed to the registry. Only `COMPLETED` is deployable; scheduling a workload on a `BUILT` artifact returns `422 runtime_image_uri ... None`. `wait_for_build.py` waits for `COMPLETED` specifically.
 - Only drafts can build. Builds for locked artifacts can't be triggered or deleted.
 
