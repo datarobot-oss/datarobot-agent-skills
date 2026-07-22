@@ -63,15 +63,20 @@ DEFAULT_HOST = "https://app.datarobot.com"
 # STATUS (from live testing 2026-07):
 #   ✓ A self-initiated /authorize with client_id + screen_hint/initial_display
 #     DOES render the lean DataRobot signup page (confirmed live).
-#   ✓ Email pre-fill: the page reads `autofill_email` from extraParams (NOT
-#     `login_hint`/`email`); `enforce_email` pre-fills and locks the field.
-#   ? End-to-end state: NOT yet confirmed that completing signup round-trips
-#     through /account/oidc/callback (which may validate a `state`/`nonce` that
-#     only exists when the *app* initiates). Reaching the form != the callback
-#     accepting our state — run one full signup->onboarding->`dr auth login`.
+#   ✓ EMAIL signup completes end-to-end. On email submit the app creates an
+#     account-invite and emails a link back to
+#     app.datarobot.com/account/oidc/redirect?alsInviteId=… — which is
+#     APP-initiated (app-generated state/nonce). So the original self-initiated
+#     `state` is moot for this path; no callback state wall.
+#   ? SOCIAL signup (Google/GitHub) via deep-link returns straight to our
+#     self-initiated /account/oidc/callback (no invite re-init), so callback
+#     `state` acceptance is UNVERIFIED. If it fails, use --mode app for social.
+#   ✗ Cold-screen email pre-fill is NOT possible via URL param. The email box is
+#     only pre-filled from a server-side invite record (ALS: /api/account-invite
+#     /<id>), which exists only after email submit. `autofill_email`/`login_hint`
+#     /`email` do nothing on the initial trial-signup screen.
 #   ✗ `/account/oidc/redirect` strictly allow-lists params and rejects display
 #     hints, so the app itself cannot be asked to show signup.
-# `--mode app` stays the default until the end-to-end run passes.
 US_AUTH_DOMAIN = "https://login.datarobot.com"
 US_CLIENT_ID = "xRJctzk4frlytI32DsAYHs0dhd7FQBli"
 
@@ -138,11 +143,13 @@ def build_signup_url(host: str, email: str, mode: str) -> tuple[str, str]:
             "initial_display": "signup",
         }
         if email:
-            # The custom DataRobot signup page reads the email box from the
-            # `autofill_email` extraParam (confirmed in its JS bundle:
-            # `g=a.autofill_email … y={email:g||h}`). It ignores the OIDC
-            # `login_hint` and a plain `email` param. Use `enforce_email` instead
-            # if you want the field pre-filled AND locked (read-only).
+            # Best-effort email hint. NOTE: live testing showed the *cold*
+            # trial-signup screen does NOT pre-fill from any URL param — the page
+            # only auto-fills email from a server-side invite record (ALS), which
+            # exists only after the user submits their email. `autofill_email` is
+            # read solely by the invite/link-target components, so this is a
+            # harmless no-op on the initial screen. Kept in case an invite context
+            # applies; drop it if you prefer a cleaner URL.
             params["autofill_email"] = email
         query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
         return f"{US_AUTH_DOMAIN}/authorize?{query}", "deeplink"
