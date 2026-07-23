@@ -30,7 +30,7 @@ Resolve once per session: `<skill_scripts_dir>` is the `scripts/` subdirectory n
 **OpenCode:**
 
 ```bash
-opencode --version 2>/dev/null || (dr opencode upgrade && export PATH="$PATH:$HOME/.opencode/bin")
+dr opencode upgrade && export PATH="$PATH:$HOME/.opencode/bin"
 ```
 
 **Auth:**
