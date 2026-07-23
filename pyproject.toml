@@ -15,6 +15,7 @@ integration = [
     "pytest>=8.0",
     "codeowners>=0.8.0",
     "httpx>=0.27",
+    "pydantic>=2.0",
 ]
 e2e = [
     "datarobot-agent-tester @ git+https://github.com/datarobot/datarobot-agent-tester@main",

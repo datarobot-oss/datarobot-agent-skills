@@ -376,6 +376,7 @@ integration = [
     { name = "codeowners" },
     { name = "datarobot-genai" },
     { name = "httpx" },
+    { name = "pydantic" },
     { name = "pytest" },
     { name = "python-frontmatter" },
 ]
@@ -394,6 +395,7 @@ integration = [
     { name = "codeowners", specifier = ">=0.8.0" },
     { name = "datarobot-genai" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "python-frontmatter", specifier = ">=1.1" },
 ]
