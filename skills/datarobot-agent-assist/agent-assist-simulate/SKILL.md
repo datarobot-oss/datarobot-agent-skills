@@ -297,7 +297,7 @@ For each breach in `breaches`:
    #    selective_e2e fixture:
    #    <python> <skill_scripts_dir>/tool_executor.py \
    #      --input-path <input_path> --response-path <response_path> \
-   #      --tools-path <tools_path>
+   #      --tools-path <tools_path> --readonly-tools <comma-separated readonly fn names>
    #
    #    all other roles (runner, evaluator) and simulated fixtures:
    <python> <skill_scripts_dir>/gateway_worker.py \
