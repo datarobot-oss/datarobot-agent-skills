@@ -85,9 +85,16 @@ def main() -> None:
         sys.exit(1)
 
     response = {"tool_name": tool_name, "args": call_args, "return_value": return_value}
+    try:
+        payload = json.dumps(response, ensure_ascii=False, indent=2)
+    except TypeError as exc:
+        print(
+            f"{tool_name} return value is not JSON-serializable: {exc}", file=sys.stderr
+        )
+        sys.exit(1)
     args.response_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = args.response_path.with_name(f".{args.response_path.name}.tmp")
-    tmp.write_text(json.dumps(response, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.write_text(payload, encoding="utf-8")
     os.replace(tmp, args.response_path)
 
 
