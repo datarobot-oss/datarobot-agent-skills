@@ -30,8 +30,6 @@ PROMPT_ROLE_MAP = {
     "run-scenario.md": "runner",
     "generate-tool-return.md": "fixture",
     "evaluate-result.md": "evaluator",
-    "generate-fix.md": "fixer",
-    "diagnose-failure.md": "diagnoser",
 }
 
 

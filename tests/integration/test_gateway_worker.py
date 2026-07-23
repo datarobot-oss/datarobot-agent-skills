@@ -32,8 +32,8 @@ def test_scenario_id_from_runner_input(tmp_path: Path) -> None:
     assert gateway_worker._scenario_id_from_input(input_path) == "scn_040a81e85e34"
 
 
-def test_scenario_id_from_diagnoser_input(tmp_path: Path) -> None:
-    input_path = tmp_path / "diagnoser-input.json"
+def test_scenario_id_from_nested_scenario_input(tmp_path: Path) -> None:
+    input_path = tmp_path / "nested-scenario-input.json"
     input_path.write_text(
         json.dumps({"scenario": {"scenario_id": "scn_abc123456789"}}),
         encoding="utf-8",
