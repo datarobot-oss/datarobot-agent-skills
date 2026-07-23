@@ -13,7 +13,7 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [1.3.9] - 2026-07-22
 
-- `datarobot-workload-api`: Add `references/web-uis-behind-the-edge.md` for serving a browser-facing web app (UI + backend) through the workload endpoint — the edge gateway strips the path prefix (inbound shim + base-path derived from the injected `WORKLOAD_ID`; proton-id path needs an explicit override), is itself the auth gate and hijacks the `Authorization` header (so disable the app's own auth and trust the edge), shared-origin `_xsrf`/CSRF collisions, and WebSocket pass-through. Correct artifact-replacement guidance: same-artifact replacement is allowed for drafts (RAPTOR-18806), `PATCH /settings/` rolling-redeploys onto a rebuilt image, and `imageUri` is build-managed (never hand-PATCH it or PATCH the spec mid-build). Trim `SKILL.md` ~18% to stay within the context-window budget.
+- `datarobot-workload-api`: Add `references/web-uis-behind-the-edge.md` for serving a browser-facing web app (UI + backend) through the workload endpoint — the edge gateway strips the path prefix (inbound shim + base-path derived from the injected `WORKLOAD_ID`; proton-id path needs an explicit override), is itself the auth gate and hijacks the `Authorization` header (so disable the app's own auth and trust the edge), shared-origin `_xsrf`/CSRF collisions, and WebSocket pass-through. Correct artifact-replacement guidance: same-artifact replacement is allowed for drafts, `PATCH /settings/` rolling-redeploys onto a rebuilt image, and `imageUri` is build-managed (never hand-PATCH it or PATCH the spec mid-build). Trim `SKILL.md` ~18% to stay within the context-window budget.
 
 ## [1.3.8] - 2026-07-17
 
