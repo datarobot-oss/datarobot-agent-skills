@@ -14,7 +14,7 @@ description: >-
 
 ## On Activation
 
-For broad or ambiguous Agent Assist requests, present this menu before reading a sub-skill file:
+Always present this menu on first activation unless the user's message unambiguously maps to exactly one option (e.g. "deploy my agent" → option 4). When in doubt, show the menu:
 
 ```
 Welcome! I help you design, build, and deploy AI agents on DataRobot.
@@ -47,9 +47,10 @@ Read `agent-assist-build/SKILL.md` for options 1, 2, and 4.
 
 Read `agent-assist-simulate/SKILL.md` for option 3. Also use directly when the user says
 "simulate my agent", "run swarm", "adversarial testing", "harden my agent", or "test my agent".
-Swarm simulation is post-coding only. If implementation code exists, skip the menu and go straight
-to the Pre-flight Check. Otherwise, explain that the agent must be implemented first and route the
-user to option 2.
+Swarm simulation is post-coding only. If implementation code exists and the user has not chosen
+an option, proactively mention option 3: "I can also battle-test your agent before deploying —
+want to run swarm simulation?" Otherwise, explain that the agent must be implemented first and
+route the user to option 2.
 Run in order before proceeding:
 
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.

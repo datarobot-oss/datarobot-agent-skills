@@ -42,7 +42,14 @@ def main() -> None:
     parser.add_argument("--input-path", required=True, type=Path)
     parser.add_argument("--response-path", required=True, type=Path)
     parser.add_argument("--tools-path", required=True, type=Path)
+    parser.add_argument(
+        "--readonly-tools",
+        required=True,
+        help="comma-separated list of function names approved for real execution",
+    )
     args = parser.parse_args()
+
+    readonly_tools = {t.strip() for t in args.readonly_tools.split(",") if t.strip()}
 
     try:
         package = json.loads(args.input_path.read_text(encoding="utf-8"))
@@ -55,6 +62,13 @@ def main() -> None:
 
     if not tool_name:
         print("input package missing tool.function_name", file=sys.stderr)
+        sys.exit(1)
+
+    if tool_name not in readonly_tools:
+        print(
+            f"tool '{tool_name}' is not in the approved readonly set: {sorted(readonly_tools)}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     module = _load_tools_module(args.tools_path)

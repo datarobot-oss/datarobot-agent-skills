@@ -47,7 +47,10 @@ def input_package(tmp_path: Path) -> Path:
 
 
 def run_executor(
-    tmp_path: Path, tools_path: Path, input_path: Path
+    tmp_path: Path,
+    tools_path: Path,
+    input_path: Path,
+    readonly_tools: str = "fetch_records",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     response_path = tmp_path / "response.json"
     result = subprocess.run(
@@ -60,6 +63,8 @@ def run_executor(
             str(response_path),
             "--tools-path",
             str(tools_path),
+            "--readonly-tools",
+            readonly_tools,
         ],
         capture_output=True,
         text=True,
@@ -93,7 +98,7 @@ def test_tool_executor_exits_nonzero_on_missing_function(
     pkg.write_text(
         json.dumps({"tool_name": "nonexistent_fn", "args": {}}), encoding="utf-8"
     )
-    result, _ = run_executor(tmp_path, tmp_tools, pkg)
+    result, _ = run_executor(tmp_path, tmp_tools, pkg, readonly_tools="nonexistent_fn")
     assert result.returncode != 0
     assert "nonexistent_fn" in result.stderr
 
@@ -105,6 +110,16 @@ def test_tool_executor_exits_nonzero_on_missing_tools_file(
     assert result.returncode != 0
 
 
+def test_tool_executor_rejects_tool_not_in_readonly_set(
+    tmp_path: Path, tmp_tools: Path, input_package: Path
+) -> None:
+    result, _ = run_executor(
+        tmp_path, tmp_tools, input_package, readonly_tools="other_tool"
+    )
+    assert result.returncode != 0
+    assert "not in the approved readonly set" in result.stderr
+
+
 def test_tool_executor_exits_nonzero_when_tool_raises(
     tmp_path: Path, tmp_tools: Path
 ) -> None:
@@ -112,7 +127,7 @@ def test_tool_executor_exits_nonzero_when_tool_raises(
     pkg.write_text(
         json.dumps({"tool_name": "crash_tool", "args": {}}), encoding="utf-8"
     )
-    result, _ = run_executor(tmp_path, tmp_tools, pkg)
+    result, _ = run_executor(tmp_path, tmp_tools, pkg, readonly_tools="crash_tool")
     assert result.returncode != 0
     assert "RuntimeError" in result.stderr or "intentional failure" in result.stderr
 
@@ -206,6 +221,8 @@ def test_tool_executor_replaces_fixture_worker_in_full_pipeline(
             str(fixture_response_path),
             "--tools-path",
             str(tools_path),
+            "--readonly-tools",
+            "fetch_records",
         ],
         capture_output=True,
         text=True,

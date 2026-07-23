@@ -92,6 +92,7 @@ def _run_tool_executor(
     response_path: Path,
     tools_path: Path,
     timeout: int,
+    readonly_tools: set[str],
 ) -> bool:
     cmd = [
         sys.executable,
@@ -102,6 +103,8 @@ def _run_tool_executor(
         str(response_path),
         "--tools-path",
         str(tools_path),
+        "--readonly-tools",
+        ",".join(sorted(readonly_tools)),
     ]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -176,7 +179,9 @@ def _invoke_role(
         and tools_path is not None
         and _fixture_tool_name(current_input) in e2e_tools
     ):
-        return _run_tool_executor(current_input, current_response, tools_path, timeout)
+        return _run_tool_executor(
+            current_input, current_response, tools_path, timeout, e2e_tools
+        )
     role_prompt = _PROMPTS_DIR / _ROLE_PROMPTS[current_role]
     return _run_worker(
         role_prompt,
