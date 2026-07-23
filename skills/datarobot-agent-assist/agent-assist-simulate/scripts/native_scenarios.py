@@ -25,7 +25,7 @@ from artifacts import (
     write_criteria,
     write_json,
 )
-from contracts import (
+from swarm_contracts import (
     ConvergenceConfig,
     EvaluationConfig,
     ExecutionConfig,

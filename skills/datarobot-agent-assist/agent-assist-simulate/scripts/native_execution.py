@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import Field, TypeAdapter, ValidationError
 
 from artifacts import _one_line, load_criteria, load_json, load_spec, write_json
-from contracts import (
+from swarm_contracts import (
     AgentSpec,
     AssistantResponseAction,
     AttemptedToolCall,

@@ -22,7 +22,7 @@ SCRIPT_PATH = SCRIPT_DIR / "native_scenarios.py"
 SKILL_PATH = SCRIPT_DIR.parent / "SKILL.md"
 sys.path.insert(0, str(SCRIPT_DIR))
 artifacts = importlib.import_module("artifacts")
-contracts = importlib.import_module("contracts")
+contracts = importlib.import_module("swarm_contracts")
 native = importlib.import_module("native_scenarios")
 
 

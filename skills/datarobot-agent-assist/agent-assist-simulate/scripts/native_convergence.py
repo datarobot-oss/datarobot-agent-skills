@@ -26,7 +26,7 @@ from artifacts import (
     load_spec,
     write_json,
 )
-from contracts import (
+from swarm_contracts import (
     NativeReportSummary,
     Scenario,
     ScenarioResult,

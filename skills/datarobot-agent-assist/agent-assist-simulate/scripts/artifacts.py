@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from contracts import AgentSpec, Scenario, SimulationConfig
+from swarm_contracts import AgentSpec, Scenario, SimulationConfig
 
 
 class CriteriaError(ValueError):

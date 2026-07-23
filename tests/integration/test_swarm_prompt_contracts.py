@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 SIMULATE_DIR = REPO_ROOT / "skills" / "datarobot-agent-assist" / "agent-assist-simulate"
 PROMPT_DIR = SIMULATE_DIR / "prompts"
 sys.path.insert(0, str(SIMULATE_DIR / "scripts"))
-contracts = importlib.import_module("contracts")
+contracts = importlib.import_module("swarm_contracts")
 
 
 def prompt_example(filename: str) -> object:

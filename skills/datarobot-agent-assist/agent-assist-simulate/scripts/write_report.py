@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from contracts import NativeReportSummary
+from swarm_contracts import NativeReportSummary
 
 
 def write_native_report(

@@ -16,7 +16,7 @@ SIMULATE_DIR = REPO_ROOT / "skills" / "datarobot-agent-assist" / "agent-assist-s
 EXECUTOR = SIMULATE_DIR / "scripts" / "tool_executor.py"
 sys.path.insert(0, str(SIMULATE_DIR / "scripts"))
 artifacts = importlib.import_module("artifacts")
-contracts = importlib.import_module("contracts")
+contracts = importlib.import_module("swarm_contracts")
 native = importlib.import_module("native_execution")
 
 

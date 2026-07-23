@@ -4,7 +4,7 @@
 
 """Deterministic formatting for role-specific subagent input packages."""
 
-from contracts import (
+from swarm_contracts import (
     AgentSpec,
     AttemptedToolCall,
     RunnerResult,
