@@ -152,7 +152,7 @@ The agent should default to `generated` unless the user explicitly asks otherwis
 
 User edits source → `dr artifact code sync` → `dr artifact build create` → wait for `COMPLETED` → **redeploy the running workload onto the new build.**
 
-`code sync` + `build create` keep the **same artifact ID** and only advance its `imageUri`; a running workload does **not** auto-adopt the rebuild until you redeploy. Redeploy the same draft with a rolling `PATCH /workloads/{wid}/settings/` (re-send the runtime body — even unchanged values roll it onto the latest `COMPLETED` build), or, once RAPTOR-18806 (#1074) ships, `POST /workloads/{wid}/replacement/` onto the same draft; switching to a *different* artifact is always a replacement. Full same-draft redeploy matrix and preconditions: `references/lifecycle-flows.md`.
+`code sync` + `build create` keep the **same artifact ID** and only advance its `imageUri`; a running workload does **not** auto-adopt the rebuild until you redeploy. Redeploy the same draft with a rolling `PATCH /workloads/{wid}/settings/` (re-send the runtime body — even unchanged values roll it onto the latest `COMPLETED` build), or `POST /workloads/{wid}/replacement/` onto the same draft; switching to a *different* artifact is always a replacement. Full same-draft redeploy matrix and preconditions: `references/lifecycle-flows.md`.
 
 Do **not** PATCH the artifact spec (env/probes) *between* `build create` and `COMPLETED` — it clobbers the pending `imageUri` auto-populate and you redeploy on the old image. Make spec edits before the build, or after `COMPLETED` with a fresh `GET`.
 

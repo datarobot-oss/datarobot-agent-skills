@@ -269,12 +269,12 @@ An **artifact** is the immutable-after-lock definition of what a workload runs (
 
 Find the running artifact (`workload["artifactId"]`), check `artifact["status"]`. A running workload does **not** auto-adopt a rebuild until you redeploy.
 
-- **Same draft (the C2W loop) — in-place change or rebuild.** PATCH/rebuild the draft, then roll onto it with `PATCH /workloads/{id}/settings/`: re-send the runtime body (even unchanged values trigger a rolling `202` redeploy that re-reads the current spec + latest `COMPLETED` build). Zero-downtime at ≥2 replicas. (After RAPTOR-18806/#1074, `POST /replacement/` onto the same draft also works.)
+- **Same draft (the C2W loop) — in-place change or rebuild.** PATCH/rebuild the draft, then roll onto it with `PATCH /workloads/{id}/settings/`: re-send the runtime body (even unchanged values trigger a rolling `202` redeploy that re-reads the current spec + latest `COMPLETED` build). Zero-downtime at ≥2 replicas. (`POST /replacement/` onto the same draft also works.)
 - **Different / locked artifact.** `POST /replacement/` onto the other artifact ID. Locked in-place edit: clone → PATCH clone → lock → replace onto the clone.
 
 **Lock:** `dr artifact lock <id>` (= `PATCH /artifacts/{id}/ {"status":"locked"}`). **Promote** (`POST /workloads/{wid}/promote/`, 200) locks the running draft in place, no restart. Runtime-only changes (replicas/resources/autoscaling) → `PATCH /settings/`; a PATCH to the artifact doesn't affect live workloads until you redeploy.
 
-Preconditions (status-match, same-artifact rule + #1074) and the full redeploy matrix: `references/lifecycle-flows.md`.
+Preconditions (status-match, same-artifact rule) and the full redeploy matrix: `references/lifecycle-flows.md`.
 
 ## How does your image get to DataRobot?
 
@@ -298,7 +298,7 @@ httpx.post(f"{base}/workloads/{wid}/replacement/", headers=headers, json={
 })
 ```
 
-Monitor with `python scripts/wait_for_replacement.py <workload_id>`. Preconditions: status must match (draft↔draft / locked↔locked, else `400`); same-artifact replacement 422s for locked (and drafts until #1074/RAPTOR-18806) — to roll the same draft without replacement use `PATCH /settings/`. **Not idempotent** (a second `POST` queues another swap); `GET .../replacement/` `404` = none in progress; `DELETE` to cancel. Detail in `references/lifecycle-flows.md`.
+Monitor with `python scripts/wait_for_replacement.py <workload_id>`. Preconditions: status must match (draft↔draft / locked↔locked, else `400`); same-artifact replacement 422s for locked but works for drafts — to roll the same draft without replacement use `PATCH /settings/`. **Not idempotent** (a second `POST` queues another swap); `GET .../replacement/` `404` = none in progress; `DELETE` to cancel. Detail in `references/lifecycle-flows.md`.
 
 ---
 
