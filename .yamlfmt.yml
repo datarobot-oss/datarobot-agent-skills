@@ -8,3 +8,5 @@ formatter:
 exclude:
   - .venv/
   - .git/
+  - sandbox/.claude-config/
+  - sandbox/.workdir/

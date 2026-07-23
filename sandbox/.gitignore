@@ -1,0 +1,4 @@
+# Runtime state produced by check-plugin.sh — never committed.
+.claude-config/
+.workdir/
+*.log

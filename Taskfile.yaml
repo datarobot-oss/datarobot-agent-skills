@@ -88,6 +88,11 @@ tasks:
     cmds:
       - SKILLS_E2E_FORCE_ALL=1 uv run --group e2e pytest tests/e2e/ -v --tb=short
 
+  sandbox:
+    desc: Check a Claude marketplace plugin in an isolated sandbox (flags pass through after --)
+    cmds:
+      - sandbox/check-plugin.sh {{.CLI_ARGS}}
+
   default:
     desc: List all available tasks
     cmds:
