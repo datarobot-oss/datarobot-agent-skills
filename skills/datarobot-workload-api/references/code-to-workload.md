@@ -150,7 +150,11 @@ The agent should default to `generated` unless the user explicitly asks otherwis
 
 ## Iteration loop
 
-User edits source → `dr artifact code sync` → `dr artifact build create` → wait for `COMPLETED` → `POST /workloads/{wid}/replacement/` to roll the running workload onto the new image (see SKILL.md section 4 for the replacement shape).
+User edits source → `dr artifact code sync` → `dr artifact build create` → wait for `COMPLETED` → **redeploy the running workload onto the new build.**
+
+`code sync` + `build create` keep the **same artifact ID** and only advance its `imageUri`; a running workload does **not** auto-adopt the rebuild until you redeploy. Redeploy the same draft with a rolling `PATCH /workloads/{wid}/settings/` (re-send the runtime body — even unchanged values roll it onto the latest `COMPLETED` build), or `POST /workloads/{wid}/replacement/` onto the same draft; switching to a *different* artifact is always a replacement. Full same-draft redeploy matrix and preconditions: `references/lifecycle-flows.md`.
+
+Do **not** PATCH the artifact spec (env/probes) *between* `build create` and `COMPLETED` — it clobbers the pending `imageUri` auto-populate and you redeploy on the old image. Make spec edits before the build, or after `COMPLETED` with a fresh `GET`.
 
 Each `dr artifact code sync` creates a new catalog version. Each build produces a new image. The artifact tracks the current image. `dr artifact code versions` lists the catalog versions for an artifact (i.e. its code history); `dr artifact code checkout <version_id>` downloads a previous version into `.wapi/.checkouts/` for read-only inspection or rollback.
 

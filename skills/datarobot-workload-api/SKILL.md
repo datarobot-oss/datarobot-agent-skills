@@ -40,26 +40,26 @@ Runnable Python in `scripts/` (this skill's folder). Each uses `httpx` and reads
 
 ## Deeper docs in references/
 
-The SKILL.md is the operational core. Detail an agent needs occasionally lives in `references/`:
+SKILL.md is the operational core; occasional detail lives in `references/`:
 
-- `references/status-vocabulary.md` — workload + proton status enums and lifecycle transitions
-- `references/common-error-patterns.md` — `CrashLoopBackOff` / `ImagePullBackOff` / `OOMKilled` / probe failures / `exec format error` / pending pods
-- `references/schema-reference.md` — OpenAPI schemas worth looking up, credential type → key mappings, public-spec path-key quirks
-- `references/lifecycle-flows.md` — artifact draft → lock → production flow rules and behavioral gotchas
-- `references/code-to-workload.md` — deploy from source code (no Dockerfile authoring): `dr` CLI commands, `codeRef`, Execution Environments, generated vs provided Dockerfile modes, iterate-rebuild loop
+- `status-vocabulary.md` — workload + proton status enums and transitions
+- `common-error-patterns.md` — CrashLoopBackOff / ImagePullBackOff / OOMKilled / probe / exec-format / pending
+- `schema-reference.md` — schemas to look up, credential-type→key maps, public-spec path quirks
+- `lifecycle-flows.md` — artifact draft→lock→prod rules, replacement preconditions, redeploy matrix, `imageUri` gotchas
+- `code-to-workload.md` — deploy from source: `dr` CLI, `codeRef`, Execution Environments, iterate-rebuild loop
+- `web-uis-behind-the-edge.md` — browser-facing web app through the endpoint: prefix stripping, auth gate, `Authorization` hijack, shim, CSRF, WebSockets
 
 ## OpenAPI spec is source of truth
 
-Published at `https://docs.datarobot.com/en/docs/api/reference/public-api/openapi.yaml`. **The spec is ~5 MB — never dump it whole into context.** Save once, then extract targeted slices with `yq`:
+At `${DATAROBOT_ENDPOINT}/openapi.yaml`. **~5 MB — never dump it whole.** Save once, then slice with `yq` (or `print()` only the specific key in Python):
 
 ```bash
 curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
 yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml
-yq '.paths."/api/v2/workloads/{workload_id}/".patch' /tmp/wapi-spec.yaml
 yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i workload   # discover
 ```
 
-Python fallback: only `print()` the specific key, never the parsed dict. All workload paths in the public spec are keyed with `/api/v2/` prefix — see `references/schema-reference.md`.
+All workload paths are keyed with the `/api/v2/` prefix — see `references/schema-reference.md`.
 
 ---
 
@@ -109,6 +109,10 @@ Raw fallback when CLI unavailable: `httpx.post(f"{base}/workloads/", headers=hea
 - `port` MUST be `>= 1024`. The container must actually listen on it (set via image env vars or entrypoint).
 - Image must include a **linux/amd64** manifest. Apple Silicon defaults to ARM64 and crash-loops with `exec format error`. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t <ref> --push .`.
 - Status lifecycle: `submitted` → `provisioning` → `launching` → `running` (happy path); `updating` during rolling redeploys; `errored` recoverable; `failed`/`terminated` unrecoverable. Full table in `references/status-vocabulary.md`.
+
+## Serving a browser-facing web UI through the endpoint
+
+If the container serves a **web app (UI + its own backend/API/WebSocket)** opened in a browser via `dr workload endpoint <id>` (not a headless service), the DataRobot edge gateway serves it under a path prefix and: **strips the prefix inbound** (no outbound rewrite — the app must be sub-path aware); **is the auth gate** (DataRobot login required) and **hijacks the `Authorization` header** (→ `401 {"message":"Invalid API key"}`, never reaching the container); **passes WebSockets through**. Winning pattern: set the app's base-path to the prefix + re-add it inbound (derive it from the injected `WORKLOAD_ID`), **disable the app's own auth (trust the edge)**, disable CSRF, probe an unauthenticated path. Full guidance, shim code, and per-symptom diagnostics: `references/web-uis-behind-the-edge.md`.
 
 ## "Update the workload" disambiguation
 
@@ -176,15 +180,15 @@ Runs all 5 steps below, prints a structured report (status / logTail signals / f
 
 ## The 5-step flow
 
-The script encapsulates this; here's the model for ambiguous output or one-off calls.
+The script encapsulates this; use the model below for ambiguous output or one-off calls.
 
-1. **`GET /workloads/{id}/`** — `status`, `statusDetails.logTail` (~30 lines), `statusDetails.conditions`. Scan `logTail` for `error` / `exception` / `traceback` / `killed` / `permission denied` / `connection refused`. Guard `statusDetails` with `(w.get("statusDetails") or {})` — it can be `null` during `submitted` / `provisioning`.
-2. **`GET /workloads/{id}/events/`** — flag any event with `type: Warning` or `reason` containing `Failed` / `Error` / `Kill` / `OOM`. The last `Warning` before `errored` is usually the trigger.
-3. **`GET /workloads/{id}/protons/`** — response: `{"data": [{"id": "...", "role": "active"|"candidate"|"retiring", "createdAt": "..."}]}`. Pick `role: "active"`; during a rolling replacement debug the `candidate` if that's what's failing. If no active role, take the most recent `createdAt`.
-4. **`GET /workloads/{id}/protons/{pid}/statusDetails/`** — returns `204` while still initializing; that's not an error. Once populated, read in this order: `replicas[*].containers[*].status` + `restartCount` (the headline) → `replicas[*].conditions[*]` (any `value: false` is a smoking gun) → `overallStatus.summary` (DataRobot's human-readable interpretation).
+1. **`GET /workloads/{id}/`** — `status`, `statusDetails.logTail` (~30 lines; scan for `error`/`exception`/`traceback`/`killed`/`permission denied`/`connection refused`), `statusDetails.conditions`. Guard `statusDetails` — it's `null` during `submitted`/`provisioning`.
+2. **`GET /workloads/{id}/events/`** — flag `type: Warning` or `reason` with `Failed`/`Error`/`Kill`/`OOM`; the last Warning before `errored` is usually the trigger.
+3. **`GET /workloads/{id}/protons/`** — pick `role: "active"` (or the `candidate` during a rolling replacement; else newest `createdAt`).
+4. **`GET /workloads/{id}/protons/{pid}/statusDetails/`** — `204` while initializing (not an error). Read `replicas[*].containers[*].status`+`restartCount` → `replicas[*].conditions[*]` (any `value:false`) → `overallStatus.summary`.
 5. **Application logs** — section 3.
 
-Common patterns (`CrashLoopBackOff`, `ImagePullBackOff`, `OOMKilled`, probe failures, pending pods, `exec format error`) and their fix paths: `references/common-error-patterns.md`.
+Common patterns (`CrashLoopBackOff`, `ImagePullBackOff`, `OOMKilled`, probe/pending, `exec format error`) and fixes: `references/common-error-patterns.md`.
 
 ## Reporting findings
 
@@ -241,18 +245,15 @@ trace = httpx.get(f"{base}/otel/workload/{wid}/traces/{trace_id}/", headers=head
 
 ## Metrics + service stats
 
-Metrics unit conversions before display: `bytes` → MB (`/ 1024**2`); `nanocores` → cores (`/ 1_000_000`); `percentage` already a %.
-
-Service stats response shape:
+Convert before display: `bytes`→MB (`/1024**2`), `nanocores`→cores (`/1_000_000`), `percentage` already %.
 
 ```python
 stats = httpx.get(f"{base}/workloads/{wid}/stats/", headers=headers).json()
-# Returns {"period": {start, end}, "metrics": {totalRequests, serverErrors, userErrors,
-#   slowRequests, responseTime, requestsPerMinute, concurrentRequests, totalErrorRate,
-#   serverErrorRate, userErrorRate}}.  /workloads/stats/ (aggregate) same shape.
+# {"period": {...}, "metrics": {totalRequests, serverErrors, userErrors, slowRequests,
+#   responseTime, requestsPerMinute, concurrentRequests, *ErrorRate}}. /workloads/stats/ = aggregate.
 ```
 
-> **Warning — destructive.** `DELETE /workloads/{id}/stats/?metricName=<name>` zeroes a metric's history. Only call when the user explicitly asks to reset stats.
+> **Destructive:** `DELETE /workloads/{id}/stats/?metricName=<name>` zeroes a metric's history — only on explicit request.
 
 ## Presenting results
 
@@ -266,26 +267,25 @@ An **artifact** is the immutable-after-lock definition of what a workload runs (
 
 ## Picking the right path
 
-To change a running workload's image / env vars / probes / port, find its current artifact (`workload["artifactId"]`) and check `artifact["status"]`. If `draft`: PATCH in place → `POST /workloads/{id}/replacement/`. If `locked`: clone → PATCH the clone → lock it → `POST /workloads/{id}/replacement/`.
+Find the running artifact (`workload["artifactId"]`), check `artifact["status"]`. A running workload does **not** auto-adopt a rebuild until you redeploy.
 
-**Lock an artifact:** `dr artifact lock <id>` (v0.2.74+) — equivalent to `PATCH /artifacts/{id}/ {"status": "locked"}`. No `POST /artifacts/{id}/lock/`. For a draft already running on a workload, use `promote` (no restart).
+- **Same draft (the C2W loop) — in-place change or rebuild.** PATCH/rebuild the draft, then roll onto it with `PATCH /workloads/{id}/settings/`: re-send the runtime body (even unchanged values trigger a rolling `202` redeploy that re-reads the current spec + latest `COMPLETED` build). Zero-downtime at ≥2 replicas. (`POST /replacement/` onto the same draft also works.)
+- **Different / locked artifact.** `POST /replacement/` onto the other artifact ID. Locked in-place edit: clone → PATCH clone → lock → replace onto the clone.
 
-**Replacement status-match rule:** `400 {"detail": "Artifact status mismatch: ..."}` unless the new artifact's status matches the running one's. draft↔draft, locked↔locked. Check before calling.
+**Lock:** `dr artifact lock <id>` (= `PATCH /artifacts/{id}/ {"status":"locked"}`). **Promote** (`POST /workloads/{wid}/promote/`, 200) locks the running draft in place, no restart. Runtime-only changes (replicas/resources/autoscaling) → `PATCH /settings/`; a PATCH to the artifact doesn't affect live workloads until you redeploy.
 
-**Promote (no restart):** `POST /workloads/{wid}/promote/` (empty body, returns 200) locks the draft the workload is currently running, in place. No pod restart. Only valid if the workload already runs that artifact — for a *different* one, use replacement.
-
-For runtime-only changes (replicas / resources / autoscaling), use section 1's `PATCH /workloads/{id}/settings/`; don't touch the artifact. **Patching an artifact does NOT affect running workloads** — trigger a replacement (or `promote`) to apply changes to live workloads. Full code in `references/lifecycle-flows.md`.
+Preconditions (status-match, same-artifact rule) and the full redeploy matrix: `references/lifecycle-flows.md`.
 
 ## How does your image get to DataRobot?
 
-The Workload API does **not yet accept image-pull credentials at workload creation** — the artifact's `imageUri` must point at a registry DataRobot can already pull from. Two paths:
+The artifact's `imageUri` must point at a registry DataRobot can pull from (image-pull creds aren't accepted at workload creation yet). Two paths:
 
-1. **Bring your own image** — when the image lives in a public registry (`ghcr.io/org/app:tag`, Docker Hub public) or one the org admin pre-configured. Build locally with `docker buildx ... --platform linux/amd64`, push, reference via `imageUri`. The default flow used throughout this skill.
-2. **Code-to-Workload (C2W)** — when you can't publish (no local Docker, no public registry, admin can't add pull credentials). `dr` CLI v0.2.74+ uploads source (`dr artifact code init` + `sync`), `dr artifact build create` triggers a platform build that pushes to DataRobot's **internal** registry and populates `imageUri`. From there, identical to bring-your-own-image. Full flow in `references/code-to-workload.md`.
+1. **Bring your own image** — public registry or one the admin pre-configured. `docker buildx ... --platform linux/amd64`, push, set `imageUri`. Default flow.
+2. **Code-to-Workload (C2W)** — no local Docker / no public registry: `dr artifact code init` + `sync`, then `dr artifact build create` builds server-side, pushes to DataRobot's internal registry, and populates `imageUri`. Full flow in `references/code-to-workload.md`.
 
-Poll either path with `python scripts/wait_for_build.py <artifact_id> <build_id>`. Only drafts can build.
+Poll builds with `python scripts/wait_for_build.py <artifact_id> <build_id>`; only drafts build. **`imageUri` is build-managed** — never PATCH it by hand (`422` "not permitted on this cluster"), and never PATCH the spec *mid-build* (a whole-spec write clobbers the pending build image → redeploys the old one). Sequence spec edits before `build create` or after `COMPLETED`.
 
-> **C2W is preview / feature-flagged** — needs `ENABLE_WORKLOAD_API_CONTAINERS=true` on the org and `DATAROBOT_CLI_FEATURE_WORKLOAD=true` client-side. Steps may change before GA.
+> **C2W is preview / feature-flagged** — `ENABLE_WORKLOAD_API_CONTAINERS=true` (org) + `DATAROBOT_CLI_FEATURE_WORKLOAD=true` (client).
 
 ## Rolling artifact replacement
 
@@ -293,18 +293,12 @@ Poll either path with `python scripts/wait_for_build.py <artifact_id> <build_id>
 httpx.post(f"{base}/workloads/{wid}/replacement/", headers=headers, json={
     "artifactId": new_artifact_id,
     "strategy": "rolling",                   # only "rolling" supported
-    "config": {                              # OPTIONAL — omit for platform defaults
-        "warmupDurationMinutes": 2,          # warm caches; 0 to skip
-        "keepOldVersionMinutes": 5,          # rollback window; 0 to drop immediately
-    },
-    # Optional — change runtime in the same call (same shape as PATCH /settings/)
-    # "runtime": {"containerGroups": [{"name": "default", "replicaCount": 3}]}
+    "config": {"warmupDurationMinutes": 2, "keepOldVersionMinutes": 5},  # optional
+    # "runtime": {...}  # optional; same shape as PATCH /settings/
 })
 ```
 
-Then `python scripts/wait_for_replacement.py <workload_id>` to monitor.
-
-`GET /workloads/{id}/replacement/` returns **404** when no active replacement (body: `{"detail": "There is no active replacement for this workload."}`) — that's "no replacement in progress", not an error. Cancel an in-progress one with `DELETE`. **Not idempotent**: calling `POST` while one is in progress queues a second swap — always check via the script first.
+Monitor with `python scripts/wait_for_replacement.py <workload_id>`. Preconditions: status must match (draft↔draft / locked↔locked, else `400`); same-artifact replacement 422s for locked but works for drafts — to roll the same draft without replacement use `PATCH /settings/`. **Not idempotent** (a second `POST` queues another swap); `GET .../replacement/` `404` = none in progress; `DELETE` to cancel. Detail in `references/lifecycle-flows.md`.
 
 ---
 
