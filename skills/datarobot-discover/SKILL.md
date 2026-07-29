@@ -10,7 +10,7 @@ description: >-
 # Discover DataRobot Resources
 
 Fetch DataRobot catalog and present matching resources for the user's
-task. Covers resource types including Global MCP Server. Bring resources once DataRobot publishes them without skill update.
+task. Covers resource types including Global MCP Server. Bring resources once DataRobot publishes them without a skill update.
 
 ## Step 1 — Fetch the public catalog
 
