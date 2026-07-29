@@ -11,6 +11,7 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+- `datarobot-agent-assist`: Source model selection from the DataRobot CLI. `list_llm_models.py` now delegates to `dr llm-gateway list --output-format json` instead of calling the LLM Gateway catalog endpoint directly, so the skill and the CLI agree on what is available and pick up CLI-side catalog fixes for free. Project `.env` credentials are passed through to the CLI.
 - `datarobot-agent-assist`: Merge pre-coding spec gate into `pre-coding-checklist.md` Bootstrap step 2 (removes duplicate "Before Coding Begins" section). Add missing-spec recovery, path validation, session flags, workspace ask-don't-guess for Code, and journey deduplication. Trim `SKILL.md`: move CLI setup, helper scripts, plugin tool mapping, dress rehearsal prompt, path resolution, and agent_spec schema into references. Flow polish: Code-no-spec merges with Path resolution step 1, schema read hook in Spec Display, `design_to_code` guard and Windows stop in pre-coding, welcome menu resets `design_messy_cwd`.
 
 ## [1.3.9] - 2026-07-22

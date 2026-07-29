@@ -16,6 +16,18 @@ Project `.env` belongs at `<target_dir>/.env` only. Scripts that read or create 
 
 Do not run `dr dotenv setup` manually in cwd when designing in a subdirectory.
 
+### list_llm_models.py
+
+Lists the LLMs available for the agent's `model` field. Delegates to `dr llm-gateway list --output-format json`, so the skill and the CLI never disagree about what is available — which makes the [DataRobot CLI](dr-cli-setup.md) a hard requirement of model selection, not just of deployment.
+
+```bash
+python <skill_scripts_dir>/list_llm_models.py \
+  --json \
+  --target-dir <target_dir>
+```
+
+`<target_dir>/.env` credentials are passed through to the CLI. When they are absent or stale the CLI falls back to its own authenticated profile, so verify `dr auth check` if the listing looks like the wrong DataRobot instance.
+
 ### clone_template.py
 
 Clones the DataRobot agent application template repository (URL and tag are defined in the script):
