@@ -766,8 +766,15 @@ def main() -> int:
             )
             return 1
         session_dir = tempfile.mkdtemp(prefix="dr_rehearsal_")
-        with capture_output(session_dir) as output_path:
-            cmd_init(args.spec, session_dir, target_dir)
+        try:
+            with capture_output(session_dir) as output_path:
+                cmd_init(args.spec, session_dir, target_dir)
+        except RuntimeError as e:
+            # Reaching the gateway is a precondition, not a bug. The commonest cause
+            # is an instance with no gateway models (deployed LLMs only), where the
+            # rehearsal cannot run at all. Report it, don't traceback.
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
         print(f"session={session_dir}")
         print(f"output={output_path}")
 
@@ -775,8 +782,12 @@ def main() -> int:
         if not args.session:
             print("Error: --session DIR is required", file=sys.stderr)
             return 1
-        with capture_output(args.session) as output_path:
-            cmd_turn(args.session, args.message, target_dir)
+        try:
+            with capture_output(args.session) as output_path:
+                cmd_turn(args.session, args.message, target_dir)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
         print(f"output={output_path}")
 
     else:

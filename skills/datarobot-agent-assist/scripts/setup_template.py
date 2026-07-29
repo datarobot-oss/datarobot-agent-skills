@@ -287,6 +287,20 @@ def setup_and_run(
                 f'"{llm_default_model}", not "{DEPLOYED_MODEL_SENTINEL}". '
                 "Deployment routing may fail."
             )
+    elif llm_default_model == DEPLOYED_MODEL_SENTINEL:
+        # The commoner slip: agent_spec.md always carries `model`, while
+        # `llm_deployment_id` is the extra field that is easy to drop. Nothing
+        # downstream catches it. 'dr dotenv setup' fills INFRA_ENABLE_LLM with the
+        # gateway default and keeps the sentinel, so pulumi dies much later with
+        # "Model 'datarobot-deployed-llm' not found in catalog", which points
+        # nowhere near the missing id. Fail here instead.
+        print(
+            f'Error: --llm-model is "{DEPLOYED_MODEL_SENTINEL}", which only works '
+            "with a deployment. Pass --llm-deployment-id using the spec's "
+            "llm_deployment_id field, or choose an LLM Gateway model.",
+            file=sys.stderr,
+        )
+        return 1
 
     print()
 

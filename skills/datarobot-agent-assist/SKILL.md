@@ -166,7 +166,7 @@ When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design
 
 Write the choice to `agent_spec.md` as the entry's `name`. For a `deployed` entry, also write its `deployment_id` as `llm_deployment_id` — the `name` is a shared sentinel, so without the id the selection is lost. See [agent-spec-schema.md](references/agent-spec-schema.md).
 
-Note: a dress rehearsal talks to the LLM Gateway directly, so a deployed model cannot be rehearsed. The rehearsal substitutes a gateway model and says so; the spec's model is unaffected.
+Note: a dress rehearsal talks to the LLM Gateway directly, so a deployed model cannot be rehearsed. If any gateway model exists the rehearsal substitutes one and says so, leaving the spec's model unchanged. On an instance with no gateway models at all the rehearsal cannot run. Report its message and move on to coding.
 
 ### Frontend Check
 

@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -31,9 +32,9 @@ from env_utils import get_datarobot_credentials
 DR_LLM_LIST_CMD = ["dr", "llm-gateway", "list", "--output-format", "json"]
 DR_LLM_LIST_ENVELOPE_KEY = "llms"
 
-# The CLI falls back to an interactive login when the credentials it is handed do
-# not verify. stdin is closed so that prompt fails fast instead of blocking, and
-# the timeout is the backstop for a prompt that ignores EOF.
+# The CLI drops into an interactive login when it has no usable credentials.
+# stdin=DEVNULL is what makes that fail fast instead of blocking; the timeout is
+# the backstop for a prompt that ignores EOF.
 DR_LLM_LIST_TIMEOUT = 90
 
 # Kind discriminator on each CLI entry. A `dr` predating the deployed-LLM support
@@ -129,6 +130,15 @@ def fetch_cli_llms(endpoint: str, api_token: str) -> list[dict[str, Any]]:
             f"'{' '.join(DR_LLM_LIST_CMD)}' failed with exit code {result.returncode}: {detail}"
         )
 
+    # Forward the CLI's own log lines. They name the instance it actually queried,
+    # which is the only signal that it ignored the credentials passed above and fell
+    # back to its stored profile. Swallowing this is how a listing from the wrong
+    # DataRobot instance reaches the user looking like a correct one. The requested
+    # endpoint is echoed alongside so the two can be compared without knowing to.
+    if result.stderr.strip():
+        print(f"Requested instance: {endpoint}", file=sys.stderr)
+        print(result.stderr.rstrip(), file=sys.stderr)
+
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as e:
@@ -148,7 +158,7 @@ def fetch_cli_llms(endpoint: str, api_token: str) -> list[dict[str, Any]]:
 
 def _model_name(entry: dict[str, Any]) -> str:
     """The spec/LLM_DEFAULT_MODEL value for one CLI entry."""
-    model_name = entry.get("model") or ""
+    model_name = str(entry.get("model") or "").strip()
     # Downstream consumers (agent_spec.md, LLM_DEFAULT_MODEL) expect the
     # datarobot/ prefix; the CLI reports the bare gateway model id.
     if model_name and not model_name.startswith("datarobot/"):
@@ -157,22 +167,45 @@ def _model_name(entry: dict[str, Any]) -> str:
     return model_name
 
 
+def _as_int(value: Any) -> int:
+    """Coerce a CLI numeric field to int, treating anything unusable as unknown."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _one_line(value: Any) -> str:
+    """Collapse a free-text CLI field to one pipe-free line.
+
+    Deployment labels and descriptions are user-authored, so they can carry
+    newlines and pipes that would otherwise break a row of the table apart.
+    """
+    return " ".join(str(value or "").split()).replace("|", "/")
+
+
 def _to_llm_choice(entry: dict[str, Any]) -> LLMChoice:
     """Map one CLI entry onto the selectable-LLM shape."""
+    if not isinstance(entry, dict):
+        # Keep RuntimeError as the module's single error channel, per fetch_cli_llms.
+        raise RuntimeError(  # noqa: TRY004
+            f"Unexpected CLI entry, expected an object: {entry!r}"
+        )
+
     source = entry.get("source") or SOURCE_GATEWAY
-    provider = entry.get("provider") or ""
+    provider = _one_line(entry.get("provider"))
 
     if source == SOURCE_DEPLOYED:
         provider = provider or DEPLOYED_PROVIDER_LABEL
 
     return {
         "name": _model_name(entry),
-        "label": entry.get("name") or "",
-        "description": entry.get("description") or "",
+        "label": _one_line(entry.get("name")),
+        "description": _one_line(entry.get("description")),
         "provider": provider or "Unknown",
-        "context_size": entry.get("context_size") or 0,
-        "source": source,
-        "deployment_id": entry.get("deployment_id") or "",
+        "context_size": _as_int(entry.get("context_size")),
+        "source": str(source),
+        "deployment_id": _one_line(entry.get("deployment_id")),
     }
 
 
@@ -361,13 +394,12 @@ def main() -> int:
             # JSON output
             print(json.dumps(choices, indent=2))
         else:
-            # Table output (default)
-            gateway = sum(1 for c in choices if c["source"] == SOURCE_GATEWAY)
-            deployed = len(choices) - gateway
-            print(
-                f"\nFound {len(choices)} available LLMs "
-                f"({gateway} gateway, {deployed} deployed):\n"
-            )
+            # Table output (default). Count each source by name rather than
+            # subtracting: the CLI's source set is open, and a future third kind
+            # would otherwise be reported as deployed.
+            counts = Counter(c["source"] for c in choices)
+            breakdown = ", ".join(f"{n} {src}" for src, n in sorted(counts.items()))
+            print(f"\nFound {len(choices)} available LLMs ({breakdown}):\n")
             print(format_as_table(choices))
             print()
 

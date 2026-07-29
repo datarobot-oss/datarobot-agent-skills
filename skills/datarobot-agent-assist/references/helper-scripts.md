@@ -28,7 +28,7 @@ python <skill_scripts_dir>/list_llm_models.py \
 
 Each entry has `name` (the value for the spec's `model`), `label` (what to show the user), `source` (`gateway` or `deployed`), `deployment_id` (deployed only), `provider`, `context_size`, and `description`. Deployed entries all share `name: "datarobot/datarobot-deployed-llm"`, so `label` and `deployment_id` are what distinguish them.
 
-`<target_dir>/.env` credentials are passed through to the CLI. When they are absent or stale the CLI falls back to its own authenticated profile, so verify `dr auth check` if the listing looks like the wrong DataRobot instance.
+`<target_dir>/.env` credentials are passed through to the CLI. The CLI uses them only if they verify, and otherwise silently falls back to its own authenticated profile, which can be a different DataRobot instance. The script forwards the CLI's log lines to stderr for that reason: they name the instance actually queried. If that host is not the one the project targets, fix the project's `.env` or re-run `dr auth login` before trusting the list.
 
 ### clone_template.py
 
