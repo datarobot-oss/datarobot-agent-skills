@@ -41,10 +41,6 @@ DR_LLM_LIST_TIMEOUT = 90
 SOURCE_GATEWAY = "gateway"
 SOURCE_DEPLOYED = "deployed"
 
-# A deployed model is addressed by this litellm model string; the deployment id
-# carries the routing. Mirrors the template's deployed_llm.py default.
-DEPLOYED_MODEL_SENTINEL = "datarobot/datarobot-deployed-llm"
-
 # Deployments have no gateway provider; label the column so the source is obvious.
 DEPLOYED_PROVIDER_LABEL = "DataRobot deployment"
 
@@ -198,7 +194,7 @@ def fetch_llm_choices(endpoint: str, api_token: str) -> list[LLMChoice]:
         api_token: DataRobot API token for authentication
 
     Returns:
-        List of LLMChoice dictionaries, gateway entries first
+        List of LLMChoice dictionaries, in the order the CLI reports them
 
     Raises:
         RuntimeError: If the CLI call fails or neither source has any model
@@ -225,15 +221,24 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
         List of active LLMModel dictionaries with name, description, provider, and context_size
 
     Raises:
-        RuntimeError: If the CLI call fails or the catalog has no active models
+        RuntimeError: If the CLI call fails or no gateway model is available
     """
-    gateway = [
-        _to_llm_model(c)
-        for c in fetch_llm_choices(endpoint, api_token)
-        if c["source"] == SOURCE_GATEWAY
-    ]
+    choices = fetch_llm_choices(endpoint, api_token)
+    gateway = [_to_llm_model(c) for c in choices if c["source"] == SOURCE_GATEWAY]
 
     if not gateway:
+        # Distinguish an empty gateway from an empty everything: with deployments
+        # present the catalog is not empty, it just holds nothing this caller can
+        # address, and saying "no models" sends the user looking in the wrong place.
+        deployed = len(choices) - len(gateway)
+        if deployed:
+            raise RuntimeError(
+                f"No LLM Gateway models available. {deployed} DataRobot-deployed "
+                "model(s) exist, but they cannot be reached through the gateway's "
+                "chat-completions endpoint, so the dress rehearsal cannot use them. "
+                "Skip the rehearsal, or enable the LLM Gateway on this instance."
+            )
+
         raise RuntimeError("No active models found in catalog")
 
     return gateway
