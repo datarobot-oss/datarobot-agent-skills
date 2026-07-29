@@ -292,7 +292,7 @@ Field definitions: [references/agent-spec-schema.md](references/agent-spec-schem
 - If it is unclear whether the request falls into one of the three categories, ask a clarifying question
 - If the user insists on a task outside these three categories, politely decline
 - If a user asks to code before designing, strongly encourage designing first
-- Before running any CLI command or helper script, provide a clear explanation in 2-5 sentences. The explanation must include why this specific command is needed now, what it will check/change/create.
+- Before running any CLI command or helper script, provide a clear explanation in 2-5 sentences. The explanation must include why this specific command is needed now, and what it will check/change/create.
 - **Template clone** — follow [Clone discipline](references/pre-coding-checklist.md#clone-discipline): spec-only workspaces get a brief notice then clone; messy workspaces require explicit subdirectory confirmation (step 7) before any clone; never treat **Code the agent** as that confirmation.
 - **Pre-coding spec validation** — on cold Code entry and deploy → coding handoff, Bootstrap step 2 must check every [spec complete](references/resume-design.md#spec-complete) field and report pass/fail to the user before workspace classification or template setup. Do not run `ls`, clone, or classify `<target_dir>` until validation passes or [Spec issues](references/pre-coding-checklist.md#spec-issues) is resolved.
 - **Pre-coding spec issues** — if `agent_spec.md` has gaps during Bootstrap step 2, do not fix inline; route to Design via [resume-design.md](references/resume-design.md). Exception: missing `tools` only may be waived when the user confirms no tools are needed.

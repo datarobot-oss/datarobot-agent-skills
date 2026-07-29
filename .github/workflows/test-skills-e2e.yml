@@ -3,7 +3,6 @@ name: Test Skills E2E
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - skills/**
       - tests/e2e/**
