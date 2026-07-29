@@ -56,10 +56,10 @@ class LLMChoice(TypedDict):
     """A selectable LLM, from either source.
 
     `name` is the value that belongs in the spec's `model` field and in
-    LLM_DEFAULT_MODEL. `label` is the human-readable name to show the user, which
-    for a deployed model is the only thing distinguishing it -- every deployed
-    entry shares the same `name` sentinel. `deployment_id` is empty for gateway
-    models and is what setup_template.py needs to write the deployed-model .env.
+    LLM_DEFAULT_MODEL. `label` is the human-readable name to show the user. It is
+    the only thing distinguishing one deployed model from another, since every
+    deployed entry shares the same `name` sentinel. `deployment_id` is empty for
+    gateway models and is what setup_template.py needs to write the deployed .env.
     """
 
     name: str
@@ -77,8 +77,8 @@ def _dr_environment(endpoint: str, api_token: str) -> dict[str, str]:
     The CLI prefers DATAROBOT_ENDPOINT / DATAROBOT_API_TOKEN over its own stored
     profile, so passing the project's credentials through keeps the listing pointed
     at the same DataRobot instance the project's .env targets. It only honors them
-    once they verify, and falls back to its stored profile otherwise -- so a stale
-    project .env yields the user's own catalog rather than a hard failure.
+    once they verify, and falls back to its stored profile otherwise. A stale
+    project .env therefore yields the user's own catalog, not a hard failure.
     """
     env = os.environ.copy()
     env["DATAROBOT_ENDPOINT"] = endpoint
@@ -187,7 +187,7 @@ def _to_llm_model(choice: LLMChoice) -> LLMModel:
 
 
 def fetch_llm_choices(endpoint: str, api_token: str) -> list[LLMChoice]:
-    """Fetch every selectable LLM -- gateway catalog plus DataRobot deployments.
+    """Fetch every selectable LLM: gateway catalog plus DataRobot deployments.
 
     Args:
         endpoint: DataRobot API endpoint URL
