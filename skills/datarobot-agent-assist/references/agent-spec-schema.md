@@ -3,7 +3,9 @@
 Write specs in YAML to `<target_dir>/agent_spec.md`. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "anthropic/claude-sonnet-4-5-20250929"   # DataRobot LLM Gateway model ID
+model: "anthropic/claude-sonnet-4-5-20250929"   # LLM Gateway model ID, or
+                                                # "datarobot/datarobot-deployed-llm"
+llm_deployment_id: ""                           # only for a DataRobot-deployed LLM
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name
@@ -26,6 +28,8 @@ frontend:
     - "Analytics - shows search history and top topics"
   requirements: "(optional additional UI requirements)"
 ```
+
+`model` and `llm_deployment_id` come as a pair from [Model Selection](../SKILL.md#model-selection): a gateway model sets `model` alone, while a DataRobot-deployed LLM sets `model: "datarobot/datarobot-deployed-llm"` plus the deployment id — the model string is a shared sentinel, so the id is what identifies the LLM. Both are passed to [setup_template.py](helper-scripts.md#setup_templatepy).
 
 When tools require external service auth, note that credentials must be configured as **runtime parameters** in the infrastructure code (see `AGENTS.md` for the pattern).
 

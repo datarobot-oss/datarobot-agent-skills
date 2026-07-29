@@ -163,7 +163,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
    Invalidate `<dependency_check_passed>` after this step.
 
-9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design).
+9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design). When the spec also carries `llm_deployment_id`, pass it as `--llm-deployment-id` — without it the template routes to the LLM Gateway and ignores the selected deployment.
 
    Invalidate `<dependency_check_passed>` after this step.
 

@@ -11,7 +11,8 @@ This script performs initial setup for a DataRobot agent application template by
 3. Running the template's start-non-interactive task
 
 Usage:
-    python setup_template.py --llm-model <model-name> [--target-dir <directory>]
+    python setup_template.py --llm-model <model-name> [--llm-deployment-id <id>]
+                             [--target-dir <directory>]
 
 The script generates cryptographically secure random secrets for session
 management and Pulumi configuration encryption.
@@ -26,6 +27,13 @@ import sys
 from pathlib import Path
 
 from env_utils import read_env_variable
+
+# A DataRobot-deployed LLM is selected by deployment id, not by model name: the
+# template routes to the deployment and swaps in the deployed-LLM Pulumi config
+# instead of the default gateway one. See the template's
+# infra/configurations/llm/deployed_llm.py.
+DEPLOYED_MODEL_SENTINEL = "datarobot/datarobot-deployed-llm"
+DEPLOYED_LLM_CONFIGURATION = "deployed_llm.py"
 
 
 def generate_random_secret(length: int = 32) -> str:
@@ -43,29 +51,58 @@ def generate_random_secret(length: int = 32) -> str:
     return encoded[:length]
 
 
-def create_env_file(target_dir: Path, llm_default_model: str) -> tuple[bool, str]:
+def create_env_file(
+    target_dir: Path, llm_default_model: str, llm_deployment_id: str = ""
+) -> tuple[bool, str]:
     """
-    Create .env file with LLM_DEFAULT_MODEL configuration.
+    Create .env file with the LLM configuration.
+
+    A deployment id switches the template from the default LLM Gateway routing to
+    an existing DataRobot text-generation deployment, which needs three extra keys
+    beyond the model name.
 
     Args:
         target_dir: Directory where .env file should be created
         llm_default_model: Value for LLM_DEFAULT_MODEL
+        llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
 
     Returns:
         Tuple of (success, message)
     """
     env_file = target_dir / ".env"
 
+    lines = [
+        "DATAROBOT_ENDPOINT=\n",
+        "DATAROBOT_API_TOKEN=\n",
+        f'LLM_DEFAULT_MODEL="{llm_default_model}"\n',
+    ]
+
+    if llm_deployment_id:
+        lines.extend(
+            [
+                f"LLM_DEPLOYMENT_ID={llm_deployment_id}\n",
+                f"INFRA_ENABLE_LLM={DEPLOYED_LLM_CONFIGURATION}\n",
+                # Without this the app would still route through the gateway and
+                # ignore the deployment.
+                "USE_DATAROBOT_LLM_GATEWAY=0\n",
+            ]
+        )
+
     try:
         print(f"Creating .env file in {target_dir}")
 
-        # Write the .env file
         with open(env_file, "w") as f:
-            f.write("DATAROBOT_ENDPOINT=\n")
-            f.write("DATAROBOT_API_TOKEN=\n")
-            f.write(f'LLM_DEFAULT_MODEL="{llm_default_model}"\n')
+            f.writelines(lines)
 
         print(f'✓ Created .env file with LLM_DEFAULT_MODEL="{llm_default_model}"')
+
+        if llm_deployment_id:
+            print(
+                f"✓ Configured DataRobot-deployed LLM {llm_deployment_id} "
+                f"(INFRA_ENABLE_LLM={DEPLOYED_LLM_CONFIGURATION}, "
+                "USE_DATAROBOT_LLM_GATEWAY=0)"
+            )
+
         return True, f"Created {env_file}"
 
     except OSError as e:
@@ -219,13 +256,16 @@ def run_command(command: str, target_dir: Path, timeout: int = 300) -> tuple[boo
         return False, error_msg
 
 
-def setup_and_run(llm_default_model: str, target_dir: Path) -> int:
+def setup_and_run(
+    llm_default_model: str, target_dir: Path, llm_deployment_id: str = ""
+) -> int:
     """
     Create .env file and run required setup commands.
 
     Args:
         llm_default_model: Value for LLM_DEFAULT_MODEL in .env file
         target_dir: Target directory for operations
+        llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
 
     Returns:
         Exit code (0 for success, 1 for failure)
@@ -235,6 +275,19 @@ def setup_and_run(llm_default_model: str, target_dir: Path) -> int:
     print("=" * 80)
     print(f"Target directory: {target_dir}")
     print(f"LLM model: {llm_default_model}")
+
+    if llm_deployment_id:
+        print(f"LLM deployment: {llm_deployment_id}")
+
+        # The template's deployed-LLM config verifies LLM_DEFAULT_MODEL against the
+        # deployment, so a gateway model name here fails later at 'pulumi up'.
+        if llm_default_model != DEPLOYED_MODEL_SENTINEL:
+            print(
+                f"⚠ Warning: --llm-deployment-id is set but --llm-model is "
+                f'"{llm_default_model}", not "{DEPLOYED_MODEL_SENTINEL}". '
+                "Deployment routing may fail."
+            )
+
     print()
 
     # Ensure target directory exists
@@ -243,7 +296,7 @@ def setup_and_run(llm_default_model: str, target_dir: Path) -> int:
         return 1
 
     # Step 1: Create .env file
-    success, _ = create_env_file(target_dir, llm_default_model)
+    success, _ = create_env_file(target_dir, llm_default_model, llm_deployment_id)
     if not success:
         return 1
 
@@ -287,6 +340,13 @@ def main() -> int:
     )
 
     parser.add_argument(
+        "--llm-deployment-id",
+        default="",
+        help="Deployment id of a DataRobot-deployed LLM (omit for LLM Gateway models). "
+        f'Pair with --llm-model "{DEPLOYED_MODEL_SENTINEL}".',
+    )
+
+    parser.add_argument(
         "--target-dir",
         required=True,
         help="Target directory for operations (required — use the session <target_dir>)",
@@ -299,7 +359,7 @@ def main() -> int:
         print(f"Error: target directory does not exist: {target_dir}", file=sys.stderr)
         return 1
 
-    return setup_and_run(args.llm_model, target_dir)
+    return setup_and_run(args.llm_model, target_dir, args.llm_deployment_id)
 
 
 if __name__ == "__main__":

@@ -18,13 +18,15 @@ Do not run `dr dotenv setup` manually in cwd when designing in a subdirectory.
 
 ### list_llm_models.py
 
-Lists the LLMs available for the agent's `model` field. Delegates to `dr llm-gateway list --output-format json`, so the skill and the CLI never disagree about what is available — which makes the [DataRobot CLI](dr-cli-setup.md) a hard requirement of model selection, not just of deployment.
+Lists the LLMs available for the agent's `model` field — both LLM Gateway catalog models and DataRobot-deployed text-generation models. Delegates to `dr llm-gateway list --output-format json`, so the skill and the CLI never disagree about what is available — which makes the [DataRobot CLI](dr-cli-setup.md) a hard requirement of model selection, not just of deployment.
 
 ```bash
 python <skill_scripts_dir>/list_llm_models.py \
   --json \
   --target-dir <target_dir>
 ```
+
+Each entry has `name` (the value for the spec's `model`), `label` (what to show the user), `source` (`gateway` or `deployed`), `deployment_id` (deployed only), `provider`, `context_size`, and `description`. Deployed entries all share `name: "datarobot/datarobot-deployed-llm"`, so `label` and `deployment_id` are what distinguish them.
 
 `<target_dir>/.env` credentials are passed through to the CLI. When they are absent or stale the CLI falls back to its own authenticated profile, so verify `dr auth check` if the listing looks like the wrong DataRobot instance.
 
@@ -46,6 +48,17 @@ python <skill_scripts_dir>/setup_template.py \
   --llm-model <model-name> \
   --target-dir <target_dir>
 ```
+
+For a DataRobot-deployed LLM, pass the deployment id too, so the template routes to the deployment instead of the LLM Gateway:
+
+```bash
+python <skill_scripts_dir>/setup_template.py \
+  --llm-model "datarobot/datarobot-deployed-llm" \
+  --llm-deployment-id <deployment-id> \
+  --target-dir <target_dir>
+```
+
+That writes `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, and `USE_DATAROBOT_LLM_GATEWAY=0` into `.env` alongside `LLM_DEFAULT_MODEL`.
 
 ### select_framework.py
 

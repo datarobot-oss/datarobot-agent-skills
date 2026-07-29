@@ -157,10 +157,16 @@ When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design
 
   **CRITICAL**: Always pass `--target-dir <target_dir>`. In case the script fails due to any reason, do **not** proceed. Instead, return the error message to the user and ask how they want to proceed.
 
-- Recommend a `gpt-5`, `claude-4-5`, or `gemini-2.5` model from the list unless the user specifies cost or other constraints.
-- If none of those preferred families appear in the catalog, pick the highest-capability available model by name — prefer ones containing `large`, `pro`, `opus`, or `sonnet` over `mini`, `haiku`, or `flash`.
+- Each entry carries a `source`: `gateway` (an LLM Gateway catalog model) or `deployed` (an existing DataRobot text-generation deployment). Deployed entries are how an environment with the gateway disabled or empty — typically on-prem — still gets a model.
+- Recommend a `gpt-5`, `claude-4-5`, or `gemini-2.5` **gateway** model from the list unless the user specifies cost or other constraints.
+- If none of those preferred families appear in the catalog, pick the highest-capability available gateway model by name — prefer ones containing `large`, `pro`, `opus`, or `sonnet` over `mini`, `haiku`, or `flash`.
+- If there are no gateway entries at all, recommend a `deployed` entry, identifying it to the user by its `label` (every deployed entry shares the same `name`).
 - Only display the full model catalog when the user **explicitly** asks to browse models.
 - If the user's desired model is unavailable, suggest starting with an available one and updating after implementation.
+
+Write the choice to `agent_spec.md` as the entry's `name`. For a `deployed` entry, also write its `deployment_id` as `llm_deployment_id` — the `name` is a shared sentinel, so without the id the selection is lost. See [agent-spec-schema.md](references/agent-spec-schema.md).
+
+Note: a dress rehearsal talks to the LLM Gateway directly, so a deployed model cannot be rehearsed. The rehearsal substitutes a gateway model and says so; the spec's model is unaffected.
 
 ### Frontend Check
 

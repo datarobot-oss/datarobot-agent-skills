@@ -2,11 +2,12 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""List available LLM models from DataRobot LLM Gateway.
+"""List the LLMs available to a DataRobot agent.
 
-This script fetches and displays active models from the DataRobot LLM Gateway catalog
-by delegating to the DataRobot CLI (`dr llm-gateway list`), so the skill and the CLI
-always agree on what "available" means.
+Covers both LLM Gateway catalog models and DataRobot-deployed text-generation
+models, by delegating to the DataRobot CLI (`dr llm-gateway list`) so the skill and
+the CLI always agree on what "available" means. Deployed models matter on
+environments where the gateway is disabled or empty, such as on-prem installs.
 
 Usage:
     python list_llm_models.py [--json|--table] [--target-dir <directory>]
@@ -35,10 +36,17 @@ DR_LLM_LIST_ENVELOPE_KEY = "llms"
 # the timeout is the backstop for a prompt that ignores EOF.
 DR_LLM_LIST_TIMEOUT = 90
 
-# Kind discriminator on each CLI entry. Only gateway catalog models are returned
-# here; a `dr` predating the deployed-LLM support omits the field entirely, so a
-# missing value is read as "gateway".
+# Kind discriminator on each CLI entry. A `dr` predating the deployed-LLM support
+# omits the field entirely, so a missing value is read as "gateway".
 SOURCE_GATEWAY = "gateway"
+SOURCE_DEPLOYED = "deployed"
+
+# A deployed model is addressed by this litellm model string; the deployment id
+# carries the routing. Mirrors the template's deployed_llm.py default.
+DEPLOYED_MODEL_SENTINEL = "datarobot/datarobot-deployed-llm"
+
+# Deployments have no gateway provider; label the column so the source is obvious.
+DEPLOYED_PROVIDER_LABEL = "DataRobot deployment"
 
 
 class LLMModel(TypedDict):
@@ -46,6 +54,25 @@ class LLMModel(TypedDict):
     description: str
     provider: str
     context_size: int
+
+
+class LLMChoice(TypedDict):
+    """A selectable LLM, from either source.
+
+    `name` is the value that belongs in the spec's `model` field and in
+    LLM_DEFAULT_MODEL. `label` is the human-readable name to show the user, which
+    for a deployed model is the only thing distinguishing it -- every deployed
+    entry shares the same `name` sentinel. `deployment_id` is empty for gateway
+    models and is what setup_template.py needs to write the deployed-model .env.
+    """
+
+    name: str
+    label: str
+    description: str
+    provider: str
+    context_size: int
+    source: str
+    deployment_id: str
 
 
 def _dr_environment(endpoint: str, api_token: str) -> dict[str, str]:
@@ -123,24 +150,72 @@ def fetch_cli_llms(endpoint: str, api_token: str) -> list[dict[str, Any]]:
     return entries
 
 
-def _to_llm_model(entry: dict[str, Any]) -> LLMModel:
-    """Map one CLI entry onto the LLMModel shape used across the skill."""
+def _model_name(entry: dict[str, Any]) -> str:
+    """The spec/LLM_DEFAULT_MODEL value for one CLI entry."""
     model_name = entry.get("model") or ""
     # Downstream consumers (agent_spec.md, LLM_DEFAULT_MODEL) expect the
     # datarobot/ prefix; the CLI reports the bare gateway model id.
     if model_name and not model_name.startswith("datarobot/"):
         model_name = f"datarobot/{model_name}"
 
+    return model_name
+
+
+def _to_llm_choice(entry: dict[str, Any]) -> LLMChoice:
+    """Map one CLI entry onto the selectable-LLM shape."""
+    source = entry.get("source") or SOURCE_GATEWAY
+    provider = entry.get("provider") or ""
+
+    if source == SOURCE_DEPLOYED:
+        provider = provider or DEPLOYED_PROVIDER_LABEL
+
     return {
-        "name": model_name,
+        "name": _model_name(entry),
+        "label": entry.get("name") or "",
         "description": entry.get("description") or "",
-        "provider": entry.get("provider") or "Unknown",
+        "provider": provider or "Unknown",
         "context_size": entry.get("context_size") or 0,
+        "source": source,
+        "deployment_id": entry.get("deployment_id") or "",
     }
+
+
+def _to_llm_model(choice: LLMChoice) -> LLMModel:
+    """Narrow a selectable LLM to the gateway-model shape."""
+    return {
+        "name": choice["name"],
+        "description": choice["description"],
+        "provider": choice["provider"],
+        "context_size": choice["context_size"],
+    }
+
+
+def fetch_llm_choices(endpoint: str, api_token: str) -> list[LLMChoice]:
+    """Fetch every selectable LLM -- gateway catalog plus DataRobot deployments.
+
+    Args:
+        endpoint: DataRobot API endpoint URL
+        api_token: DataRobot API token for authentication
+
+    Returns:
+        List of LLMChoice dictionaries, gateway entries first
+
+    Raises:
+        RuntimeError: If the CLI call fails or neither source has any model
+    """
+    choices = [_to_llm_choice(e) for e in fetch_cli_llms(endpoint, api_token)]
+
+    if not choices:
+        raise RuntimeError("No active models found in catalog")
+
+    return choices
 
 
 def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
     """Fetch active LLM Gateway models via the DataRobot CLI.
+
+    Gateway-only: callers that speak to the gateway's chat-completions endpoint
+    (the dress rehearsal) cannot address a deployed model.
 
     Args:
         endpoint: DataRobot API endpoint URL
@@ -152,12 +227,10 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
     Raises:
         RuntimeError: If the CLI call fails or the catalog has no active models
     """
-    entries = fetch_cli_llms(endpoint, api_token)
-
     gateway = [
-        _to_llm_model(e)
-        for e in entries
-        if e.get("source", SOURCE_GATEWAY) == SOURCE_GATEWAY
+        _to_llm_model(c)
+        for c in fetch_llm_choices(endpoint, api_token)
+        if c["source"] == SOURCE_GATEWAY
     ]
 
     if not gateway:
@@ -166,45 +239,66 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
     return gateway
 
 
-def format_as_table(models: list[LLMModel]) -> str:
-    """Format models as a readable table.
+DESCRIPTION_TRUNCATE_AT = 80
+
+
+def _selector(choice: LLMChoice) -> str:
+    """What the user has to quote to pick this LLM.
+
+    For a gateway model that is the model name; for a deployed model the name is a
+    shared sentinel, so the deployment id is the only usable handle.
+    """
+    if choice["source"] == SOURCE_DEPLOYED:
+        return choice["deployment_id"]
+
+    return choice["name"]
+
+
+def format_as_table(choices: list[LLMChoice]) -> str:
+    """Format selectable LLMs as a readable table.
 
     Args:
-        models: List of model dictionaries
+        choices: List of LLMChoice dictionaries
 
     Returns:
         Formatted table string
     """
-    if not models:
+    if not choices:
         return "No models available"
 
-    # Calculate column widths
-    models_name_width = max(len(m["name"]) for m in models)
-    name_width = max(models_name_width, len("Model Name"))
-    models_provider_width = max(len(m["provider"]) for m in models)
-    provider_width = max(models_provider_width, len("Provider"))
-    models_context_width = max(len(str(m["context_size"])) for m in models)
-    context_width = max(models_context_width, len("Context Size"))
+    rows = []
+    for c in choices:
+        description = c["description"]
+        if len(description) > DESCRIPTION_TRUNCATE_AT:
+            description = description[:DESCRIPTION_TRUNCATE_AT] + "..."
 
-    # Build table
-    lines = []
-    header = f"{'Model Name':<{name_width}} | {'Provider':<{provider_width}} | {'Context Size':>{context_width}} | Description"
-    separator = "-" * len(header)
-    lines.append(header)
-    lines.append(separator)
+        rows.append(
+            [
+                c["label"],
+                c["source"],
+                _selector(c),
+                c["provider"],
+                # A deployment does not report a context window; "-" reads as
+                # unknown where a bare 0 would read as a real token limit.
+                str(c["context_size"]) if c["context_size"] > 0 else "-",
+                description,
+            ]
+        )
 
-    for m in models:
-        name = m["name"]
-        provider = m["provider"]
-        context = str(m["context_size"])
-        description = (
-            m["description"][:80] + "..."
-            if len(m["description"]) > 80
-            else m["description"]
-        )
-        lines.append(
-            f"{name:<{name_width}} | {provider:<{provider_width}} | {context:>{context_width}} | {description}"
-        )
+    headers = ["Name", "Source", "Model / Deployment ID", "Provider", "Context", ""]
+    # The trailing description column is left unpadded so it can run long.
+    widths = [
+        max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers[:-1])
+    ]
+
+    def render(cells: list[str]) -> str:
+        padded = [f"{cells[i]:<{w}}" for i, w in enumerate(widths)]
+
+        return " | ".join([*padded, cells[-1]]).rstrip()
+
+    header = render([*headers[:-1], "Description"])
+    lines = [header, "-" * len(header)]
+    lines.extend(render(r) for r in rows)
 
     return "\n".join(lines)
 
@@ -212,7 +306,8 @@ def format_as_table(models: list[LLMModel]) -> str:
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="List available LLM models from DataRobot LLM Gateway"
+        description="List the LLMs available to a DataRobot agent "
+        "(LLM Gateway catalog models and DataRobot-deployed models)"
     )
     parser.add_argument(
         "--json",
@@ -255,15 +350,20 @@ def main() -> int:
         return 1
 
     try:
-        models = fetch_llm_models(endpoint, api_token)
+        choices = fetch_llm_choices(endpoint, api_token)
 
         if args.json:
             # JSON output
-            print(json.dumps(models, indent=2))
+            print(json.dumps(choices, indent=2))
         else:
             # Table output (default)
-            print(f"\nFound {len(models)} active LLM models:\n")
-            print(format_as_table(models))
+            gateway = sum(1 for c in choices if c["source"] == SOURCE_GATEWAY)
+            deployed = len(choices) - gateway
+            print(
+                f"\nFound {len(choices)} available LLMs "
+                f"({gateway} gateway, {deployed} deployed):\n"
+            )
+            print(format_as_table(choices))
             print()
 
     except RuntimeError as e:
