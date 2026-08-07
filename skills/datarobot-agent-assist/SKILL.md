@@ -21,7 +21,7 @@ Assistance falls into four categories:
 3. **Battle-testing an AI agent** → Run adversarial swarm simulation against an implemented agent
 4. **Deploying an AI agent** → Follow `AGENTS.md` deployment instructions
 
-A first message of `1`–`4` selects the corresponding category.
+A first message of `1`–`4` selects the corresponding category. If the first message is free text that clearly maps to one category (e.g. "I want to build an agent" → Design), state the inference briefly and proceed as that option. If the intent is ambiguous, ask which of the four options applies — do not guess.
 
 ---
 
@@ -167,7 +167,7 @@ When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design
 
 ### Frontend Check
 
-Skip this section if `frontend.type` is already set in `<target_dir>/agent_spec.md` (e.g. captured during [Clarification Phase](#clarification-phase)).
+Skip this section if `frontend.type` is already captured — either written to `<target_dir>/agent_spec.md`, or held in working memory from [Clarification Phase](#clarification-phase) before the first draft exists.
 
 Before the first spec draft, if `frontend.type` is not yet set, **always ask**:
 
@@ -300,7 +300,7 @@ Field definitions: [agent-assist-build/references/agent-spec-schema.md](agent-as
 ## Behavioral Rules
 
 - Follow [Workflow Discipline](#workflow-discipline) at all times
-- If it is unclear whether the request falls into one of the four categories, ask a clarifying question
+- Welcome-menu routing: prefer `1`–`4`; for clear free-text intent, infer and state the category then proceed; if ambiguous, ask which option applies
 - If the user insists on a task outside these four categories, politely decline
 - If a user asks to code before designing, strongly encourage designing first
 - Before running any CLI command or helper script, provide a clear explanation in 2-5 sentences. The explanation must include why this specific command is needed now, what it will check/change/create.
