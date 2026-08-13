@@ -29,9 +29,9 @@ from pathlib import Path
 
 from env_utils import read_env_variable
 from list_llm_models import (
-    SOURCE_GATEWAY,
+    LLMModel,
+    _fetch_gateway_models_rest,
     ensure_datarobot_prefix,
-    fetch_llm_models,
     is_deployed_llm_model,
     is_deployment_id,
     normalize_gateway_model,
@@ -85,48 +85,63 @@ def _read_credentials(target_dir: Path) -> tuple[str | None, str | None]:
     return endpoint, api_token
 
 
+_LLM_ID_ERROR = (
+    'Error: --llm-model "{value}" is an LLM Gateway model id, not a model name. '
+    "The gateway rejects it and the app fails during deployment. Use the "
+    "llm_default_model field from list_llm_models.py instead."
+)
+
+
+def _gateway_catalog(target_dir: Path) -> list[LLMModel] | None:
+    """The instance's gateway catalog, or None when it could not be read.
+
+    Goes straight to REST rather than through fetch_llm_models, which prefers the
+    `dr` CLI. The CLI honors passed credentials only once they verify and otherwise
+    falls back to its own stored profile, so it can answer about a different
+    instance than the project points at. Tolerable for a listing someone reads,
+    wrong for a gate that decides accept or abort.
+    """
+    endpoint, api_token = _read_credentials(target_dir)
+    if not endpoint or not api_token:
+        print("Note: no DataRobot credentials found, so the model was not verified.")
+        return None
+    try:
+        return _fetch_gateway_models_rest(endpoint, api_token)
+    except (RuntimeError, OSError) as e:
+        # OSError as well as RuntimeError: urlopen lets raw ConnectionResetError and
+        # RemoteDisconnected past the URLError handling in the fetch helper, and an
+        # unreachable instance must not take the whole setup down with it.
+        print(f"Note: could not verify the model against the catalog ({e}).")
+        return None
+
+
 def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
     """Resolve a gateway model choice to the value LLM_DEFAULT_MODEL takes.
 
     Returns None when the value cannot be a gateway model, having printed why.
 
-    Two layers. The shape check needs no network: a catalog model is a
-    ``provider/model`` path, so a value with no slash is a catalog llmId, which the
-    gateway answers 404 for. The catalog lookup then confirms the model exists and
-    is the authority on its exact spelling. That second layer is best-effort on
-    purpose, since setup has to keep working against an unreachable instance.
+    The catalog decides. Where it cannot be read, fall back to shape: a catalog
+    model is a ``provider/model`` path, so a value with no slash is a catalog llmId,
+    which the gateway answers 404 for. That heuristic never overrules the catalog,
+    which is free to carry a model whose name has no slash in it.
     """
     bare = normalize_gateway_model(value.strip())
+    catalog = _gateway_catalog(target_dir)
 
-    if "/" not in bare:
-        print(
-            f'Error: --llm-model "{value}" is an LLM Gateway model id, not a model '
-            "name. The gateway rejects it and the app fails during deployment. Use "
-            "the llm_default_model field from list_llm_models.py instead.",
-            file=sys.stderr,
-        )
-        return None
-
-    endpoint, api_token = _read_credentials(target_dir)
-    if not endpoint or not api_token:
-        print("Note: no DataRobot credentials found, so the model was not verified.")
+    if catalog is None:
+        if "/" not in bare:
+            print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
+            return None
         return ensure_datarobot_prefix(bare)
 
-    try:
-        models = fetch_llm_models(endpoint, api_token)
-    except RuntimeError as e:
-        print(f"Note: could not verify the model against the catalog ({e}).")
-        return ensure_datarobot_prefix(bare)
-
-    gateway = [m for m in models if m["source"] == SOURCE_GATEWAY]
-    for model in gateway:
+    for model in catalog:
         if model["api_model"].lower() == bare.lower():
             return model["llm_default_model"]
 
-    if not gateway:
-        # An instance with no gateway entry has the LLM Gateway disabled or empty,
-        # the normal shape of an on-prem install. Listing the empty catalog back
-        # would say nothing; the way forward is a deployed LLM instead.
+    if not catalog:
+        # No gateway entry at all means the LLM Gateway is disabled or empty, the
+        # normal shape of an on-prem install. Listing the empty catalog back would
+        # say nothing; the way forward is a deployed LLM instead.
         print(
             f'Error: --llm-model "{value}" cannot be used. This instance has no LLM '
             "Gateway catalog, so pick a DataRobot-deployed LLM and pass its "
@@ -135,7 +150,11 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
         )
         return None
 
-    available = "\n  ".join(sorted(m["llm_default_model"] for m in gateway))
+    if "/" not in bare:
+        print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
+        return None
+
+    available = "\n  ".join(sorted(m["llm_default_model"] for m in catalog))
     print(
         f'Error: --llm-model "{value}" is not in this instance\'s LLM Gateway '
         f"catalog.\nAvailable:\n  {available}",

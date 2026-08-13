@@ -162,56 +162,69 @@ def test_already_canonical_value_survives(tmp_path: Path, no_credentials: None) 
     assert setup_template.canonical_gateway_model(CANONICAL, tmp_path) == CANONICAL
 
 
-def test_catalog_lookup_wins_on_spelling(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With credentials, the catalog is the authority on the exact spelling."""
+@pytest.fixture
+def catalog(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    """Stand in for the instance's gateway catalog, with credentials present."""
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.invalid/api/v2")
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-    monkeypatch.setattr(
-        setup_template, "fetch_llm_models", lambda *_: [_gateway_model()]
-    )
+
+    def _serve(entries: list[Any] | BaseException) -> None:
+        def _fetch(*_: object) -> list[Any]:
+            if isinstance(entries, BaseException):
+                raise entries
+            return entries
+
+        monkeypatch.setattr(setup_template, "_fetch_gateway_models_rest", _fetch)
+
+    return _serve
+
+
+def test_catalog_lookup_wins_on_spelling(tmp_path: Path, catalog: Any) -> None:
+    """With credentials, the catalog is the authority on the exact spelling."""
+    catalog([_gateway_model()])
     assert (
         setup_template.canonical_gateway_model(API_MODEL.upper(), tmp_path) == CANONICAL
     )
 
 
-def test_model_absent_from_catalog_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.invalid/api/v2")
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-    monkeypatch.setattr(
-        setup_template, "fetch_llm_models", lambda *_: [_gateway_model()]
+def test_catalog_overrules_the_slash_heuristic(tmp_path: Path, catalog: Any) -> None:
+    """The no-slash rule is a fallback for when the catalog cannot be read. A
+    catalog free to register a bare litellm name must not be second-guessed."""
+    bare_name = dict(_gateway_model())
+    bare_name["api_model"] = "gpt-4o"
+    bare_name["llm_default_model"] = "datarobot/gpt-4o"
+    catalog([bare_name])
+    assert (
+        setup_template.canonical_gateway_model("gpt-4o", tmp_path) == "datarobot/gpt-4o"
     )
+
+
+def test_model_absent_from_catalog_is_refused(tmp_path: Path, catalog: Any) -> None:
+    catalog([_gateway_model()])
     assert (
         setup_template.canonical_gateway_model("azure/retired-model", tmp_path) is None
     )
 
 
-def test_unreachable_catalog_does_not_block_setup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_unreachable_catalog_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
     """An instance this process cannot reach must not stop a scaffold."""
-    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.invalid/api/v2")
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
+    catalog(RuntimeError("connection refused"))
+    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
 
-    def _boom(*_: object) -> None:
-        raise RuntimeError("connection refused")
 
-    monkeypatch.setattr(setup_template, "fetch_llm_models", _boom)
+def test_connection_reset_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
+    """urlopen lets raw OSError subclasses past the fetch helper's URLError
+    handling, so catching RuntimeError alone let a reset kill the whole setup."""
+    catalog(ConnectionResetError(54, "Connection reset by peer"))
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
 
 
 def test_empty_gateway_points_at_a_deployed_llm(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """An on-prem instance with the gateway off must get a way forward, not a
     refusal followed by an empty list of alternatives."""
-    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.invalid/api/v2")
-    monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
-    monkeypatch.setattr(setup_template, "fetch_llm_models", lambda *_: [deployed])
+    catalog([])
 
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
 
@@ -249,15 +262,46 @@ def test_spec_examples_use_canonical_model_names() -> None:
 # -- the rehearsal still resolves it --------------------------------------------
 
 
+def _model_catalog(monkeypatch: pytest.MonkeyPatch, entries: list[Any]) -> Any:
+    monkeypatch.setattr(rehearsal, "fetch_llm_models", lambda *_: entries)
+    return rehearsal.ModelCatalog("token", "https://example.invalid/api/v2")
+
+
 def test_rehearsal_resolves_the_canonical_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Writing the prefixed form must not cost an exact match in the rehearsal."""
-    monkeypatch.setattr(rehearsal, "fetch_llm_models", lambda *_: [_gateway_model()])
-    catalog = rehearsal.ModelCatalog("token", "https://example.invalid/api/v2")
+    model_catalog = _model_catalog(monkeypatch, [_gateway_model()])
 
-    resolved, substituted = catalog.pick_available(CANONICAL)
+    resolved, substituted = model_catalog.pick_available(CANONICAL)
 
     assert substituted is False
     # Still the bare form on the wire, whatever spelling the spec carried.
     assert resolved.api_model == API_MODEL
+
+
+def test_rehearsal_keeps_the_provider_guard_on_a_prefixed_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A near-miss spec falls through to slug matching, which reads a provider off
+    the front of the request. Left unprefixed, every request reads as provider
+    'datarobot', the cross-provider guard stops applying, and the rehearsal runs
+    against whichever model happens to be first in the catalog."""
+    anthropic = list_llm_models._map_gateway_catalog_entry(
+        {
+            "llmId": "anthropic-1p-claude-sonnet-4-5",
+            "model": "anthropic/claude-sonnet-4-5-20250929",
+            "name": "Claude Sonnet 4.5",
+            "provider": "Anthropic",
+            "isActive": True,
+        }
+    )
+    model_catalog = _model_catalog(monkeypatch, [_gateway_model(), anthropic])
+
+    # Dots where the catalog has dashes, so the exact match misses on purpose.
+    resolved, substituted = model_catalog.pick_available(
+        "datarobot/anthropic/claude-sonnet-4.5-20250929"
+    )
+
+    assert substituted is True
+    assert resolved.api_model == "anthropic/claude-sonnet-4-5-20250929"

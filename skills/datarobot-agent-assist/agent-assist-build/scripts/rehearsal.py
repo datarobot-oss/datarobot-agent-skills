@@ -302,6 +302,11 @@ class ModelCatalog:
         return None
 
     def _gateway_slug_matches(self, requested: str) -> list[LLMModel]:
+        # Strip the routing prefix before reading a provider off the front. A spec
+        # carries the `datarobot/`-prefixed form, so without this every request
+        # looks like provider "datarobot", matching no entry, and the cross-provider
+        # guard below silently stops applying.
+        requested = normalize_gateway_model(requested.strip())
         req_slug = _model_slug(requested)
         if not req_slug:
             return []
