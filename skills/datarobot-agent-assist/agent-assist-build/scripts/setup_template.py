@@ -123,6 +123,18 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
         if model["api_model"].lower() == bare.lower():
             return model["llm_default_model"]
 
+    if not gateway:
+        # An instance with no gateway entry has the LLM Gateway disabled or empty,
+        # the normal shape of an on-prem install. Listing the empty catalog back
+        # would say nothing; the way forward is a deployed LLM instead.
+        print(
+            f'Error: --llm-model "{value}" cannot be used. This instance has no LLM '
+            "Gateway catalog, so pick a DataRobot-deployed LLM and pass its "
+            "--llm-deployment-id instead.",
+            file=sys.stderr,
+        )
+        return None
+
     available = "\n  ".join(sorted(m["llm_default_model"] for m in gateway))
     print(
         f'Error: --llm-model "{value}" is not in this instance\'s LLM Gateway '

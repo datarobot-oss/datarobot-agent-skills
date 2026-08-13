@@ -203,10 +203,47 @@ def test_unreachable_catalog_does_not_block_setup(
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
 
 
+def test_empty_gateway_points_at_a_deployed_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An on-prem instance with the gateway off must get a way forward, not a
+    refusal followed by an empty list of alternatives."""
+    monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.invalid/api/v2")
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
+    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    monkeypatch.setattr(setup_template, "fetch_llm_models", lambda *_: [deployed])
+
+    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
+
+    err = capsys.readouterr().err
+    assert "--llm-deployment-id" in err
+    assert "Available:" not in err
+
+
 def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
     ok, _ = setup_template.create_env_file(tmp_path, CANONICAL)
     assert ok
     assert f'LLM_DEFAULT_MODEL="{CANONICAL}"' in (tmp_path / ".env").read_text()
+
+
+# -- the docs the agent copies from ---------------------------------------------
+
+
+def test_spec_examples_use_canonical_model_names() -> None:
+    """The worked examples are what an agent imitates, so they have to be values
+    setup_template.py would accept. Three of them named models that either lacked
+    the prefix or were not in the catalog at all."""
+    examples = (SCRIPTS_DIR.parent / "references/agent-spec-examples.md").read_text()
+    models = [
+        line.split(":", 1)[1].strip().strip("\"'")
+        for line in examples.splitlines()
+        if line.startswith("model:")
+    ]
+    assert models, "no model: lines found in agent-spec-examples.md"
+    for model in models:
+        assert model.startswith("datarobot/"), f"{model} is missing the prefix"
+        # A catalog model is a provider path. A bare name is an llmId.
+        assert "/" in list_llm_models.normalize_gateway_model(model), model
 
 
 # -- the rehearsal still resolves it --------------------------------------------
