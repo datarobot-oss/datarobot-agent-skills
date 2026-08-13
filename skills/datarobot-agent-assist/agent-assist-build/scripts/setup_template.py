@@ -129,10 +129,12 @@ def gateway_catalog(target_dir: Path) -> list[LLMModel] | None:
         # RemoteDisconnected past the URLError handling in the fetch helper, and an
         # unreachable instance must not take the whole setup down with it.
         cause = e.__cause__
-        if isinstance(cause, HTTPError) and cause.code in (403, 404):
+        if isinstance(cause, HTTPError) and cause.code == 404:
             # The instance answered and said the catalog is not there. That is a
             # disabled gateway, not a failure to reach it, so it gets the same
-            # answer as an empty catalog rather than an unverified pass.
+            # answer as an empty catalog rather than an unverified pass. 403 is
+            # excluded on purpose: it means this token may not read the catalog,
+            # which says nothing about whether the gateway exists.
             return []
         print(f"Note: could not verify the model against the catalog ({e}).")
         return None

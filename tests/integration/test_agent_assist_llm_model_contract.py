@@ -250,6 +250,17 @@ def test_disabled_gateway_is_treated_as_empty(
     assert "--llm-deployment-id" in capsys.readouterr().err
 
 
+def test_forbidden_catalog_is_not_a_disabled_gateway(
+    tmp_path: Path, catalog: Any
+) -> None:
+    """A 403 says this token may not read the catalog, not that the gateway is
+    absent. Refusing on it sends a user to a deployed LLM they do not need."""
+    forbidden = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 403, "", {}, None)  # type: ignore[arg-type]
+    catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=forbidden)
+
+    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
+
+
 def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
     ok, _ = setup_template.create_env_file(tmp_path, CANONICAL)
     assert ok
@@ -279,10 +290,17 @@ def test_env_file_accepts_every_shape_the_real_catalog_uses(tmp_path: Path) -> N
 # -- the docs the agent copies from ---------------------------------------------
 
 
+# Every provider the LLM Gateway catalog routes through. An example naming
+# anything else is addressing a provider that does not exist, which is how
+# `google/gemini-2.5-pro-preview-05-06` shipped: the real entry is under
+# `vertex_ai/`. Whether a given model is still listed cannot be checked without
+# the network, so this is the shape check, not a membership check.
+CATALOG_PROVIDERS = {"anthropic", "azure", "bedrock", "vertex_ai"}
+
+
 def test_spec_examples_use_canonical_model_names() -> None:
-    """The worked examples are what an agent imitates, so they have to be values
-    setup_template.py would accept. Three of them named models that either lacked
-    the prefix or were not in the catalog at all."""
+    """The worked examples are what an agent imitates, so they have to be shaped
+    like values setup_template.py accepts: prefixed, and naming a real provider."""
     examples = (SCRIPTS_DIR.parent / "references/agent-spec-examples.md").read_text()
     models = [
         line.split(":", 1)[1].strip().strip("\"'")
@@ -292,8 +310,11 @@ def test_spec_examples_use_canonical_model_names() -> None:
     assert models, "no model: lines found in agent-spec-examples.md"
     for model in models:
         assert model.startswith("datarobot/"), f"{model} is missing the prefix"
+        bare = list_llm_models.normalize_gateway_model(model)
         # A catalog model is a provider path. A bare name is an llmId.
-        assert "/" in list_llm_models.normalize_gateway_model(model), model
+        assert "/" in bare, model
+        provider = bare.split("/", 1)[0]
+        assert provider in CATALOG_PROVIDERS, f"{model} names no real provider"
 
 
 # -- the rehearsal still resolves it --------------------------------------------
