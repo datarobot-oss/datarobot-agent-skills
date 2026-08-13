@@ -26,6 +26,7 @@ import importlib
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 
 import pytest
 
@@ -126,12 +127,13 @@ def test_prefixing_is_idempotent() -> None:
 
 
 def test_table_leads_with_the_env_value_not_the_llm_id() -> None:
-    table = list_llm_models.format_as_table([_gateway_model()])
-    header = table.splitlines()[0]
-    assert header.startswith("LLM_DEFAULT_MODEL")
-    assert CANONICAL in table
-    # The llmId is the value the gateway rejects; showing it invites the mistake.
-    assert LLM_ID not in table
+    header, _rule, row = list_llm_models.format_as_table(
+        [_gateway_model()]
+    ).splitlines()
+    # Read the first column rather than searching the whole table: the llmId is a
+    # substring of nothing here today, but that is an accident of this fixture.
+    assert header.split("|")[0].strip() == "LLM_DEFAULT_MODEL"
+    assert row.split("|")[0].strip() == CANONICAL
 
 
 def test_table_hides_the_deployment_column_when_all_gateway() -> None:
@@ -168,10 +170,12 @@ def catalog(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     monkeypatch.setenv("DATAROBOT_ENDPOINT", "https://example.invalid/api/v2")
     monkeypatch.setenv("DATAROBOT_API_TOKEN", "token")
 
-    def _serve(entries: list[Any] | BaseException) -> None:
+    def _serve(
+        entries: list[Any] | BaseException, cause: BaseException | None = None
+    ) -> None:
         def _fetch(*_: object) -> list[Any]:
             if isinstance(entries, BaseException):
-                raise entries
+                raise entries from cause
             return entries
 
         monkeypatch.setattr(setup_template, "_fetch_gateway_models_rest", _fetch)
@@ -233,10 +237,43 @@ def test_empty_gateway_points_at_a_deployed_llm(
     assert "Available:" not in err
 
 
+def test_disabled_gateway_is_treated_as_empty(
+    tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 404 from the catalog endpoint is the instance answering that it has no
+    gateway, not a failure to reach it. Passing it as unverified would hand back a
+    model the instance cannot serve."""
+    http_404 = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 404, "", {}, None)  # type: ignore[arg-type]
+    catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=http_404)
+
+    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
+    assert "--llm-deployment-id" in capsys.readouterr().err
+
+
 def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
     ok, _ = setup_template.create_env_file(tmp_path, CANONICAL)
     assert ok
     assert f'LLM_DEFAULT_MODEL="{CANONICAL}"' in (tmp_path / ".env").read_text()
+
+
+def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> None:
+    """The value lands in a double-quoted line the template's loader re-parses, so
+    a quote closes it early and the rest becomes further keys."""
+    ok, _ = setup_template.create_env_file(tmp_path, 'a/b" \nFOO="bar')
+    assert not ok
+    assert not (tmp_path / ".env").exists()
+
+
+def test_env_file_accepts_every_shape_the_real_catalog_uses(tmp_path: Path) -> None:
+    """':' and '@' are load-bearing, so the guard cannot be tightened to [\\w/-]."""
+    for model in (
+        "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "datarobot/vertex_ai/claude-haiku-4-5@20251001",
+        "datarobot/azure/gpt-5-2025-08-07",
+        "datarobot/datarobot-deployed-llm",
+    ):
+        ok, msg = setup_template.create_env_file(tmp_path, model)
+        assert ok, f"{model} rejected: {msg}"
 
 
 # -- the docs the agent copies from ---------------------------------------------
