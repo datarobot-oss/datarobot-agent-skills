@@ -226,7 +226,7 @@ Then offer to implement any changes to `agent_spec.md`.
 
 Verify `agent_spec.md` contains at minimum:
 
-- `model` — a valid LLM Gateway model ID, or the `datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
+- `model` — the `llm_default_model` value of a `gateway` entry, copied verbatim from `list_llm_models.py` (not its `id` or `api_model`), or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
@@ -385,8 +385,8 @@ Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
 Write specs in YAML to `agent_spec.md` in the working directory. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "anthropic/claude-sonnet-4-5-20250929"   # LLM Gateway model ID, or datarobot-deployed-llm
-llm_deployment_id: ""                           # required only for a DataRobot-deployed LLM
+model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
+llm_deployment_id: ""                       # required only for a DataRobot-deployed LLM
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name

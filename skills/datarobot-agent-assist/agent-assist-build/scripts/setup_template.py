@@ -28,7 +28,14 @@ import sys
 from pathlib import Path
 
 from env_utils import read_env_variable
-from list_llm_models import is_deployed_llm_model, is_deployment_id
+from list_llm_models import (
+    SOURCE_GATEWAY,
+    ensure_datarobot_prefix,
+    fetch_llm_models,
+    is_deployed_llm_model,
+    is_deployment_id,
+    normalize_gateway_model,
+)
 
 # A DataRobot-deployed LLM is selected by deployment id, not by model name: the
 # template swaps in this Pulumi config and calls the deployment's chat endpoint
@@ -50,6 +57,79 @@ def generate_random_secret(length: int = 32) -> str:
     random_bytes = secrets.token_bytes(length)
     encoded = base64.urlsafe_b64encode(random_bytes).decode("ascii")
     return encoded[:length]
+
+
+def _env_value(env_file: Path, name: str) -> str | None:
+    if not env_file.exists():
+        return None
+    try:
+        return read_env_variable(env_file, name)
+    except ValueError:
+        return None
+
+
+def _read_credentials(target_dir: Path) -> tuple[str | None, str | None]:
+    """Read DataRobot credentials without creating or rewriting anything.
+
+    env_utils.get_datarobot_credentials runs 'dr dotenv setup' when .env is absent.
+    That is the wrong side effect here: this runs before create_env_file truncates
+    .env, and setup_and_run makes the real setup call a step later regardless.
+    """
+    env_file = target_dir / ".env"
+    endpoint = _env_value(env_file, "DATAROBOT_ENDPOINT") or os.environ.get(
+        "DATAROBOT_ENDPOINT"
+    )
+    api_token = _env_value(env_file, "DATAROBOT_API_TOKEN") or os.environ.get(
+        "DATAROBOT_API_TOKEN"
+    )
+    return endpoint, api_token
+
+
+def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
+    """Resolve a gateway model choice to the value LLM_DEFAULT_MODEL takes.
+
+    Returns None when the value cannot be a gateway model, having printed why.
+
+    Two layers. The shape check needs no network: a catalog model is a
+    ``provider/model`` path, so a value with no slash is a catalog llmId, which the
+    gateway answers 404 for. The catalog lookup then confirms the model exists and
+    is the authority on its exact spelling. That second layer is best-effort on
+    purpose, since setup has to keep working against an unreachable instance.
+    """
+    bare = normalize_gateway_model(value.strip())
+
+    if "/" not in bare:
+        print(
+            f'Error: --llm-model "{value}" is an LLM Gateway model id, not a model '
+            "name. The gateway rejects it and the app fails during deployment. Use "
+            "the llm_default_model field from list_llm_models.py instead.",
+            file=sys.stderr,
+        )
+        return None
+
+    endpoint, api_token = _read_credentials(target_dir)
+    if not endpoint or not api_token:
+        print("Note: no DataRobot credentials found, so the model was not verified.")
+        return ensure_datarobot_prefix(bare)
+
+    try:
+        models = fetch_llm_models(endpoint, api_token)
+    except RuntimeError as e:
+        print(f"Note: could not verify the model against the catalog ({e}).")
+        return ensure_datarobot_prefix(bare)
+
+    gateway = [m for m in models if m["source"] == SOURCE_GATEWAY]
+    for model in gateway:
+        if model["api_model"].lower() == bare.lower():
+            return model["llm_default_model"]
+
+    available = "\n  ".join(sorted(m["llm_default_model"] for m in gateway))
+    print(
+        f'Error: --llm-model "{value}" is not in this instance\'s LLM Gateway '
+        f"catalog.\nAvailable:\n  {available}",
+        file=sys.stderr,
+    )
+    return None
 
 
 def create_env_file(
@@ -339,6 +419,15 @@ def setup_and_run(
     if not target_dir.exists():
         print(f"Error: Target directory does not exist: {target_dir}")
         return 1
+
+    # Canonicalize before anything writes .env: create_env_file truncates the file,
+    # taking with it the credentials the catalog check reads. The deployed path is
+    # exempt, since there the model is only a label and 'dr dotenv setup' drops it.
+    if not llm_deployment_id:
+        canonical = canonical_gateway_model(llm_default_model, target_dir)
+        if canonical is None:
+            return 1
+        llm_default_model = canonical
 
     # Step 1: Create .env file
     success, _ = create_env_file(target_dir, llm_default_model, llm_deployment_id)

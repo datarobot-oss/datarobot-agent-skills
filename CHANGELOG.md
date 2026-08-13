@@ -11,6 +11,12 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-08-13
+
+### Fixed
+- `datarobot-agent-assist`: The model name written to `LLM_DEFAULT_MODEL` is one the LLM Gateway accepts. The listing exposed the catalog's `llmId` as `id` and the model path as `api_model`, neither of which works as a model name, and carried no field holding the value `.env` takes. Agents picked `id`, and the gateway answered `404 Model ... not found in catalog` on every request. Entries now carry `llm_default_model` (the `datarobot/`-prefixed value, and the only field to copy into `agent_spec.md`), and `setup_template.py` refuses an `llmId` instead of writing it to `.env`. `api_model` stays unprefixed, since the dress rehearsal sends it on the wire and the gateway rejects a prefixed model.
+- `datarobot-agent-assist`: The model table leads with `LLM_DEFAULT_MODEL` rather than the catalog `llmId`, which was the only model-shaped value it showed and could never be used. The deployment id now has its own column, shown only when a deployed entry is present.
+
 ## [1.5.0] - 2026-08-10
 
 ### Added
