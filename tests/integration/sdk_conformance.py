@@ -173,6 +173,8 @@ def _check_signature(
     if accepts_varargs or splatted:
         return out
 
+    # Positional parameters are satisfied either by position or by name, so the
+    # index into `required` is compared against how many positionals were passed.
     required = [
         p
         for p in params
@@ -184,6 +186,16 @@ def _check_signature(
         p.name
         for i, p in enumerate(required)
         if p.name not in passed_kw and i >= n_positional
+    ]
+    # Keyword-only parameters can only ever be supplied by name, so position is
+    # irrelevant: absent from the call keywords means absent. e.g. omitting
+    # connector_type from Connector.create(*, connector_type) is a TypeError.
+    missing += [
+        p.name
+        for p in params
+        if p.kind is p.KEYWORD_ONLY
+        and p.default is inspect.Parameter.empty
+        and p.name not in passed_kw
     ]
     if missing and missing[0] in ("self", "cls"):
         # Reached through the class rather than an instance, so the receiver is
