@@ -11,6 +11,13 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+### Added
+
+- Repo tooling: `tests/integration/test_sdk_conformance.py` resolves every DataRobot SDK
+  call in `SKILL.md` python fences and skill `scripts/*.py` against the installed
+  `datarobot` package and checks its signature, so methods that do not exist and calls
+  with wrong arguments fail `task lint`. Requires no DataRobot account.
+
 ## [1.5.0] - 2026-08-10
 
 ### Added
