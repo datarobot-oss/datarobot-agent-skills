@@ -226,7 +226,7 @@ Then offer to implement any changes to `agent_spec.md`.
 
 Verify `agent_spec.md` contains at minimum:
 
-- `model` — the `llm_default_model` value of a `gateway` entry, copied verbatim from `list_llm_models.py` (not its `id` or `api_model`), or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
+- `model` — either the `llm_default_model` value of a `gateway` entry (not the `id` or `api_model`) or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
