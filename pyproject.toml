@@ -12,6 +12,8 @@ dev = [
 ]
 integration = [
     "datarobot-genai",
+    # Required by test_sdk_conformance.py: skills are validated against the real SDK.
+    "datarobot>=3.6",
     "python-frontmatter>=1.1",
     "pytest>=8.0",
     "codeowners>=0.8.0",
