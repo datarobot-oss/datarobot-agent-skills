@@ -106,7 +106,7 @@ _NO_GATEWAY_ERROR = (
 MODEL_VALUE_RE = re.compile(r"[A-Za-z0-9._:@/-]+")
 
 
-def gateway_catalog(target_dir: Path) -> list[LLMModel] | None:
+def read_gateway_catalog(target_dir: Path) -> list[LLMModel] | None:
     """The instance's gateway catalog, or None when it could not be read.
 
     Goes straight to REST rather than through fetch_llm_models, which prefers the
@@ -151,7 +151,7 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
     which is free to carry a model whose name has no slash in it.
     """
     bare = normalize_gateway_model(value.strip())
-    catalog = gateway_catalog(target_dir)
+    catalog = read_gateway_catalog(target_dir)
 
     if catalog is None:
         if "/" not in bare:

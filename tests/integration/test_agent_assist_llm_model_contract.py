@@ -210,6 +210,15 @@ def test_model_absent_from_catalog_is_refused(tmp_path: Path, catalog: Any) -> N
     )
 
 
+def test_catalog_present_still_refuses_a_bare_llm_id(
+    tmp_path: Path, catalog: Any
+) -> None:
+    """A readable catalog does not excuse a no-slash llmId. It matches no api_model
+    and is not a provider path, so it is refused rather than prefixed and written."""
+    catalog([_gateway_model()])
+    assert setup_template.canonical_gateway_model(LLM_ID, tmp_path) is None
+
+
 def test_unreachable_catalog_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
     """An instance this process cannot reach must not stop a scaffold."""
     catalog(RuntimeError("connection refused"))
@@ -271,6 +280,24 @@ def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> N
     """The value lands in a double-quoted line the template's loader re-parses, so
     a quote closes it early and the rest becomes further keys."""
     ok, _ = setup_template.create_env_file(tmp_path, 'a/b" \nFOO="bar')
+    assert not ok
+    assert not (tmp_path / ".env").exists()
+
+
+@pytest.mark.parametrize("bad_char", ['"', "\\", "$", " ", "\n", "`"])
+def test_env_file_rejects_each_dangerous_character(
+    tmp_path: Path, bad_char: str
+) -> None:
+    """Each break-out character is refused on its own, not only in the combined
+    value above, so no single one can slip through the guard."""
+    ok, _ = setup_template.create_env_file(tmp_path, f"datarobot/azure/gpt-5{bad_char}")
+    assert not ok
+    assert not (tmp_path / ".env").exists()
+
+
+def test_env_file_rejects_an_empty_model(tmp_path: Path) -> None:
+    """An empty LLM_DEFAULT_MODEL is not a usable value; the '+' guard rejects it."""
+    ok, _ = setup_template.create_env_file(tmp_path, "")
     assert not ok
     assert not (tmp_path / ".env").exists()
 
