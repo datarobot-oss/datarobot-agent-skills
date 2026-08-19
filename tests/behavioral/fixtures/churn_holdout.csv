@@ -1,0 +1,61 @@
+customer_id,tenure_months,monthly_charges,total_charges,contract_type,payment_method,internet_service,num_support_tickets,has_paperless_billing
+CUST-00300,40,27.90,1107.18,Two year,Mailed check,Fiber optic,0,Yes
+CUST-00301,56,93.00,5128.04,Month-to-month,Electronic check,No,0,Yes
+CUST-00302,23,31.94,713.16,One year,Mailed check,Fiber optic,0,No
+CUST-00303,17,94.98,1594.23,One year,Electronic check,Fiber optic,0,No
+CUST-00304,9,46.29,415.57,One year,Credit card,Fiber optic,0,No
+CUST-00305,22,56.77,1155.91,Month-to-month,Electronic check,DSL,1,Yes
+CUST-00306,2,44.46,84.22,Month-to-month,Mailed check,DSL,5,Yes
+CUST-00307,54,42.45,2119.98,Two year,Bank transfer,DSL,0,No
+CUST-00308,7,37.93,260.31,Two year,Credit card,DSL,1,No
+CUST-00309,40,52.73,2014.94,Month-to-month,Mailed check,DSL,2,Yes
+CUST-00310,64,119.78,7494.12,One year,Mailed check,DSL,5,Yes
+CUST-00311,45,83.59,3646.24,Month-to-month,Bank transfer,DSL,2,No
+CUST-00312,68,118.31,7578.32,Two year,Mailed check,Fiber optic,0,Yes
+CUST-00313,67,61.31,4064.88,Month-to-month,Electronic check,Fiber optic,1,No
+CUST-00314,8,63.50,506.18,Month-to-month,Bank transfer,No,5,No
+CUST-00315,42,51.81,2017.60,Month-to-month,Mailed check,DSL,2,Yes
+CUST-00316,22,64.96,1331.09,Month-to-month,Bank transfer,No,0,No
+CUST-00317,16,29.04,455.70,Month-to-month,Electronic check,DSL,3,Yes
+CUST-00318,32,116.84,3513.14,Month-to-month,Bank transfer,DSL,8,Yes
+CUST-00319,58,75.60,4187.54,Month-to-month,Electronic check,No,0,Yes
+CUST-00320,29,33.07,942.12,Month-to-month,Electronic check,Fiber optic,0,Yes
+CUST-00321,9,39.78,345.35,Two year,Electronic check,No,3,No
+CUST-00322,60,25.06,1492.19,Month-to-month,Credit card,Fiber optic,0,No
+CUST-00323,28,110.83,2878.25,Month-to-month,Mailed check,DSL,1,Yes
+CUST-00324,64,61.20,3740.81,Month-to-month,Bank transfer,DSL,1,Yes
+CUST-00325,70,99.48,6956.22,One year,Bank transfer,Fiber optic,2,No
+CUST-00326,65,52.16,3143.05,Month-to-month,Mailed check,DSL,3,No
+CUST-00327,61,72.94,4345.60,Two year,Mailed check,DSL,2,No
+CUST-00328,8,96.40,767.17,One year,Credit card,DSL,3,Yes
+CUST-00329,41,100.62,4000.68,Two year,Electronic check,Fiber optic,0,Yes
+CUST-00330,25,103.67,2542.61,Two year,Bank transfer,DSL,0,Yes
+CUST-00331,29,21.99,604.42,Month-to-month,Mailed check,No,0,Yes
+CUST-00332,42,25.96,997.39,One year,Mailed check,Fiber optic,3,No
+CUST-00333,48,90.45,4194.91,One year,Bank transfer,DSL,0,Yes
+CUST-00334,56,99.18,5532.23,One year,Mailed check,Fiber optic,1,No
+CUST-00335,23,57.84,1294.93,Month-to-month,Mailed check,Fiber optic,5,No
+CUST-00336,5,38.21,178.02,Two year,Mailed check,Fiber optic,0,No
+CUST-00337,10,43.80,437.23,Month-to-month,Electronic check,No,2,No
+CUST-00338,34,40.97,1350.24,Month-to-month,Electronic check,Fiber optic,0,No
+CUST-00339,22,108.46,2265.16,Month-to-month,Credit card,DSL,1,Yes
+CUST-00340,10,99.92,902.62,Month-to-month,Bank transfer,No,0,Yes
+CUST-00341,21,93.20,1868.55,Two year,Electronic check,DSL,8,No
+CUST-00342,56,114.24,5863.25,Two year,Mailed check,DSL,0,Yes
+CUST-00343,71,92.20,6369.44,Month-to-month,Bank transfer,DSL,0,No
+CUST-00344,63,35.36,2085.29,Month-to-month,Bank transfer,No,1,No
+CUST-00345,4,40.70,156.91,Two year,Credit card,No,0,No
+CUST-00346,34,29.11,944.62,Month-to-month,Credit card,DSL,1,No
+CUST-00347,34,42.62,1343.09,Month-to-month,Electronic check,DSL,0,No
+CUST-00348,30,75.36,2224.81,Two year,Credit card,No,2,No
+CUST-00349,31,67.63,1903.43,Two year,Electronic check,Fiber optic,5,Yes
+CUST-00350,58,37.29,2159.44,Two year,Mailed check,DSL,1,No
+CUST-00351,19,103.41,1818.98,Two year,Electronic check,DSL,1,No
+CUST-00352,67,65.82,4354.14,One year,Credit card,DSL,0,Yes
+CUST-00353,13,98.57,1264.43,Two year,Credit card,DSL,2,No
+CUST-00354,36,60.30,2087.93,One year,Credit card,DSL,3,No
+CUST-00355,7,94.57,656.75,Two year,Electronic check,DSL,2,No
+CUST-00356,63,105.82,6456.56,Two year,Mailed check,DSL,8,No
+CUST-00357,42,46.94,1856.50,One year,Mailed check,Fiber optic,5,No
+CUST-00358,67,106.72,7022.26,One year,Mailed check,DSL,2,No
+CUST-00359,68,107.93,6626.56,Month-to-month,Mailed check,No,0,No
