@@ -1,0 +1,203 @@
+---
+# Behavioral end-to-end tests: drive a real coding agent (OpenCode) through
+# user journeys with this repo's skills installed, and verify outcomes against
+# a real DataRobot org. Design: docs/proposals/skill-behavioral-testing.md
+#
+# SECURITY: this workflow executes PR-authored skill content and
+# agent-generated code, so it MUST use plain `pull_request` (never
+# `pull_request_target`) — GitHub withholds all secrets from fork-PR
+# `pull_request` runs by construction. The `run-e2e` label is the
+# maintainers' cost opt-in for same-repo PRs; a guard below refuses fork PRs
+# explicitly (maintainers: push the branch to origin and re-label).
+#
+# INERT UNTIL ENABLED: every job gates on the repository variable
+# BEHAVIORAL_LIVE_ENABLED == 'true'. Flip it once the dedicated test org,
+# the `behavioral-live` environment, and its secrets exist:
+#   BEHAVIORAL_DATAROBOT_API_TOKEN  (service-account token, test org only)
+#   BEHAVIORAL_DATAROBOT_ENDPOINT   (e.g. https://app.datarobot.com/api/v2)
+name: Behavioral E2E
+
+on:
+  pull_request:
+    types: [labeled]
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      k:
+        description: Runs per scenario/condition cell
+        default: "3"
+      conditions:
+        description: Comma-separated conditions (no_skill,skill_main,skill_pr)
+        default: no_skill,skill_main,skill_pr
+
+permissions:
+  contents: read
+
+concurrency:
+  group: behavioral-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in sync with dr_agents_tester/eval/drivers/versions.py — the engine
+  # refuses to run against any other version.
+  OPENCODE_VERSION: 1.17.11
+  RUN_PREFIX: drat-gh${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.decide.outputs.enabled }}
+      conditions: ${{ steps.decide.outputs.conditions }}
+      k: ${{ steps.decide.outputs.k }}
+    steps:
+      - name: Decide whether and what to run
+        id: decide
+        env:
+          LIVE_ENABLED: ${{ vars.BEHAVIORAL_LIVE_ENABLED }}
+          EVENT_NAME: ${{ github.event_name }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          INPUT_K: ${{ inputs.k }}
+          INPUT_CONDITIONS: ${{ inputs.conditions }}
+        run: |
+          if [ "$LIVE_ENABLED" != "true" ]; then
+            echo "Behavioral live runs are not enabled (vars.BEHAVIORAL_LIVE_ENABLED != 'true')."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$EVENT_NAME" in
+            pull_request)
+              if [ "$LABEL_NAME" != "run-e2e" ]; then
+                echo "Label '$LABEL_NAME' is not run-e2e; skipping."
+                echo "enabled=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [ "$IS_FORK" = "true" ]; then
+                echo "::error::Fork PRs cannot run live behavioral tests (secrets are withheld). Maintainer: push the branch to origin and re-label."
+                exit 1
+              fi
+              echo 'conditions=["no_skill","skill_main","skill_pr"]' >> "$GITHUB_OUTPUT"
+              echo "k=3" >> "$GITHUB_OUTPUT"
+              ;;
+            schedule)
+              echo 'conditions=["no_skill","skill_main"]' >> "$GITHUB_OUTPUT"
+              echo "k=3" >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_dispatch)
+              CONDS=$(echo "${INPUT_CONDITIONS:-no_skill,skill_main,skill_pr}" | python3 -c 'import json,sys; print(json.dumps([c.strip() for c in sys.stdin.read().split(",") if c.strip()]))')
+              echo "conditions=$CONDS" >> "$GITHUB_OUTPUT"
+              echo "k=${INPUT_K:-3}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: behavioral-live
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        condition: ${{ fromJSON(needs.gate.outputs.conditions) }}
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.BEHAVIORAL_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.BEHAVIORAL_DATAROBOT_ENDPOINT }}
+    steps:
+      # PR head supplies skill_pr AND the scenarios/fixtures under test; on
+      # schedule/dispatch this is just the default branch.
+      - name: Checkout head (scenarios + skill_pr skills)
+        uses: actions/checkout@v4
+        with:
+          path: pr
+      - name: Checkout main (skill_main skills)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned opencode
+        run: npm install -g "opencode-ai@${OPENCODE_VERSION}"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install behavioral engine
+        working-directory: pr
+        run: uv sync --group behavioral
+
+      - name: Run behavioral evaluation (${{ matrix.condition }})
+        working-directory: pr
+        run: |
+          uv run --group behavioral dr-agent eval run-behavioral \
+            --scenarios tests/behavioral/journeys \
+            --skills-main ../main/skills \
+            --skills-pr ./skills \
+            --conditions "${{ matrix.condition }}" \
+            --n-runs "${{ needs.gate.outputs.k }}" \
+            --work-dir ../run-artifacts/${{ matrix.condition }} \
+            --output-dir ../run-artifacts/${{ matrix.condition }}/results \
+            --run-prefix "${RUN_PREFIX}"
+
+      - name: Teardown run resources
+        if: always()
+        working-directory: pr
+        run: |
+          uv run --group behavioral dr-agent eval sweep \
+            --prefix "${RUN_PREFIX}" --older-than-hours 0 --execute || true
+
+      - name: Upload artifacts (transcripts + results)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: behavioral-${{ matrix.condition }}
+          path: run-artifacts/
+          retention-days: 30
+
+  report:
+    needs: [gate, run]
+    if: needs.gate.outputs.enabled == 'true' && always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+      - name: Compose job summary
+        run: |
+          {
+            echo "# Behavioral E2E results (advisory)"
+            echo
+            echo "Run prefix: \`${RUN_PREFIX}\`"
+            echo
+            for md in artifacts/behavioral-*/**/results/eval_report.md; do
+              [ -f "$md" ] || continue
+              echo "---"
+              cat "$md"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Nightly safety net: delete anything the per-run teardown missed.
+  sweep:
+    needs: gate
+    if: github.event_name == 'schedule' && needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    environment: behavioral-live
+    env:
+      DATAROBOT_API_TOKEN: ${{ secrets.BEHAVIORAL_DATAROBOT_API_TOKEN }}
+      DATAROBOT_ENDPOINT: ${{ secrets.BEHAVIORAL_DATAROBOT_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sweep leaked resources older than 24h
+        run: |
+          uv sync --group behavioral
+          uv run --group behavioral dr-agent eval sweep \
+            --prefix drat- --older-than-hours 24 --execute
