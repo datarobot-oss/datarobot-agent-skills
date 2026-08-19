@@ -396,6 +396,11 @@ version = "0.0.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
+behavioral = [
+    { name = "datarobot" },
+    { name = "datarobot-agent-tester" },
+    { name = "python-dotenv" },
+]
 dev = [
     { name = "mypy" },
     { name = "ruff" },
@@ -419,6 +424,11 @@ integration = [
 [package.metadata]
 
 [package.metadata.requires-dev]
+behavioral = [
+    { name = "datarobot", specifier = ">=3.6" },
+    { name = "datarobot-agent-tester", git = "https://github.com/datarobot/datarobot-agent-tester?rev=main" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+]
 dev = [
     { name = "mypy", specifier = ">=1.10" },
     { name = "ruff", specifier = "==0.15.22" },

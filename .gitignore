@@ -36,6 +36,7 @@ Thumbs.db
 *.csv
 *.parquet
 *.json
+!tests/behavioral/fixtures/*.csv
 !gemini-extension.json
 !.cursor-plugin/plugin.json
 !.claude-plugin/marketplace.json
@@ -53,4 +54,8 @@ Thumbs.db
 eval_report.md
 evaluation_criteria.md
 .datarobot/swarm/
+
+# Behavioral test runs (workspaces, transcripts, results)
+.behavioral-runs/
+.behavioral-results/
 

@@ -26,6 +26,16 @@ e2e = [
     "pytest",
     "pytest-asyncio",
 ]
+behavioral = [
+    # Behavioral test engine (agent driver, DataRobot outcome checks, teardown).
+    # TODO: tighten to a version tag once datarobot-agent-tester cuts its first
+    # release (the engine's [behavioral] extra then replaces the direct
+    # datarobot pin below). For local development against an engine checkout:
+    #   uv pip install -e '../datarobot-agent-tester[behavioral]'
+    "datarobot-agent-tester @ git+https://github.com/datarobot/datarobot-agent-tester@main",
+    "datarobot>=3.6",
+    "python-dotenv>=1.2.2",
+]
 
 [tool.pytest.ini_options]
 

@@ -21,6 +21,11 @@
 # OpenCode plugin (theme, install scripts, metadata)
 /.opencode-plugin/ @datarobot-oss/agent-skills-maintainers
 
+# Behavioral test scenarios, fixtures, and CI (new scenarios add live-run cost)
+/tests/behavioral/ @datarobot-oss/agent-skills-maintainers
+/tests/behavioral/journeys/ @datarobot/core-modeling
+/.github/workflows/behavioral-e2e.yml @datarobot-oss/agent-skills-maintainers
+
 # Individual Contributor skills
 /skills/datarobot-discover/ @datarobot-oss/agent-skills-maintainers
 /skills/datarobot-external-agent-monitoring/ @vitali93

@@ -1,0 +1,47 @@
+---
+scenarios:
+  - id: train-deploy-predict-golden
+    kind: behavioral
+    name: "Golden journey: upload, train (Quick), deploy, predict"
+    difficulty: medium
+    skills_under_test:
+      - datarobot-model-training
+      - datarobot-model-deployment
+      - datarobot-predictions
+    prompt: |
+      I have customer churn data in ./data/churn_train.csv. Train a model in
+      DataRobot to predict the "churn" column — use Quick autopilot mode so it
+      doesn't take forever. Once training finishes, deploy the best model,
+      then score ./data/churn_holdout.csv against that deployment and save the
+      results to ./predictions.csv.
+    fixtures:
+      - source: ../fixtures/churn_train.csv
+        dest: data/churn_train.csv
+      - source: ../fixtures/churn_holdout.csv
+        dest: data/churn_holdout.csv
+    env:
+      automl_mode: quick
+      resource_prefix: "{run_id}"
+    success_checks:
+      - type: dr_project_exists
+        name_contains: "{run_id}"
+      - type: dr_deployment_healthy
+        name_contains: "{run_id}"
+      - type: dr_predictions_returned
+        path: predictions.csv
+        min_rows: 50
+      - type: file_exists
+        path: predictions.csv
+    rubric: |
+      Process quality only — pass/fail comes from success_checks. Penalize:
+      skipping the Use Case linkage the training skill mandates; hallucinated
+      SDK methods followed by retries; tight-loop autopilot polling instead of
+      wait_for_autopilot/max_wait; scoring via raw HTTP requests when
+      deployment.predict_batch is available.
+    common_pitfalls:
+      - Forgetting to create/link a Use Case before creating the project
+      - Legacy Project.start()-era API instead of the use-case-first flow
+      - Passing the CSV path where an uploaded dataset ID is required
+      - Deploying before autopilot has produced a recommended model
+      - Writing predictions to stdout instead of ./predictions.csv
+    timeout_minutes: 30

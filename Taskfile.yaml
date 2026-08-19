@@ -88,6 +88,24 @@ tasks:
     cmds:
       - SKILLS_E2E_FORCE_ALL=1 uv run --group e2e pytest tests/e2e/ -v --tb=short
 
+  test:behavioral:
+    desc: Run the golden-journey behavioral test with working-tree skills (creates real, prefixed DataRobot resources; needs
+      DATAROBOT_API_TOKEN + pinned opencode)
+    cmds:
+      - uv run --group behavioral dr-agent eval run-behavioral --scenarios tests/behavioral/journeys --skills-pr skills --conditions
+        skill_pr --n-runs 1 --work-dir .behavioral-runs --output-dir .behavioral-results --run-prefix "drat-local-$(whoami)"
+
+  test:behavioral:baseline:
+    desc: Run the golden journey with NO skills installed (the no_skill baseline)
+    cmds:
+      - uv run --group behavioral dr-agent eval run-behavioral --scenarios tests/behavioral/journeys --conditions no_skill
+        --n-runs 1 --work-dir .behavioral-runs --output-dir .behavioral-results --run-prefix "drat-local-$(whoami)"
+
+  test:behavioral:clean:
+    desc: Delete any drat-* resources behavioral runs leaked in your DataRobot account
+    cmds:
+      - uv run --group behavioral dr-agent eval sweep --prefix drat- --older-than-hours 0 --execute
+
   default:
     desc: List all available tasks
     cmds:
