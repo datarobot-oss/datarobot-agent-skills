@@ -1,8 +1,8 @@
 # Proposal: Automated Behavioral Testing for DataRobot Agent Skills
 
-**Status:** v0 + v1 implemented (see amendments below)
+**Status:** v0 + v1 implemented; v2 first-wave scenario coverage implemented (see amendments below)
 **Author:** Matthew Hausknecht (drafted with Claude)
-**Date:** 2026-08-17 (amended 2026-08-18)
+**Date:** 2026-08-17 (amended 2026-08-18, 2026-08-20)
 **Related:** [datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills), [datarobot-agent-tester](https://github.com/datarobot-oss/datarobot-agent-tester)
 
 ---
@@ -41,6 +41,37 @@
    unchanged), scenario schema v2 (`kind: behavioral`), a success-check
    registry, trajectory normalization with capability-honest metrics, and a
    `[behavioral]` extra carrying the DataRobot SDK.
+
+## Amendments (2026-08-20, during v2 first-wave implementation)
+
+6. **Fixture-id injection (§4.1 extended).** Scenarios that assert against
+   pre-provisioned resources declare `requires_env:
+   [BEHAVIORAL_FIXTURE_...]` and reference the ids as `{env:VAR}` tokens in
+   the prompt, `env` values, and string check params. Fail-loud at three
+   layers: parse time (references must be declared; names must match
+   `BEHAVIORAL_*`/`DRAT_*` so credentials can never be templated), run start
+   (missing variables abort before any agent tokens are spent), and
+   substitution. Long-lived fixtures are built by
+   `tests/behavioral/fixtures/provision_fixtures.py` and named with the
+   **`bfix-` prefix** — deliberately outside the `drat-` family so teardown
+   and the sweeper can never delete them.
+7. **Trace read API verified.** `GET
+   api/v2/otel/experiment_container/<use_case_id>/traces/` returns trace
+   summaries (traceId, spansCount, errorSpansCount, …); observed ingestion
+   latency is under a minute. `dr_traces_received` therefore shipped with
+   checks wave 1 instead of a follow-up PR, polling with a deadline.
+8. **Expected-trigger metric (§4.3 extended).** The live feature-impact spike
+   showed `datarobot-model-explainability` organically claiming "analyze the
+   feature importance for my model" (and passing the outcome via SHAP) —
+   the trigger collision §4.3's `skill_triggered` boolean cannot see. Runs
+   now also record `skill_triggered_expected` (any triggered skill ∈
+   `skills_under_test`) and reports aggregate an expected-skill trigger
+   rate. Report-only, never gated.
+9. **Multi-directory scenario discovery.** `--scenarios` is repeatable and
+   each directory is scanned one subdirectory level deep, so
+   `tests/behavioral/scenarios` picks up every `scenarios/<skill>/` dir in
+   one invocation (one aggregated report); duplicate scenario ids across
+   directories are rejected.
 
 ---
 
@@ -381,11 +412,11 @@ sibling package that depends on it and reuses `eval/stats.py` + `eval/report.py`
 
 ## 8. Phasing
 
-| Phase | Deliverable | Exit criterion | Status (2026-08-19) |
+| Phase | Deliverable | Exit criterion | Status (2026-08-20) |
 |---|---|---|---|
 | **v0** | `ExecutionBackend` refactor in dr_agents_tester; `PlanBackend` preserves current behavior; scenario schema v2 parser | Existing evals green under new interface | ✅ Done — [tester PR #10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10) |
 | **v1** | Agent driver (OpenCode, per amendment 2) + sandbox; one golden journey (upload→train(Quick)→deploy→predict) with `success_checks`; k configurable; transcript artifacts; nightly + `run-e2e` label workflow (inert) | Golden journey runs unattended end-to-end | ✅ Done — golden journey **passed live** (all 4 checks, 21.5 min, all 3 skills triggered, zero leaked resources); `no_skill` baseline condition also landed early. CI workflow merged inert, pending the test org |
-| **v2** | Scenario coverage for remaining skills; dependency manifest + PR-scoped selection; PR comment reports | Most PRs need no manual testing | ⬜ See §10a roadmap |
+| **v2** | Scenario coverage for remaining skills; dependency manifest + PR-scoped selection; PR comment reports | Most PRs need no manual testing | ◐ First wave done — all five README journeys live-verified 6/6 in one aggregated run (amendments 6–9); selection + PR comments remain. See §10a |
 | **v3** | Trajectory judge; second driver (Claude Code); baseline-regression gating | Behavioral checks become required (if flake rate allows) | ⬜ See §10a roadmap |
 | **v4** | Optimization advisor (§9) | First judge-guided skill improvement merged via human review | ⬜ Distant aspiration |
 
@@ -446,9 +477,13 @@ Items are ordered roughly by dependency, not size.
 - **R3 — Dedicated test org** (the only externally blocked step): org +
   scoped service-account token + budget/quota alarms + a named owner. Then:
   create the `behavioral-live` GitHub environment with
-  `BEHAVIORAL_DATAROBOT_API_TOKEN`/`BEHAVIORAL_DATAROBOT_ENDPOINT`, flip
-  `vars.BEHAVIORAL_LIVE_ENABLED`, one supervised `workflow_dispatch` run,
-  announce the `run-e2e` label.
+  `BEHAVIORAL_DATAROBOT_API_TOKEN`/`BEHAVIORAL_DATAROBOT_ENDPOINT`, run
+  `provision_fixtures.py` against the test org and set the printed
+  `BEHAVIORAL_FIXTURE_{PROJECT,MODEL,DEPLOYMENT}_ID` values as environment
+  **variables** (ids aren't secrets; fixture-dependent scenarios stay out of
+  CI until they exist), flip `vars.BEHAVIORAL_LIVE_ENABLED`, one supervised
+  `workflow_dispatch` run, announce the `run-e2e` label. Until R3, the
+  fixtures live in a developer account (bootstrapped 2026-08-20).
 - **R4 — Accumulate the nightly baseline** (flake rate + cost per scenario;
   the <5%-at-k=3 bar from §4.5 decides when checks can become required).
 
@@ -517,6 +552,10 @@ transcripts, pass@k / trigger-rate metrics) is already being archived.
 - Nested sub-skill trigger naming: `skills_used` records whatever name the
   `skill` tool reports — verify agent-assist sub-skills surface distinctly
   (locks the trajectory-schema contract from amendment note; spike-level).
+  Data point (2026-08-20): across six live runs, reported names always
+  matched top-level skill directory names (including a chained
+  `datarobot-data-preparation` sub-use); agent-assist sub-skills remain
+  unexercised.
 - `dr_predictions_returned --verify_server` is best-effort corroboration
   only; revisit if workspace-CSV assertions ever prove spoofable.
 - Spike S7 leftovers: fresh-deployment `service_health` semantics are
@@ -530,18 +569,31 @@ transcripts, pass@k / trigger-rate metrics) is already being archived.
 
 ## Appendix A: Candidate golden journeys (v1–v2)
 
-1. **Train→deploy→predict chain** (`datarobot-model-training`,
+1. ✅ **Train→deploy→predict chain** (`datarobot-model-training`,
    `datarobot-model-deployment`, `datarobot-predictions`) — the highest-traffic path;
    checks: project exists, deployment healthy, predictions returned.
-2. **Predictions against a fixture deployment** (`datarobot-predictions` alone) — a
+   (`journeys/train-deploy-predict.yaml`, v1)
+2. ✅ **Predictions against a fixture deployment** (`datarobot-predictions` alone) — a
    pre-provisioned long-lived deployment in the test org removes AutoML from the loop;
    fast enough for every-PR live runs.
-3. **External agent monitoring** (`datarobot-external-agent-monitoring`) — instrument a
+   (`scenarios/datarobot-predictions/prediction-template.yaml`, ~2 min live)
+3. ✅ **External agent monitoring** (`datarobot-external-agent-monitoring`) — instrument a
    toy LangGraph agent in the sandbox; check: OTel traces arrive under the Use Case
    (`dr_traces_received`).
-4. **Setup & recovery** (`datarobot-setup`) — sandbox with deliberately missing/invalid
+   (`scenarios/datarobot-external-agent-monitoring/instrument-toy-agent.yaml`)
+4. ⬜ **Setup & recovery** (`datarobot-setup`) — sandbox with deliberately missing/invalid
    credentials; check: SDK client authenticates by the end. Exercises the
    auto-invocation contract in CLAUDE.md.
-5. **SHAP explainability** (`datarobot-model-explainability`) — checks the modern
+5. ⬜ **SHAP explainability** (`datarobot-model-explainability`) — checks the modern
    `datarobot.insights` API path is used (trajectory rubric) and a SHAP matrix is
    computed (outcome check); this is the skill where API drift already bit once.
+   Note: a live run showed this skill *organically* triggering on plain
+   "analyze the feature importance" phrasing (amendment 8), so its scenario
+   should also pin down the description boundary with
+   `datarobot-feature-engineering`.
+
+The 2026-08-20 first wave additionally covered three journeys beyond this
+list, straight from the README's published examples: training-start-automl
+(start Quick AutoML without waiting — `dr_project_exists` with
+`stage: modeling`), feature-impact-report, and monitoring-drift-report (both
+against the pre-provisioned fixtures).
