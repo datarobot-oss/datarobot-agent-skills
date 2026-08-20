@@ -1,0 +1,39 @@
+---
+scenarios:
+  - id: predictions-template
+    kind: behavioral
+    name: "Predictions: generate a prediction dataset template for a deployment"
+    difficulty: easy
+    skills_under_test:
+      - datarobot-predictions
+    requires_env:
+      - BEHAVIORAL_FIXTURE_DEPLOYMENT_ID
+    prompt: |
+      I need to score data against our DataRobot deployment
+      {env:BEHAVIORAL_FIXTURE_DEPLOYMENT_ID} but I don't know what columns it
+      expects. Generate a prediction dataset template for that deployment with
+      5 sample rows so I can see exactly which features and types it needs,
+      and save it as ./prediction_template.csv.
+    success_checks:
+      - type: file_exists
+        path: "*template*.csv"
+        min_bytes: 50
+      - type: file_matches
+        path: "*template*.csv"
+        pattern: "tenure_months"
+      # Header + the 5 requested sample rows, whether written by the skill's
+      # script (with its '#' metadata block) or an inline-pandas equivalent.
+      - type: file_matches
+        path: "*template*.csv"
+        pattern: "^[^#\\r\\n].*,.*,.*,.*,.*,"
+        min_count: 6
+    rubric: |
+      Process quality only — pass/fail comes from success_checks. Penalize:
+      hallucinating the deployment's features instead of fetching them from
+      the API; scoring the deployment when only a template was asked for;
+      retries caused by invented SDK methods.
+    common_pitfalls:
+      - Inventing feature names instead of reading them from the deployment's model
+      - Including the target column in the template
+      - Writing the template to stdout instead of ./prediction_template.csv
+    timeout_minutes: 10
