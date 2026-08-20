@@ -381,13 +381,13 @@ sibling package that depends on it and reuses `eval/stats.py` + `eval/report.py`
 
 ## 8. Phasing
 
-| Phase | Deliverable | Exit criterion |
-|---|---|---|
-| **v0** | `ExecutionBackend` refactor in dr_agents_tester; `PlanBackend` preserves current behavior; scenario schema v2 parser | Existing evals green under new interface |
-| **v1** | `ClaudeCodeDriver` + Docker sandbox; one golden journey (upload→train(Quick)→deploy→predict) with `success_checks` against the live test org; k=3; transcript artifacts; nightly + `run-e2e` label | Golden journey runs unattended end-to-end; manual testing optional for that path |
-| **v2** | Scenario coverage for remaining skills; dependency manifest + PR-scoped selection; PR comment reports; `no_skill` baseline condition | Most PRs need no manual testing |
-| **v3** | Trajectory judge + full efficiency metrics; second driver (Codex); baseline-regression gating | Behavioral checks become required (if flake rate allows) |
-| **v4** | Optimization advisor (§9) | First judge-guided skill improvement merged via human review |
+| Phase | Deliverable | Exit criterion | Status (2026-08-19) |
+|---|---|---|---|
+| **v0** | `ExecutionBackend` refactor in dr_agents_tester; `PlanBackend` preserves current behavior; scenario schema v2 parser | Existing evals green under new interface | ✅ Done — [tester PR #10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10) |
+| **v1** | Agent driver (OpenCode, per amendment 2) + sandbox; one golden journey (upload→train(Quick)→deploy→predict) with `success_checks`; k configurable; transcript artifacts; nightly + `run-e2e` label workflow (inert) | Golden journey runs unattended end-to-end | ✅ Done — golden journey **passed live** (all 4 checks, 21.5 min, all 3 skills triggered, zero leaked resources); `no_skill` baseline condition also landed early. CI workflow merged inert, pending the test org |
+| **v2** | Scenario coverage for remaining skills; dependency manifest + PR-scoped selection; PR comment reports | Most PRs need no manual testing | ⬜ See §10a roadmap |
+| **v3** | Trajectory judge; second driver (Claude Code); baseline-regression gating | Behavioral checks become required (if flake rate allows) | ⬜ See §10a roadmap |
+| **v4** | Optimization advisor (§9) | First judge-guided skill improvement merged via human review | ⬜ Distant aspiration |
 
 v1 alone removes most of the manual burden for the most-exercised path.
 
@@ -423,6 +423,96 @@ schema are designed so the optimizer is purely additive.
 | `dr_agents_tester` stewardship | Original author's appetite for this extension — this doc is the conversation starter. Fallback: sibling package (§7). |
 | Judge model choice | Existing cross-model pattern (generator ≠ judge) should carry over to trajectory judging. |
 | Scenario authoring cost | Each skill needs 2–3 scenarios + checks. Mitigation: check-type library keeps YAML small; scenario authoring becomes part of the skill-contribution checklist in CONTRIBUTING.md. |
+
+---
+
+## 10a. Roadmap: remaining work (updated 2026-08-19)
+
+**This section is the single source of truth for what is left to build.** v0 and
+v1 are implemented and live-verified ([tester PR #10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10),
+[skills PR #87](https://github.com/datarobot-oss/datarobot-agent-skills/pull/87));
+usage documentation lives in the engine's
+[docs/behavioral-evaluation.md](https://github.com/datarobot-oss/datarobot-agent-tester/blob/main/docs/behavioral-evaluation.md).
+Items are ordered roughly by dependency, not size.
+
+### R. Rollout (operational, not features)
+
+- **R1 — Merge the two PRs** (engine first; the skills-repo parse test and
+  `task test:behavioral` depend on it).
+- **R2 — Cut the engine's first release tag** (v0.2.0). Also settles the
+  `datarobot/` vs `datarobot-oss/` URL drift; tighten the skills repo's
+  `behavioral` (and `e2e`) uv-group pins from `@main` to the tag, then to a
+  PyPI `==` pin once published.
+- **R3 — Dedicated test org** (the only externally blocked step): org +
+  scoped service-account token + budget/quota alarms + a named owner. Then:
+  create the `behavioral-live` GitHub environment with
+  `BEHAVIORAL_DATAROBOT_API_TOKEN`/`BEHAVIORAL_DATAROBOT_ENDPOINT`, flip
+  `vars.BEHAVIORAL_LIVE_ENABLED`, one supervised `workflow_dispatch` run,
+  announce the `run-e2e` label.
+- **R4 — Accumulate the nightly baseline** (flake rate + cost per scenario;
+  the <5%-at-k=3 bar from §4.5 decides when checks can become required).
+
+### v2 — Coverage, selection, reporting
+
+- **Scenario coverage for remaining skills** (2–3 each; Appendix A is the
+  order of attack). Needs new check types in the engine as scenarios demand
+  them — next up: `dr_traces_received` (external-agent-monitoring),
+  `dr_use_case_exists`, `file_matches`. A fast every-PR scenario
+  (predictions against a **pre-provisioned long-lived deployment** in the
+  test org) removes AutoML from the loop.
+- **Dependency manifest + PR-scoped selection**: changed-files → skills
+  mapping (path prefix), `skill_deps.yaml` for chained journeys, and
+  scenario-edit → "run that scenario". Until this lands, every labeled run
+  executes all journeys — acceptable at current scenario count, the reason
+  scenario additions are CODEOWNERS-gated.
+- **PR comment reports** (v1 is job-summary only): per-scenario pass@k,
+  Δ vs. main, Δ vs. no-skill, efficiency deltas, artifact links.
+- **Sandbox hardening**: `DockerSandbox` (network-egress allowlist) and the
+  CI-parity image with a pre-warmed OpenCode home — build only if the
+  cold-start stall seen once in the spikes recurs on runners.
+- **Parallel throughput**: `opencode serve` + `--attach` per-run sessions if
+  sequential k=3 cells become the wall-clock bottleneck.
+- **Packaging-fidelity condition** (spike S8): install skills via the real
+  npm plugin (`"plugin": ["file:<repo>"]`) instead of the byte-identical
+  copy, as an occasional packaging test.
+
+### v3 — Judging, gating, second driver
+
+- **Trajectory judge**: rubric-driven soft scoring of *process* quality
+  (`rubric` + `common_pitfalls` are already parsed, stored, and waiting);
+  cross-model generator ≠ judge; extends `ScoreCard` — the six
+  hardcoded-dimension sites in the engine are the known blast radius.
+- **Second driver — Claude Code** (`claude -p --output-format stream-json`)
+  behind the existing `AgentDriver` protocol; needs an Anthropic API
+  credential path for CI, which is why OpenCode went first.
+- **Baseline-regression gating**: store per-(skill, scenario, driver)
+  baselines (nightly artifacts or a committed baselines file), gate on
+  regression vs. baseline rather than absolute thresholds, promote scenarios
+  to required as their flake rate clears the bar. Includes an agent-version
+  canary (nightly `latest` vs. pin).
+- **Cost accounting**: the LLM Gateway reports `cost: 0` in OpenCode's
+  stream — derive $ from token counts + a price table so nightly cost
+  tracking is real.
+
+### v4 — Optimization advisor (§9; unchanged, distant)
+
+Failing trajectories → judge critique → proposed SKILL.md diffs as draft PRs
+with evidence; held-out scenario rotation. Everything it needs (per-run JSON,
+transcripts, pass@k / trigger-rate metrics) is already being archived.
+
+### Known loose ends (small, unscheduled)
+
+- Nested sub-skill trigger naming: `skills_used` records whatever name the
+  `skill` tool reports — verify agent-assist sub-skills surface distinctly
+  (locks the trajectory-schema contract from amendment note; spike-level).
+- `dr_predictions_returned --verify_server` is best-effort corroboration
+  only; revisit if workspace-CSV assertions ever prove spoofable.
+- Spike S7 leftovers: fresh-deployment `service_health` semantics are
+  handled permissively (`unknown` passes); deployment deletion needed no
+  deactivation in the live run — formalize both once the test org exists.
+- `dr-agent eval report` regenerates behavioral markdown from saved JSON;
+  a small trajectory-diff helper (compare two runs' tool-call sequences)
+  would speed manual triage.
 
 ---
 
