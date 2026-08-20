@@ -454,12 +454,24 @@ Items are ordered roughly by dependency, not size.
 
 ### v2 — Coverage, selection, reporting
 
-- **Scenario coverage for remaining skills** (2–3 each; Appendix A is the
-  order of attack). Needs new check types in the engine as scenarios demand
-  them — next up: `dr_traces_received` (external-agent-monitoring),
-  `dr_use_case_exists`, `file_matches`. A fast every-PR scenario
-  (predictions against a **pre-provisioned long-lived deployment** in the
-  test org) removes AutoML from the loop.
+- **Scenario coverage for remaining skills** — ✅ first wave done
+  (2026-08-20): all five README user journeys have live-verified
+  single-skill scenarios under `tests/behavioral/scenarios/<skill>/`
+  (training-start-automl, predictions-template, feature-impact-report,
+  monitoring-drift-report, external-agent-otel). The check types this
+  demanded all landed in the engine: `dr_use_case_exists`, `file_matches`,
+  `dr_traces_received` (read side verified:
+  `GET otel/experiment_container/<use_case_id>/traces/`), plus
+  `dr_project_exists` stage/deadline params so "autopilot started" is
+  checkable without waiting for AutoML. The fast every-PR predictions
+  scenario exists via **pre-provisioned `bfix-` fixture resources**
+  (`tests/behavioral/fixtures/provision_fixtures.py`) injected through the
+  engine's `requires_env`/`{env:VAR}` mechanism; the engine also gained a
+  `skill_triggered_expected` metric after the feature-impact spike showed
+  `datarobot-model-explainability` organically claiming the journey.
+  Remaining: 2–3 scenarios per skill (each skill has 1), Appendix A items
+  4 (setup & recovery) and 5 (SHAP explainability), and scenarios for the
+  skills outside the README's five journeys.
 - **Dependency manifest + PR-scoped selection**: changed-files → skills
   mapping (path prefix), `skill_deps.yaml` for chained journeys, and
   scenario-edit → "run that scenario". Until this lands, every labeled run
