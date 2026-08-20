@@ -1,0 +1,40 @@
+---
+scenarios:
+  - id: monitoring-drift-report
+    kind: behavioral
+    name: "Model monitoring: check data drift for a deployment"
+    difficulty: medium
+    skills_under_test:
+      - datarobot-model-monitoring
+    requires_env:
+      - BEHAVIORAL_FIXTURE_DEPLOYMENT_ID
+    prompt: |
+      Check how our DataRobot deployment
+      {env:BEHAVIORAL_FIXTURE_DEPLOYMENT_ID} is doing. Pull its service stats
+      and data drift — both feature drift and target drift — for the last
+      week, and write what you find to ./drift_report.md. Include the
+      prediction volume, and call out any features that have drifted (or say
+      clearly that none have).
+    success_checks:
+      - type: file_exists
+        path: drift_report.md
+        min_bytes: 100
+      - type: file_matches
+        path: drift_report.md
+        pattern: "(?i)(feature drift|target drift)"
+      - type: file_matches
+        path: drift_report.md
+        pattern: "(?i)(tenure_months|contract_type|monthly_charges|prediction)"
+    rubric: |
+      Process quality only — pass/fail comes from success_checks. Penalize:
+      inventing drift numbers when the API returns no data; trying to
+      configure alerts or notifications (no such API exists); hallucinated SDK
+      methods followed by retries.
+    common_pitfalls:
+      - Fabricating drift scores when the API returns empty results
+      - Attempting to set up alert rules the SDK has no API for
+      - Ignoring service stats when the user asked for prediction volume
+      - Crashing on deployment.get_target_drift() — the SDK raises a trafaret
+        DataError (segment_value is required) on unsegmented deployments; a
+        good trajectory recovers via the raw API or reports the gap honestly
+    timeout_minutes: 15
