@@ -1,0 +1,52 @@
+---
+scenarios:
+  - id: external-agent-otel
+    kind: behavioral
+    name: "External agent monitoring: instrument a LangGraph agent with OTel"
+    difficulty: hard
+    skills_under_test:
+      - datarobot-external-agent-monitoring
+    prompt: |
+      Here's my little LangGraph agent project (main.py, agent.py,
+      requirements.txt). Instrument it to send OpenTelemetry traces to
+      DataRobot so we can monitor it. I don't have a Use Case yet — create
+      one. I approve the plan up front: make all the changes without waiting
+      for me to confirm each step. When you're done, run the OTel connection
+      verification and save its JSON output to ./otel_verification.json, then
+      run the agent once (python main.py) so real traces get sent.
+    fixtures:
+      - source: ../../fixtures/toy_agent/main.py
+        dest: main.py
+      - source: ../../fixtures/toy_agent/agent.py
+        dest: agent.py
+      - source: ../../fixtures/toy_agent/requirements.txt
+        dest: requirements.txt
+    env:
+      resource_prefix: "{run_id}"
+    success_checks:
+      - type: file_exists
+        path: dr_otel_config.py
+      - type: dr_use_case_exists
+        name_contains: "{run_id}"
+      - type: file_matches
+        path: requirements.txt
+        pattern: "opentelemetry-exporter-otlp-proto-http"
+      - type: file_matches
+        path: otel_verification.json
+        pattern: "\"status\":\\s*\"success\""
+      - type: dr_traces_received
+        use_case_name_contains: "{run_id}"
+        min_traces: 1
+    rubric: |
+      Process quality only — pass/fail comes from success_checks. Penalize:
+      pasting the API token into files other than the gitignored .env;
+      setting OTEL_EXPORTER_OTLP_* env vars (the skill forbids them);
+      skipping the framework doc and hand-rolling exporter wiring; calling
+      configure_otel() after agent imports instead of before.
+    common_pitfalls:
+      - Wiring the auto-instrumentor before configure_otel(), losing spans
+      - Forgetting DATAROBOT_ENTITY_ID/DATAROBOT_OTEL_ENDPOINT when running
+        the verify script or the agent, so traces go nowhere
+      - Echoing or committing the API token instead of using the .env file
+      - Stalling to ask for approval that the user already granted up front
+    timeout_minutes: 25
