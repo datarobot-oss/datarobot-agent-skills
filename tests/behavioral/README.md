@@ -18,7 +18,9 @@ fixtures. Design doc: [docs/proposals/skill-behavioral-testing.md](../../docs/pr
 tests/behavioral/
   journeys/            # multi-skill user journeys (2+ skills_under_test)
   scenarios/<skill>/   # single-skill scenarios, one directory per skill name
-  fixtures/            # committed CSVs + the seeded generator that made them
+  fixtures/            # committed CSVs, the toy_agent/ project, the seeded
+                       # generator, and provision_fixtures.py (long-lived
+                       # DataRobot fixture resources)
 ```
 
 Scenarios live here — **never under `skills/`** — because everything in
@@ -43,6 +45,8 @@ scenarios:
     env:                            # injected into the agent's environment
       resource_prefix: "{run_id}"   # ALSO appends a prompt epilogue telling the
                                     # agent to prefix every DataRobot resource name
+    requires_env:                   # host env vars holding pre-provisioned
+      - BEHAVIORAL_FIXTURE_DEPLOYMENT_ID   # fixture-resource ids (see below)
     success_checks:                 # programmatic, authoritative pass/fail
       - type: dr_project_exists
         name_contains: "{run_id}"
@@ -57,12 +61,47 @@ scenarios:
 | Type | Params | Asserts |
 |---|---|---|
 | `file_exists` | `path` (workspace-relative, glob ok), `min_bytes` | a file the agent was asked to produce exists |
-| `dr_project_exists` | `name_contains` | a DataRobot project matching the run prefix exists |
+| `file_matches` | `path` (glob ok), `pattern` (regex on raw text), `ignorecase`, `min_count`, `max_bytes` | a produced file's *content* — works on non-CSV output and `#`-commented CSVs |
+| `dr_project_exists` | `name_contains`, `stage` (e.g. `modeling` = autopilot started), `deadline_seconds` + `poll_seconds` (poll for state still settling) | a DataRobot project matching the run prefix exists (optionally at a lifecycle stage) |
+| `dr_use_case_exists` | `name_contains` | a Use Case matching the run prefix exists (the Use-Case-first flow) |
 | `dr_deployment_healthy` | `name_contains` | a matching deployment exists, has a model, isn't `failing` |
 | `dr_predictions_returned` | `path`, `min_rows`, `prediction_column`, `verify_server` | a predictions CSV with enough rows and a prediction column |
+| `dr_traces_received` | `use_case_name_contains`, `min_traces`, `deadline_seconds`, `poll_seconds` | OTel traces arrived under the Use Case (polls; ingestion is async) |
 
 New check types are added in the engine
 (`dr_agents_tester/eval/checks/`) — keep scenario YAML small.
+
+### Pre-provisioned fixture resources (`requires_env` / `{env:VAR}`)
+
+Read-only journeys (a prediction template, feature impact, drift) assert
+against **long-lived DataRobot resources** instead of paying for AutoML in
+every run. `fixtures/provision_fixtures.py` builds them once per account —
+Use Case → dataset → Quick-AutoML project → recommended model with Feature
+Impact computed → deployment with drift tracking and scored holdout traffic —
+and prints their ids:
+
+```bash
+task test:behavioral:fixtures        # provision (idempotent) and print ids
+task test:behavioral:fixtures:check  # validate-only (CI preflight)
+```
+
+Export the printed `BEHAVIORAL_FIXTURE_{PROJECT,MODEL,DEPLOYMENT}_ID` lines
+(e.g. append them to your `.env`). Scenarios declare what they need in
+`requires_env` and reference the ids as `{env:VAR}` tokens in the prompt,
+`env` values, or check params. Guard rails, all fail-loud:
+
+- Every `{env:VAR}` reference must be declared in `requires_env`, and names
+  must start with `BEHAVIORAL_` or `DRAT_` — a scenario can never template
+  credentials into a prompt.
+- A missing/empty declared variable aborts the whole invocation **before**
+  any agent tokens are spent. Drop the scenario directory from `--scenarios`
+  to skip fixture-dependent scenarios instead.
+
+Everything the script creates is named with the **`bfix-` prefix** —
+deliberately outside the `drat-` family that per-run teardown and
+`dr-agent eval sweep` match, so cleanup can never delete the fixtures.
+Rebuild them with `--recreate`; rescore drift traffic with
+`--refresh-traffic` (nightly CI does this so drift windows stay populated).
 
 ## Running locally
 
@@ -72,8 +111,9 @@ account** and tear them down afterwards. You need `DATAROBOT_API_TOKEN` /
 (`npm install -g opencode-ai@<pinned>` — the run tells you the pin on mismatch).
 
 ```bash
-task test:behavioral            # golden journey, your working-tree skills, k=1
-task test:behavioral:baseline   # same scenario with NO skills installed
+task test:behavioral:fixtures   # one-time: provision bfix-* fixture resources
+task test:behavioral            # all scenarios, your working-tree skills, k=1
+task test:behavioral:baseline   # same scenarios with NO skills installed
 task test:behavioral:clean      # delete any leaked drat-* resources now
 ```
 

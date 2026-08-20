@@ -15,6 +15,14 @@
 # the `behavioral-live` environment, and its secrets exist:
 #   BEHAVIORAL_DATAROBOT_API_TOKEN  (service-account token, test org only)
 #   BEHAVIORAL_DATAROBOT_ENDPOINT   (e.g. https://app.datarobot.com/api/v2)
+#
+# FIXTURE-DEPENDENT SCENARIOS: tests/behavioral/scenarios/ includes scenarios
+# that assert against long-lived bfix-* fixture resources (see
+# tests/behavioral/fixtures/provision_fixtures.py). They run only when the
+# `behavioral-live` environment defines the id VARIABLES (ids are not
+# secrets):
+#   BEHAVIORAL_FIXTURE_PROJECT_ID / _MODEL_ID / _DEPLOYMENT_ID
+# Until then, only tests/behavioral/journeys/ runs.
 name: Behavioral E2E
 
 on:
@@ -107,6 +115,9 @@ jobs:
     env:
       DATAROBOT_API_TOKEN: ${{ secrets.BEHAVIORAL_DATAROBOT_API_TOKEN }}
       DATAROBOT_ENDPOINT: ${{ secrets.BEHAVIORAL_DATAROBOT_ENDPOINT }}
+      BEHAVIORAL_FIXTURE_PROJECT_ID: ${{ vars.BEHAVIORAL_FIXTURE_PROJECT_ID }}
+      BEHAVIORAL_FIXTURE_MODEL_ID: ${{ vars.BEHAVIORAL_FIXTURE_MODEL_ID }}
+      BEHAVIORAL_FIXTURE_DEPLOYMENT_ID: ${{ vars.BEHAVIORAL_FIXTURE_DEPLOYMENT_ID }}
     steps:
       # PR head supplies skill_pr AND the scenarios/fixtures under test; on
       # schedule/dispatch this is just the default branch.
@@ -131,11 +142,22 @@ jobs:
         working-directory: pr
         run: uv sync --group behavioral
 
+      - name: Verify fixture resources (preflight)
+        if: env.BEHAVIORAL_FIXTURE_DEPLOYMENT_ID != ''
+        working-directory: pr
+        run: uv run --group behavioral python tests/behavioral/fixtures/provision_fixtures.py --check
+
       - name: Run behavioral evaluation (${{ matrix.condition }})
         working-directory: pr
         run: |
+          SCENARIOS="--scenarios tests/behavioral/journeys"
+          # Fixture-dependent per-skill scenarios only when the ids exist;
+          # with ids set but resources broken, the engine fails loudly.
+          if [ -n "$BEHAVIORAL_FIXTURE_DEPLOYMENT_ID" ]; then
+            SCENARIOS="$SCENARIOS --scenarios tests/behavioral/scenarios"
+          fi
           uv run --group behavioral dr-agent eval run-behavioral \
-            --scenarios tests/behavioral/journeys \
+            $SCENARIOS \
             --skills-main ../main/skills \
             --skills-pr ./skills \
             --conditions "${{ matrix.condition }}" \
@@ -192,12 +214,19 @@ jobs:
     env:
       DATAROBOT_API_TOKEN: ${{ secrets.BEHAVIORAL_DATAROBOT_API_TOKEN }}
       DATAROBOT_ENDPOINT: ${{ secrets.BEHAVIORAL_DATAROBOT_ENDPOINT }}
+      BEHAVIORAL_FIXTURE_DEPLOYMENT_ID: ${{ vars.BEHAVIORAL_FIXTURE_DEPLOYMENT_ID }}
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+      # The drat- prefix can never match the long-lived bfix-* fixtures.
       - name: Sweep leaked resources older than 24h
         run: |
           uv sync --group behavioral
           uv run --group behavioral dr-agent eval sweep \
             --prefix drat- --older-than-hours 24 --execute
+      # Drift windows age out; keep the fixture deployment's traffic fresh so
+      # the monitoring scenario always has drift data to report.
+      - name: Refresh fixture drift traffic
+        if: env.BEHAVIORAL_FIXTURE_DEPLOYMENT_ID != ''
+        run: uv run --group behavioral python tests/behavioral/fixtures/provision_fixtures.py --refresh-traffic
