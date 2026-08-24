@@ -292,6 +292,10 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
 - Implement by adapting the template code — do not write from scratch
 - Modify files only inside the current directory and its subdirectories
 - Do not view `.env` files (`.env.template` files are OK)
+- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.md`:
+  1. Choose a `SCREAMING_SNAKE_CASE` env var name (e.g. `PERPLEXITY_API_KEY`).
+  2. **Append** `VAR_NAME=` to `<target_dir>/.env` without reading the file.
+  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.md`, or committed code.
 - Do not add code comments unless asked
 - Do not mock tool implementations unless they would be complex to implement
 - For tasks with 3+ steps, use the TodoWrite tool to manage your work

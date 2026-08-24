@@ -85,11 +85,12 @@ Track these for the conversation:
 
 ### `.env` placement
 
-Project credentials and config live **only** at `<target_dir>/.env` — never in cwd when `<target_dir>` is a subdirectory.
+Project credentials and config live **only** at `<target_dir>/.env` — never in cwd when `<target_dir>` is a subdirectory. This includes DataRobot CLI credentials, LLM config, and **tool/service secrets** (API keys, bearer tokens, OAuth client secrets). Pulumi reads these from the environment at deploy time (`os.environ`); if a secret is missing from `.env`, the corresponding DataRobot credential and runtime parameter are not created.
 
 - Complete [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) before any step that needs credentials or creates a `.env` file (model selection, dress rehearsal, template setup).
 - Always pass `--target-dir <target_dir>` to helper scripts that read or create `.env` (`list_llm_models.py`, `rehearsal.py`, `setup_template.py`).
 - Do **not** run `dr dotenv setup` manually in cwd — use helper scripts with `--target-dir <target_dir>` so `.env` is created in the project root.
+- Never put secret values in `agent_spec.md` or source code — only env var **names** belong in infra; values stay in `.env`.
 
 ### Dependency check session rule
 
@@ -234,6 +235,10 @@ Read and follow [agent-assist-build/references/pre-coding-checklist.md](agent-as
 - Implement by adapting the template code — do not write from scratch
 - Modify files only inside `<target_dir>` and its subdirectories
 - Do not view `.env` files (`.env.template` files are OK)
+- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.md`:
+  1. Choose a `SCREAMING_SNAKE_CASE` env var name (e.g. `PERPLEXITY_API_KEY`).
+  2. **Append** `VAR_NAME=` to `<target_dir>/.env` without reading the file.
+  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.md`, or committed code.
 - Do not add code comments unless asked
 - Do not mock tool implementations unless they would be complex to implement
 - For tasks with 3+ steps, use the TodoWrite tool to manage your work
