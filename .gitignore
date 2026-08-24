@@ -52,4 +52,5 @@ Thumbs.db
 # Swarm simulation reports
 eval_report.md
 evaluation_criteria.md
+.datarobot/swarm/
 

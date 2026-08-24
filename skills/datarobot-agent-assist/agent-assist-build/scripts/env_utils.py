@@ -71,7 +71,12 @@ def ensure_env_file(env_file: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        print(f"No .env file found. Running 'dr dotenv setup --yes' in {target_dir}...")
+        # stderr, not stdout: callers such as list_llm_models.py --json use stdout as a
+        # data channel, and a progress line there makes the JSON unparseable.
+        print(
+            f"No .env file found. Running 'dr dotenv setup --yes' in {target_dir}...",
+            file=sys.stderr,
+        )
         result = subprocess.run(
             ["dr", "dotenv", "setup", "--yes", "--output", "."],
             cwd=target_dir,
@@ -79,7 +84,7 @@ def ensure_env_file(env_file: Path) -> None:
             capture_output=True,
             text=True,
         )
-        print(result.stdout)
+        print(result.stdout, file=sys.stderr)
     except subprocess.CalledProcessError as e:
         print(f"Warning: Failed to run 'dr dotenv setup': {e.stderr}", file=sys.stderr)
         print("Falling back to environment variables...", file=sys.stderr)

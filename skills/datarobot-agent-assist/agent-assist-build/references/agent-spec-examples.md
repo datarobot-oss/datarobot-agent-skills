@@ -5,7 +5,7 @@ Field definitions and structure: [agent-spec-schema.md](agent-spec-schema.md).
 ## Example 1: Weather Agent (Simple)
 
 ```yaml
-model: anthropic/claude-3-5-haiku-20241022
+model: datarobot/anthropic/claude-haiku-4-5-20251001
 system_prompt: You are a helpful weather assistant that provides current weather conditions
   for any location worldwide. When a user asks about weather, search for current weather
   information and present the results in a clear, conversational way. Focus on current
@@ -34,7 +34,7 @@ frontend:
 ## Example 2: Multi-tool Research Agent (with Auth)
 
 ```yaml
-model: anthropic/claude-sonnet-4-5-20250929
+model: datarobot/anthropic/claude-sonnet-4-5-20250929
 system_prompt: You are a research assistant that helps users find and summarize
   information from internal documents and the web. Always cite your sources.
 tools:
@@ -71,7 +71,7 @@ frontend:
 ## Example 3: Multi-page Dashboard Agent
 
 ```yaml
-model: google/gemini-2.5-pro-preview-05-06
+model: datarobot/vertex_ai/gemini-2.5-pro
 system_prompt: You are a sales analytics assistant. Help users understand their
   pipeline, forecast revenue, and identify at-risk deals. Always ground your
   answers in the data returned by tools.

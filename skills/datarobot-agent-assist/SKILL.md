@@ -160,9 +160,7 @@ When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design
 
   **CRITICAL**: Always pass `--target-dir <target_dir>`. In case the script fails due to any reason, do **not** proceed. Instead, return the error message to the user and ask how they want to proceed.
 
-- Recommend a `gpt-5`, `claude-4-5`, or `gemini-2.5` model from the list unless the user specifies cost or other constraints.
-- If none of those preferred families appear in the catalog, pick the highest-capability available model by name — prefer ones containing `large`, `pro`, `opus`, or `sonnet` over `mini`, `haiku`, or `flash`.
-- Only display the full model catalog when the user **explicitly** asks to browse models.
+- Read and follow [llm-selection.md](agent-assist-build/references/llm-selection.md) to recommend from the two sources (`gateway` and `deployed`) and record the choice.
 - If the user's desired model is unavailable, suggest starting with an available one and updating after implementation.
 
 ### Frontend Check

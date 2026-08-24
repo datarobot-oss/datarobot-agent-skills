@@ -22,6 +22,7 @@ import contextlib
 import functools
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -40,6 +41,8 @@ from list_llm_models import (
     SOURCE_DEPLOYED,
     SOURCE_GATEWAY,
     fetch_llm_models,
+    is_deployed_llm_model,
+    is_deployment_id,
     normalize_gateway_model,
 )
 
@@ -148,6 +151,39 @@ def _model_slug(model: str) -> str:
     return slug.replace(".", "-").replace("_", "-")
 
 
+# Anchored to the start of a line so a commented-out key does not match, and
+# tolerant of the fence the spec is usually written inside. The trailing comment
+# is optional but has to be allowed for: the schema template ships the field with
+# one, so filling the id in place keeps it.
+SPEC_DEPLOYMENT_ID_RE = re.compile(
+    r"^\s*llm_deployment_id\s*:\s*[\"']?([A-Za-z0-9_-]+)[\"']?\s*(?:#.*)?$",
+    re.MULTILINE,
+)
+
+
+def _spec_deployment_id(spec_text: str) -> str:
+    """Read `llm_deployment_id` straight out of the spec file.
+
+    Deliberately not taken from the model's extraction. It is an opaque id, the
+    kind of value a tool call is most likely to drop or garble, and the schema
+    cannot make it mandatory without inviting a fabricated id on a gateway spec.
+    Either way the rehearsal would silently run against a deployment the user did
+    not choose. Reading the literal keeps it exact, and a spec that omits it falls
+    through to the announced-substitution path.
+    """
+    match = SPEC_DEPLOYMENT_ID_RE.search(spec_text)
+    if not match:
+        return ""
+
+    # Require the id shape rather than trusting whatever followed the colon. An
+    # unquoted YAML scalar like `null`, `true` or `no` is otherwise read as an id,
+    # and cmd_init prefers the id over `model`, so a gateway spec would resolve to
+    # a deployment. Anything unrecognized falls through to `model`.
+    value = match.group(1)
+
+    return value if is_deployment_id(value) else ""
+
+
 @dataclass(frozen=True)
 class ResolvedModel:
     source: str
@@ -221,10 +257,36 @@ class ModelCatalog:
         self._by_id = {m["id"]: m for m in self._entries}
         self._by_name_lower: dict[str, LLMModel] = {}
         self._by_api_model_lower: dict[str, LLMModel] = {}
+        # A key that two entries share stops identifying either one. Deployment
+        # labels are user-authored and can repeat, so collapse those keys instead of
+        # letting the last entry indexed win and be reported as an exact match.
+        ambiguous_names: dict[str, set[str]] = {}
         for entry in self._entries:
-            self._by_name_lower[entry["name"].lower()] = entry
-            self._by_api_model_lower[entry["api_model"].lower()] = entry
+            name_key = entry["name"].lower()
+            claimed = self._by_name_lower.get(name_key)
+            if claimed is not None and claimed["id"] != entry["id"]:
+                ambiguous_names.setdefault(name_key, {claimed["source"]}).add(
+                    entry["source"]
+                )
+            else:
+                self._by_name_lower[name_key] = entry
+            # Every deployed entry shares one api_model placeholder, so it names the
+            # source rather than a deployment and can never be an exact match. A
+            # deployment is addressed by its id (see _by_id) or announced as a
+            # substitution, never silently guessed.
+            if entry["source"] != SOURCE_DEPLOYED:
+                self._by_api_model_lower[entry["api_model"].lower()] = entry
             self._by_id[entry["id"]] = entry
+        for name_key in ambiguous_names:
+            del self._by_name_lower[name_key]
+        # A collapsed key still says which pool it came from when every entry that
+        # claimed it shared one source. Without this the fallback drops to the
+        # whole-catalog pool, which is gateway-first, so an ambiguity purely among
+        # deployments would substitute a gateway model.
+        self._ambiguous_name_source: dict[str, str | None] = {
+            key: next(iter(sources)) if len(sources) == 1 else None
+            for key, sources in ambiguous_names.items()
+        }
 
     def _find_exact(self, requested: str) -> LLMModel | None:
         if requested in self._by_id:
@@ -240,6 +302,11 @@ class ModelCatalog:
         return None
 
     def _gateway_slug_matches(self, requested: str) -> list[LLMModel]:
+        # Strip the routing prefix before reading a provider off the front. A spec
+        # carries the `datarobot/`-prefixed form, so without this every request
+        # looks like provider "datarobot", matching no entry, and the cross-provider
+        # guard below silently stops applying.
+        requested = normalize_gateway_model(requested.strip())
         req_slug = _model_slug(requested)
         if not req_slug:
             return []
@@ -309,6 +376,13 @@ class ModelCatalog:
         inferred_source = prefer_source
         if inferred_source is None and exact is not None:
             inferred_source = exact["source"]
+        if inferred_source is None:
+            inferred_source = self._ambiguous_name_source.get(requested.lower())
+        if inferred_source is None and is_deployed_llm_model(requested):
+            # The spec named the deployed-LLM placeholder without an
+            # llm_deployment_id to pin it, so substitute a deployment over a gateway
+            # model. Reported as a substitution, since which deployment is a guess.
+            inferred_source = SOURCE_DEPLOYED
 
         return (
             self._fallback(
@@ -746,9 +820,19 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
         sys.exit(1)
     spec = json.loads(tool_calls[0]["function"]["arguments"])
     requested_model = str(spec["model"]).strip()
-    agent_model, model_substituted = catalog.pick_available(requested_model)
+    # A deployed LLM is identified by its deployment id, not by `model`: every
+    # deployment shares one placeholder there. Resolving on the id keeps the
+    # rehearsal on the deployment the spec actually chose. Read from the spec text
+    # rather than the extraction, see _spec_deployment_id.
+    requested_deployment_id = _spec_deployment_id(content)
+    if requested_deployment_id:
+        agent_model, model_substituted = catalog.pick_available(
+            requested_deployment_id, prefer_source=SOURCE_DEPLOYED
+        )
+    else:
+        agent_model, model_substituted = catalog.pick_available(requested_model)
     if model_substituted:
-        print_model_chosen(requested_model, agent_model)
+        print_model_chosen(requested_deployment_id or requested_model, agent_model)
     system_prompt = spec["system_prompt"]
     tools = spec.get("tools", [])
     examples = spec.get("examples", [])

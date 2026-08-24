@@ -3,7 +3,8 @@
 Write specs in YAML to `<target_dir>/agent_spec.md`. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "anthropic/claude-sonnet-4-5-20250929"   # DataRobot LLM Gateway model ID
+model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
+llm_deployment_id: ""                       # required only for a DataRobot-deployed LLM
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name
@@ -26,6 +27,8 @@ frontend:
     - "Analytics - shows search history and top topics"
   requirements: "(optional additional UI requirements)"
 ```
+
+`llm_deployment_id` selects an existing DataRobot text-generation deployment instead of an LLM Gateway model. Set it only when `model` is the `datarobot-deployed-llm` placeholder, which every deployment shares — the id is what identifies which one. Both fields are needed: pre-coding passes them to `setup_template.py` together, and the dress rehearsal resolves the deployment from the id.
 
 When tools require external service auth, note that credentials must be configured as **runtime parameters** in the infrastructure code (see `AGENTS.md` for the pattern).
 

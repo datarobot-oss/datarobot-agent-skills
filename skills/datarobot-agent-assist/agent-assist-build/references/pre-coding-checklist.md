@@ -53,7 +53,7 @@ Run this checklist when the user enters **[2. Coding an AI Agent](../SKILL.md#2-
 
    **Validation procedure (required — do not skip):**
 
-   1. After reading `<target_dir>/agent_spec.md`, check each required field in order: `system_prompt`, `model`, `frontend.type`, `tools` (key present).
+   1. After reading `<target_dir>/agent_spec.md`, check each required field in order: `system_prompt`, `model`, `frontend.type`, `tools` (key present). If `model` is the `datarobot-deployed-llm` placeholder, `llm_deployment_id` is required too.
    2. **Tell the user the result** in your next message — pass or fail, and list any missing fields (e.g. *"Spec validation failed: missing `model`."* or *"Spec validation passed — all required fields are present."*).
    3. **If all fields pass** → continue to [Template setup](#template-setup) step 3.
    4. **If any field fails** → follow **[Spec issues](#spec-issues)** below. **Stop** — do not classify the workspace, run `ls`, clone, or start template setup until the spec is valid or the user has resolved the issue.
@@ -163,7 +163,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
    Invalidate `<dependency_check_passed>` after this step.
 
-9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design).
+9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design). If the spec also carries `llm_deployment_id`, pass it as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it.
 
    Invalidate `<dependency_check_passed>` after this step.
 

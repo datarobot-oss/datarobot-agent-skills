@@ -11,6 +11,28 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-08-13
+
+### Fixed
+- `datarobot-agent-assist`: `LLM_DEFAULT_MODEL` now gets the `datarobot/`-prefixed `llm_default_model` value, not the catalog `llmId` the gateway 404s on. `setup_template.py` refuses an `llmId`; `api_model` stays unprefixed for the on-the-wire rehearsal.
+- `datarobot-agent-assist`: The model table leads with `LLM_DEFAULT_MODEL` (not the unusable `llmId`) and gives the deployment id its own column, shown only when a deployed entry is present.
+- `datarobot-agent-assist`: The dress rehearsal strips the `datarobot/` prefix before reading a provider, so a prefixed spec keeps its cross-provider guard instead of matching nothing and rehearsing against an arbitrary catalog pick.
+- `datarobot-agent-assist`: `setup_template.py` verifies the model with a direct catalog API call (not `dr llm-gateway list`, which can fall back to a stored profile and answer about a different instance), rejects characters that would break the `.env` line, and treats a disabled gateway as a cue to pick a deployed LLM.
+
+## [1.5.0] - 2026-08-10
+
+### Added
+- `datarobot-agent-assist`: Make a DataRobot-deployed LLM selectable end to end. `agent_spec.md` gains an optional `llm_deployment_id`, and `setup_template.py` gains `--llm-deployment-id`, writing `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, and `USE_DATAROBOT_LLM_GATEWAY=0` so the template routes to the deployment instead of the LLM Gateway. Model selection recommends a deployed LLM when the gateway is empty or disabled, which is the normal shape of an on-prem install.
+
+### Fixed
+- `datarobot-agent-assist`: DataRobot-deployed LLMs are listed on every `dr` version the agent template accepts. `dr llm-gateway list` only reports them from v0.2.79 while the template's minimum is 0.2.77, and a non-empty gateway was enough to skip the direct-API fallback, so the deployed source silently did not exist on an older CLI.
+- `datarobot-agent-assist`: `setup_template.py` refuses the shared `datarobot-deployed-llm` placeholder without a deployment id, instead of leaving the template on its gateway configuration to fail later at `pulumi up` with `Model 'datarobot-deployed-llm' not found in catalog`. The placeholder is matched case-insensitively, since the value comes from LLM-authored spec text.
+- `datarobot-agent-assist`: The dress rehearsal resolves a deployed LLM through the spec's `llm_deployment_id`. Resolving on `model` alone matched whichever deployment the catalog indexed last and reported it as an exact match, so a spec could silently rehearse against a different deployment than the one selected.
+- `datarobot-agent-assist`: `list_llm_models.py` closes stdin on the `dr` subprocess, so a credential prompt fails immediately rather than waiting out the timeout, and it names the requested instance alongside the CLI's log lines, making visible the case where the CLI ignored the passed credentials and listed a different instance.
+- `datarobot-agent-assist`: Deployment labels are collapsed to one pipe-free line when rendering the model table; an embedded newline in user-authored label text split a row apart.
+- `datarobot-agent-assist`: `SKILL.md` documented `list_llm_models.py` without its required `--target-dir`, and its Helper Scripts section referenced an undefined `<scripts_dir>` placeholder instead of the `<skill_scripts_dir>` the skill resolves. Both made the documented invocations dead instructions.
+- `datarobot-agent-assist`: `ensure_env_file` printed its progress line and the `dr dotenv setup` output to stdout, so `list_llm_models.py --json` produced unparseable output on a target directory with no `.env`. Both now go to stderr.
+
 ## [1.4.3] - 2026-08-05
 
 ### Changed

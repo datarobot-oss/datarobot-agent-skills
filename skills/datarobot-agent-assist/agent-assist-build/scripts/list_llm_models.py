@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,7 @@ class LLMModel(TypedDict):
     source: str
     provider: str
     api_model: str
+    llm_default_model: str
     deployment_id: str
     description: str
     context_size: int
@@ -51,6 +53,51 @@ def normalize_gateway_model(model: str) -> str:
     while model.startswith("datarobot/"):
         model = model[len("datarobot/") :]
     return model
+
+
+def ensure_datarobot_prefix(model: str) -> str:
+    """Return the model in the ``datarobot/`` form ``LLM_DEFAULT_MODEL`` takes.
+
+    Inverse of normalize_gateway_model, kept beside it deliberately: the two forms
+    are not interchangeable. The prefix is litellm routing metadata and belongs only
+    in ``.env``; the gateway's own REST endpoint answers 404 for a prefixed model,
+    which is why rehearsal.py puts the bare ``api_model`` on the wire.
+    """
+    return model if model.startswith("datarobot/") else f"datarobot/{model}"
+
+
+def is_deployed_llm_model(model: str) -> bool:
+    """Whether a model name is the shared DataRobot-deployed-LLM placeholder.
+
+    Every deployment reports this same name, so it identifies the deployed source
+    and never an individual deployment. Listed bare here while the template
+    canonicalizes to the ``datarobot/``-prefixed form, so both spellings match.
+    Shared with setup_template.py and rehearsal.py, which both branch on it.
+
+    Case-insensitive on purpose. The value reaches here from ``agent_spec.md`` and
+    from the rehearsal's spec extraction, both LLM-authored, so a capitalized
+    spelling is a normal input rather than a malformed one. Matching exactly would
+    let it past the guard in setup_template.py and into a late 'pulumi up' failure.
+    """
+    return normalize_gateway_model(model.strip().lower()) == DEPLOYED_LLM_MODEL
+
+
+# A DataRobot deployment id is a 24-character lowercase hex object id. Asserting
+# the shape rather than excluding known-bad values is what stops YAML scalars like
+# `null`, `true` or `no` from being read as ids, without needing a list of literals
+# that is always one entry short. Lowercase only, matching what the API emits: the
+# catalog is keyed on the id verbatim, so accepting a capitalized spelling here
+# would hand the lookup a key it can never find.
+DEPLOYMENT_ID_RE = re.compile(r"[0-9a-f]{24}")
+
+
+def is_deployment_id(value: str) -> bool:
+    """Whether a string is shaped like a DataRobot deployment id.
+
+    Shared by rehearsal.py, which falls through to an announced substitution when
+    this fails, and setup_template.py, which refuses outright.
+    """
+    return DEPLOYMENT_ID_RE.fullmatch(value.strip()) is not None
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -83,6 +130,7 @@ def _map_gateway_catalog_entry(entry: dict[str, object]) -> LLMModel | None:
         "source": SOURCE_GATEWAY,
         "provider": str(entry.get("provider") or "Unknown"),
         "api_model": api_model,
+        "llm_default_model": ensure_datarobot_prefix(api_model),
         "deployment_id": "",
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("contextSize")),
@@ -108,6 +156,7 @@ def _map_deployed_entry(entry: dict[str, object]) -> LLMModel | None:
         "source": SOURCE_DEPLOYED,
         "provider": "",
         "api_model": DEPLOYED_LLM_MODEL,
+        "llm_default_model": ensure_datarobot_prefix(DEPLOYED_LLM_MODEL),
         "deployment_id": deployment_id,
         "description": str(entry.get("description") or ""),
         "context_size": 0,
@@ -115,16 +164,27 @@ def _map_deployed_entry(entry: dict[str, object]) -> LLMModel | None:
     return mapped
 
 
-def _map_cli_entry(entry: dict[str, object]) -> LLMModel:
+def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
     source = str(entry.get("source") or SOURCE_GATEWAY)
     deployment_id = str(entry.get("deployment_id") or "")
     model_id = str(entry.get("id") or "")
     name = str(entry.get("name") or model_id)
     if source == SOURCE_DEPLOYED:
+        # A deployment is addressed only by its id, so an entry without one cannot be
+        # selected or routed to. Dropping it here keeps an unusable choice out of
+        # agent_spec.md, matching what the REST mappers already do.
+        if not deployment_id:
+            return None
+        # The two are the same value from the CLI. Falling back keeps the entry
+        # findable by id, which is what every lookup in rehearsal.py resolves on.
+        model_id = model_id or deployment_id
+        name = name or model_id
         api_model = DEPLOYED_LLM_MODEL
         provider = ""
     else:
         api_model = normalize_gateway_model(str(entry.get("model") or model_id))
+        if not api_model:
+            return None
         provider = str(entry.get("provider") or "Unknown")
     mapped: LLMModel = {
         "id": model_id,
@@ -132,6 +192,7 @@ def _map_cli_entry(entry: dict[str, object]) -> LLMModel:
         "source": source,
         "provider": provider,
         "api_model": api_model,
+        "llm_default_model": ensure_datarobot_prefix(api_model),
         "deployment_id": deployment_id,
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("context_size")),
@@ -206,6 +267,7 @@ def _fetch_llm_models_via_cli(
     env = os.environ.copy()
     env["DATAROBOT_ENDPOINT"] = endpoint
     env["DATAROBOT_API_TOKEN"] = api_token
+    env["DATAROBOT_CLI_NON_INTERACTIVE"] = "True"
     try:
         result = subprocess.run(
             ["dr", "llm-gateway", "list", "--output-format", "json"],
@@ -214,6 +276,10 @@ def _fetch_llm_models_via_cli(
             text=True,
             env=env,
             timeout=60,
+            # The CLI drops into an interactive login when it has no usable
+            # credentials. Closing stdin is what turns that into a fast failure
+            # rather than a wait for the timeout on an invisible prompt.
+            stdin=subprocess.DEVNULL,
         )
     except FileNotFoundError as e:
         raise RuntimeError("dr CLI not found") from e
@@ -222,6 +288,15 @@ def _fetch_llm_models_via_cli(
 
     warnings: list[str] = []
     if result.stderr.strip():
+        # Name the instance that was asked for. The CLI honors the credentials above
+        # only once they verify and otherwise falls back to its own stored profile,
+        # so a stale project .env yields a listing from a different DataRobot
+        # instance. Its log lines name the host it actually queried; pairing them
+        # with the requested host is what makes that mismatch visible.
+        warnings.append(
+            f"listing requested from {endpoint}. The CLI log lines below name the "
+            "instance actually queried"
+        )
         warnings.extend(
             line.strip() for line in result.stderr.splitlines() if line.strip()
         )
@@ -239,9 +314,14 @@ def _fetch_llm_models_via_cli(
     if not isinstance(llms, list):
         raise RuntimeError("Unexpected dr llm-gateway list JSON format")
 
-    return [
-        _map_cli_entry(entry) for entry in llms if isinstance(entry, dict)
-    ], warnings
+    models: list[LLMModel] = []
+    for entry in llms:
+        if not isinstance(entry, dict):
+            continue
+        mapped = _map_cli_entry(entry)
+        if mapped:
+            models.append(mapped)
+    return models, warnings
 
 
 def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
@@ -256,6 +336,16 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
         models, cli_warnings = _fetch_llm_models_via_cli(endpoint, api_token)
         warnings.extend(cli_warnings)
         if models:
+            if not any(m["source"] == SOURCE_DEPLOYED for m in models):
+                # `dr llm-gateway list` only reports deployments from v0.2.79, while
+                # the agent template still accepts 0.2.77. A non-empty gateway alone
+                # satisfies the branch above, so without this top-up a deployed LLM is
+                # invisible on a supported older CLI: the listing looks healthy and
+                # the deployed source silently does not exist.
+                try:
+                    models = models + _fetch_deployed_models_rest(endpoint, api_token)
+                except RuntimeError as e:
+                    warnings.append(f"could not list deployed LLMs: {e}")
             for warning in warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
             return models
@@ -287,36 +377,61 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
     return models
 
 
+def _cell(value: str) -> str:
+    """Collapse a value to one pipe-free line so it cannot break a table row.
+
+    A deployment's label is user-authored free text, so it can carry the newline
+    that would split its row apart and the pipe that would fake a column break.
+    Display only: the JSON output and the model lookups in rehearsal.py keep the
+    values the CLI actually reported.
+    """
+    return " ".join(value.split()).replace("|", "/")
+
+
 def format_as_table(models: list[LLMModel]) -> str:
-    """Format models as a readable table."""
+    """Format models as a readable table.
+
+    Leads with the value that goes into ``LLM_DEFAULT_MODEL`` rather than the
+    catalog's ``llmId``, which the gateway does not accept as a model.
+
+    The deployment id column appears only when a deployed entry is present; it is
+    empty for gateway models, and a column of blanks on the common all-gateway
+    listing is noise.
+    """
     if not models:
         return "No models available"
 
-    id_width = max(len(m["id"]) for m in models)
-    id_width = max(id_width, len("ID"))
-    name_width = max(len(m["name"]) for m in models)
-    name_width = max(name_width, len("Name"))
-    source_width = max(len(m["source"]) for m in models)
-    source_width = max(source_width, len("Source"))
-    provider_width = max(len(m["provider"] or "-") for m in models)
-    provider_width = max(provider_width, len("Provider"))
-    context_width = max(len(str(m["context_size"] or "-")) for m in models)
-    context_width = max(context_width, len("Context"))
+    show_deployment = any(m["source"] == SOURCE_DEPLOYED for m in models)
 
-    header = (
-        f"{'ID':<{id_width}} | {'Name':<{name_width}} | {'Source':<{source_width}} | "
-        f"{'Provider':<{provider_width}} | {'Context':>{context_width}}"
-    )
-    lines = [header, "-" * len(header)]
+    headers = ["LLM_DEFAULT_MODEL", "Name", "Source", "Provider", "Context"]
+    if show_deployment:
+        headers.insert(3, "Deployment ID")
+
+    rows: list[list[str]] = []
     for m in models:
-        provider = m["provider"] or "-"
-        context = str(m["context_size"]) if m["context_size"] > 0 else "-"
-        lines.append(
-            f"{m['id']:<{id_width}} | {m['name']:<{name_width}} | "
-            f"{m['source']:<{source_width}} | {provider:<{provider_width}} | "
-            f"{context:>{context_width}}"
+        row = [
+            _cell(m["llm_default_model"]),
+            _cell(m["name"]),
+            _cell(m["source"]),
+            _cell(m["provider"]) or "-",
+            str(m["context_size"]) if m["context_size"] > 0 else "-",
+        ]
+        if show_deployment:
+            row.insert(3, _cell(m["deployment_id"]) or "-")
+        rows.append(row)
+
+    widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
+
+    def render(cells: list[str]) -> str:
+        # Context is the only numeric column, so it is the only right-aligned one.
+        last = len(cells) - 1
+        return " | ".join(
+            cell.rjust(width) if i == last else cell.ljust(width)
+            for i, (cell, width) in enumerate(zip(cells, widths))
         )
-    return "\n".join(lines)
+
+    header = render(headers)
+    return "\n".join([header, "-" * len(header), *(render(row) for row in rows)])
 
 
 def main() -> int:

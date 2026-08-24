@@ -31,9 +31,12 @@ Canonical definition used by [Bootstrap step 2](pre-coding-checklist.md#bootstra
 | Field | Requirement |
 |-------|-------------|
 | `model` | Set (non-empty) |
+| `llm_deployment_id` | Set **only if** `model` is the `datarobot-deployed-llm` placeholder; otherwise absent or empty |
 | `system_prompt` | Non-empty |
 | `frontend.type` | Set |
 | `tools` | Key **present** in YAML — either one or more tool entries, or `tools: []` |
+
+**`llm_deployment_id` rule:** the placeholder model is shared by every DataRobot-deployed LLM, so on its own it does not name one. A spec carrying it without an id is **not** complete — route to [Model Selection](../SKILL.md#model-selection) to re-pick the deployment. Template setup refuses that pair anyway; catching it here keeps the failure in the design phase.
 
 **`tools` rules:**
 
@@ -51,6 +54,7 @@ Read `<target_dir>/agent_spec.md` and evaluate **top to bottom**; use the **firs
 | File empty or no meaningful YAML content | Spec empty |
 | `system_prompt` key missing, or value empty / whitespace-only | Empty or missing `system_prompt` |
 | `model` key missing or empty | Missing `model` |
+| `model` is the `datarobot-deployed-llm` placeholder and `llm_deployment_id` is missing or empty | Missing `llm_deployment_id` |
 | `frontend.type` not set | Missing `frontend.type` |
 | `tools` key absent | Missing `tools` |
 | All [spec complete](#spec-complete) requirements met | Complete |
@@ -64,6 +68,7 @@ Read `<target_dir>/agent_spec.md` and evaluate **top to bottom**; use the **firs
 | Spec empty | [Clarification Phase](../SKILL.md#clarification-phase) | Model Selection → Frontend Check → Spec Display → Agent Simulation → Post-design next steps |
 | Empty or missing `system_prompt` | [Clarification Phase](../SKILL.md#clarification-phase) | Model Selection → Frontend Check → Spec Display → Agent Simulation → Post-design next steps |
 | Missing `model` only | [Model Selection](../SKILL.md#model-selection) | Frontend Check → Spec Display → Agent Simulation → Post-design next steps |
+| Missing `llm_deployment_id` (placeholder `model`, no id) | [Model Selection](../SKILL.md#model-selection) | Frontend Check → Spec Display → Agent Simulation → Post-design next steps |
 | Missing `frontend.type` only | [Frontend Check](../SKILL.md#frontend-check) | Spec Display → Agent Simulation → Post-design next steps |
 | Missing `tools` only (`tools` key absent) | [Spec Display](../SKILL.md#spec-display) | Agent Simulation → Post-design next steps |
 | [Complete](#spec-complete) | [Spec Display](../SKILL.md#spec-display) | Agent Simulation → Post-design next steps |
