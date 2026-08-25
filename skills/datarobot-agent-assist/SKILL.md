@@ -197,12 +197,13 @@ Then follow dress-rehearsal.md for the user's reply (yes → rehearsal; no → [
 
 ### Post-design next steps
 
-After the user declines the initial rehearsal prompt — or after a dress rehearsal session ends — present this menu (exact wording):
+After the user declines the initial rehearsal prompt — or **after** a dress rehearsal session ends **and** `<target_dir>/rehearsal_report/rehearsal_report.md` has been written — present this menu (exact wording):
 
 > What would you like to do next?
 > 1. **Code the agent** — start implementation from `agent_spec.md`
 > 2. **Review / edit spec** — refine `agent_spec.md`
 > 3. **Run dress rehearsal** — simulate the agent before coding
+> 4. **Review rehearsal report** — open `rehearsal_report/rehearsal_report.md`
 
 Wait for their choice. **Do not** assume a default or proceed without a reply.
 
@@ -211,6 +212,7 @@ Wait for their choice. **Do not** assume a default or proceed without a reply.
 | 1 or "code" / "implement" | Set `<design_to_code>` = true. Follow **[2. Coding an AI Agent](#2-coding-an-ai-agent)** — read and follow [agent-assist-build/references/pre-coding-checklist.md](agent-assist-build/references/pre-coding-checklist.md). This choice does **not** authorize cloning or subdirectory creation — if the workspace is not spec-only, complete [pre-coding step 7](agent-assist-build/references/pre-coding-checklist.md) and wait for explicit confirmation first. |
 | 2 or "review" / "edit spec" | Display `<target_dir>/agent_spec.md` as YAML, invite changes, update the file, then show this menu again |
 | 3 or "rehearsal" / "simulate" | Follow **[Dress Rehearsal](#dress-rehearsal)** |
+| 4 or "review report" / "rehearsal report" | If `<target_dir>/rehearsal_report/rehearsal_report.md` exists, read it and present a structured summary (metadata, notes, conversation highlights, suggested changes). If missing, say no report exists yet and offer option 3. Then show this menu again. |
 
 If the user's reply is unclear, re-display the menu and wait. Never skip straight to framework selection after a rehearsal decline.
 
@@ -312,6 +314,9 @@ Field definitions: [agent-assist-build/references/agent-spec-schema.md](agent-as
 - **Pre-coding spec issues** — if `agent_spec.md` has gaps during Bootstrap step 2, do not fix inline; route to Design via [resume-design.md](agent-assist-build/references/resume-design.md). Exception: missing `tools` only may be waived when the user confirms no tools are needed.
 - After the user declines dress rehearsal, always show **[Post-design next steps](#post-design-next-steps)** — never skip to framework selection or the pre-coding checklist
 - During **rehearsal turns**: display only the `output_file` contents — never add performance commentary or replace the script's bottom decoration / DONE hint (see [dress-rehearsal.md](agent-assist-build/references/dress-rehearsal.md))
+- When the user types **DONE** during rehearsal: **always run** `rehearsal.py --report --session <session_dir>` (or `--session <session_dir> "DONE"`) before any summary or menu; do not skip this shell command
+- After **rehearsal ends**: write suggestions into `<target_dir>/rehearsal_report/rehearsal_report.md`; announce the path so the user can share it with QA, product, and data science
+- **Never** show [Post-design next steps](#post-design-next-steps) after a rehearsal until `<target_dir>/rehearsal_report/rehearsal_report.md` exists
 - During **coding**: keep responses to 1–3 sentences; no introductions or conclusions
 - During **design**: be conversational and thorough
 

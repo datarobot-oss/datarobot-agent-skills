@@ -9,9 +9,14 @@ Init:  python3 rehearsal.py --init [--spec agent_spec.md] --target-dir <director
          stdout: session=<session_dir>  output=<output_file>
 Turn:  python3 rehearsal.py --session <session_dir> [--target-dir <directory>] "user message"
          stdout: output=<output_file>
+Note:  python3 rehearsal.py --session <session_dir> --note "design observation"
+Report: python3 rehearsal.py --session <session_dir> --report|--done
+         [--transcript summary|full] [--output <path>]
+         stdout: report=<path> archive=<path>
+         Passing message "DONE" to a turn also generates the report.
 
 From repository root, use:
-  python3 skills/datarobot-agent-assist/rehearsal.py ...
+  python3 skills/datarobot-agent-assist/agent-assist-build/scripts/rehearsal.py ...
 """
 
 from __future__ import annotations
@@ -29,12 +34,19 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
 from env_utils import get_datarobot_credentials
+from write_rehearsal_report import (
+    default_report_path,
+    load_notes,
+    write_rehearsal_report,
+)
 from list_llm_models import (
     DEPLOYED_LLM_MODEL,
     LLMModel,
@@ -86,9 +98,8 @@ def print_turn_footer() -> None:
 
 
 def print_agent_response(content: str) -> None:
-    """Agent reply plus mandatory turn footer (always printed together)."""
+    """Agent reply block (footer is printed once at end of cmd_turn / init)."""
     print(f"[Agent]: {content}")
-    print_turn_footer()
 
 
 def print_init_banner(body_lines: list[str]) -> None:
@@ -97,6 +108,7 @@ def print_init_banner(body_lines: list[str]) -> None:
         "already running. Tool calls return simulated data — no real APIs, no "
         "deployment, and no code written yet."
     )
+    print_turn_header()
     print("════════════════════════════════════════════")
     print("  AGENT DRESS REHEARSAL")
     print("════════════════════════════════════════════")
@@ -106,8 +118,8 @@ def print_init_banner(body_lines: list[str]) -> None:
     for line in body_lines:
         print(line)
     print("════════════════════════════════════════════")
-    print(DONE_HINT)
     print()
+    print_turn_footer()
 
 
 def print_section(label: str, content: str) -> None:
@@ -763,6 +775,31 @@ def _resolved_models_differ(a: ResolvedModel, b: ResolvedModel) -> bool:
     return a.to_config() != b.to_config()
 
 
+def _new_session_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{timestamp}_{uuid.uuid4().hex[:8]}"
+
+
+def _session_dir(target_dir: Path, session_id: str) -> Path:
+    return target_dir / ".datarobot" / "rehearsal" / session_id
+
+
+def _notes_file(session_dir: str) -> Path:
+    return Path(session_dir) / "notes.json"
+
+
+def _load_notes_list(session_dir: str) -> list[dict[str, str]]:
+    return load_notes(Path(session_dir))
+
+
+def _save_notes(session_dir: str, notes: list[dict[str, str]]) -> None:
+    path = _notes_file(session_dir)
+    tmp = path.with_suffix(".json.tmp")
+    with tmp.open("w") as handle:
+        json.dump(notes, handle, indent=2)
+    tmp.replace(path)
+
+
 # ── commands ──────────────────────────────────────────────────────────────────
 
 
@@ -836,10 +873,18 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
     system_prompt = spec["system_prompt"]
     tools = spec.get("tools", [])
     examples = spec.get("examples", [])
+    session_id = os.path.basename(session_dir)
 
     with open(os.path.join(session_dir, "config.json"), "w") as f:
         json.dump(
             {
+                "session_id": session_id,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "spec_path": str(Path(spec_path).resolve()),
+                "requested_model": requested_model,
+                "requested_deployment_id": requested_deployment_id,
+                "model_substituted": model_substituted,
+                "simulation_substituted": sim_substituted,
                 "model": agent_model.to_config(),
                 "simulation_model": simulation_model.to_config(),
                 "system_prompt": system_prompt,
@@ -1008,14 +1053,50 @@ def cmd_turn(session_dir: str, message: str, target_dir: Path | None = None) -> 
             f"Warning: reached maximum tool-call rounds ({max_tool_rounds}) without a final response. "
             "The agent may be stuck in a tool-call loop."
         )
-        print_turn_footer()
 
+    print_turn_footer()
     stats.summary(time.monotonic() - t_wall)
 
     tmp = state_file + ".tmp"
     with open(tmp, "w") as f:
         json.dump(messages, f)
     os.replace(tmp, state_file)
+
+
+def cmd_note(session_dir: str, note_text: str) -> None:
+    note = note_text.strip()
+    if not note:
+        print("Error: note text must not be empty", file=sys.stderr)
+        sys.exit(1)
+    load_session(session_dir)
+    notes = _load_notes_list(session_dir)
+    notes.append(
+        {
+            "text": note,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    _save_notes(session_dir, notes)
+    print(f"note_recorded={len(notes)}")
+
+
+def cmd_report(
+    session_dir: str,
+    output_path: Path | None,
+    transcript_mode: str,
+) -> None:
+    config, _, _ = load_session(session_dir)
+    target_dir = Path(str(config.get("target_dir") or ".")).resolve()
+    resolved_output = output_path or default_report_path(target_dir)
+    summary = write_rehearsal_report(
+        Path(session_dir),
+        resolved_output,
+        transcript_mode=transcript_mode,
+    )
+    print(f"report={summary.report_path}")
+    print(f"archive={summary.archive_path}")
+    print(f"turns={summary.turn_count}")
+    print(f"tool_invocations={summary.tool_invocation_count}")
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
@@ -1031,10 +1112,50 @@ def main() -> int:
         help="Project directory for .env lookup (required for --init; turns default to session from --init)",
     )
     parser.add_argument("--session", metavar="DIR")
+    parser.add_argument(
+        "--note",
+        metavar="TEXT",
+        help="Record a design observation for the rehearsal report",
+    )
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Generate rehearsal_report/rehearsal_report.md from a completed session",
+    )
+    parser.add_argument(
+        "--done",
+        action="store_true",
+        help="Alias for --report (end session and write the report file)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Report output path (default: <target_dir>/rehearsal_report/rehearsal_report.md)",
+    )
+    parser.add_argument(
+        "--transcript",
+        choices=("summary", "full"),
+        default="summary",
+        help="Transcript detail level for the report (default: summary)",
+    )
     parser.add_argument("message", nargs="?")
     args = parser.parse_args()
 
     target_dir = Path(args.target_dir).resolve() if args.target_dir else None
+
+    if args.report or args.done:
+        if not args.session:
+            print("Error: --session DIR is required for --report", file=sys.stderr)
+            return 1
+        cmd_report(args.session, args.output, args.transcript)
+        return 0
+
+    if args.note is not None:
+        if not args.session:
+            print("Error: --session DIR is required for --note", file=sys.stderr)
+            return 1
+        cmd_note(args.session, args.note)
+        return 0
 
     if args.init:
         if not target_dir:
@@ -1049,7 +1170,10 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
-        session_dir = tempfile.mkdtemp(prefix="dr_rehearsal_")
+        session_id = _new_session_id()
+        session_path = _session_dir(target_dir, session_id)
+        session_path.mkdir(parents=True, exist_ok=True)
+        session_dir = str(session_path)
         with capture_output(session_dir) as output_path:
             cmd_init(args.spec, session_dir, target_dir)
         print(f"session={session_dir}")
@@ -1059,6 +1183,9 @@ def main() -> int:
         if not args.session:
             print("Error: --session DIR is required", file=sys.stderr)
             return 1
+        if args.message.strip().upper() == "DONE":
+            cmd_report(args.session, args.output, args.transcript)
+            return 0
         with capture_output(args.session) as output_path:
             cmd_turn(args.session, args.message, target_dir)
         print(f"output={output_path}")

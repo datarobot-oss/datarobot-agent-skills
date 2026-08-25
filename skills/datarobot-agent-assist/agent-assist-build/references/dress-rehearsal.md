@@ -10,9 +10,11 @@ Dress rehearsal simulates your `agent_spec.md` **before any code is written**. T
 | Tool calls | **Simulated** return values (no real APIs) | Real integrations |
 | Purpose | Validate prompts, tools, and UX early | Production use |
 
-You play the **end user**. The rehearsal script drives the LLM, simulates tool outputs, and formats session output. You orchestrate the loop, handle out-of-character commands, and produce the feedback report at the end.
+You play the **end user**. The rehearsal script drives the LLM, simulates tool outputs, and formats session output. You orchestrate the loop, handle out-of-character commands, and produce a shareable Markdown report at the end.
 
 **Engine location:** `<skill_scripts_dir>/rehearsal.py`
+
+**Report location:** `<target_dir>/rehearsal_report/rehearsal_report.md` (latest); archived copy at `<target_dir>/.datarobot/rehearsal/<session_id>/rehearsal_report.md`
 
 ### Initial prompt (design phase)
 
@@ -44,7 +46,7 @@ python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.md
 
 If `agent_spec.md` does not exist and no path was provided, say so and stop.
 
-The script creates a unique session directory in the system temp dir and prints two lines:
+The script creates a session directory at `<target_dir>/.datarobot/rehearsal/<session_id>/` and prints two lines:
 ```
 session=<session_dir>
 output=<output_file>
@@ -60,12 +62,26 @@ Retain `session_dir` for all subsequent calls. Read the `output_file` and displa
 
 ### Step 2 — Simulation loop
 
-Keep track of any notes and the number of turns as the session progresses — you'll need these for the report.
-
 **On each user message:**
 
-- If it starts with `NOTE:` — acknowledge the note, prompt for next message. Do not call the script.
-- If it is `DONE` — proceed to Step 3.
+- If it starts with `NOTE:` — strip the prefix, persist the note, acknowledge briefly, and prompt for the next message:
+
+```bash
+python <skill_scripts_dir>/rehearsal.py --session {session_dir} --note "{note_text}"
+```
+
+Do **not** call the turn command for `NOTE:` messages.
+
+- If it is `DONE` — **immediately** run report generation (mandatory — do this before any summary, menu, or post-design steps):
+
+```bash
+python <skill_scripts_dir>/rehearsal.py --report --session {session_dir}
+```
+
+Equivalent: `python <skill_scripts_dir>/rehearsal.py --session {session_dir} "DONE"`
+
+Do **not** show **[Post-design next steps](../SKILL.md#post-design-next-steps)** until `report=` appears in the script output and `<target_dir>/rehearsal_report/rehearsal_report.md` exists. Then continue to [Step 3](#step-3--feedback-report).
+
 - Otherwise — run the turn:
 
 ```bash
@@ -101,7 +117,26 @@ If the script exits non-zero, display the error and ask whether to continue or a
 
 ### Step 3 — Feedback report
 
-Before writing the report, review the session and consider each of these areas — only surface the ones where you have something concrete to say:
+Step 2 should already have run `--report` (or `"DONE"`) and created the base report file. If the file is missing, run:
+
+```bash
+python <skill_scripts_dir>/rehearsal.py --report --session {session_dir}
+```
+
+Optional flags:
+
+- `--transcript full` — include full tool-call arguments and simulated JSON returns (default: summary)
+- `--output <path>` — override the default `<target_dir>/rehearsal_report/rehearsal_report.md`
+
+The script prints:
+```
+report=<path>
+archive=<session_archive_path>
+turns=<count>
+tool_invocations=<count>
+```
+
+Then review the session and consider each of these areas — only surface the ones where you have something concrete to say:
 
 - **System prompt** — wording, missing constraints, persona, tone
 - **Tools** — input/output scoping, missing or redundant tools, argument naming
@@ -109,23 +144,13 @@ Before writing the report, review the session and consider each of these areas �
 - **Example prompts** — additions or revisions based on what was tested
 - **Other** — edge cases, UX concerns, data dependency risks
 
-Then write the report in this format:
+Replace the placeholder `## Suggested Changes` section in `<target_dir>/rehearsal_report/rehearsal_report.md` with numbered, actionable recommendations. If nothing needs changing, write `No changes recommended.`
 
-```
-════════════════════════════════════════════
-  DRESS REHEARSAL REPORT
-════════════════════════════════════════════
+Tell the user (2–3 sentences max):
 
-{1–2 sentences: what was tested and how the agent performed overall}
-{If notes were recorded: "Notes: " followed by each note on its own line, prefixed with —}
+- What was tested and how the agent performed overall
+- That the full report is saved at `<target_dir>/rehearsal_report/rehearsal_report.md` and can be shared with QA, product, and data science
 
-Suggested changes:
-1. {specific, actionable change}
-2. {specific, actionable change}
-…
-{If nothing worth changing: "No changes recommended."}
+Then offer to implement any changes to `agent_spec.md`. If you apply spec changes, append a `## Spec Updates Applied` section to the report listing each change in bullet form (what changed and why — not a unified diff).
 
-════════════════════════════════════════════
-```
-
-Then offer to implement any changes to `agent_spec.md`. After applying changes (or if none are needed), go to **[Post-design next steps](../SKILL.md#post-design-next-steps)**.
+After applying changes (or if none are needed), go to **[Post-design next steps](../SKILL.md#post-design-next-steps)**.
