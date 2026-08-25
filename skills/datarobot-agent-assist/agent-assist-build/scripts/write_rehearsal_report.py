@@ -109,8 +109,9 @@ def _summarize_turns(messages: list[dict[str, Any]]) -> list[TurnSummary]:
         if role == "tool":
             content = str(message.get("content") or "")
             tool_name = "unknown"
-            if current.tool_calls:
-                tool_name = current.tool_calls[-1][0]
+            return_index = len(current.tool_returns)
+            if return_index < len(current.tool_calls):
+                tool_name = current.tool_calls[return_index][0]
             current.tool_returns.append((tool_name, content))
 
     if current is not None:

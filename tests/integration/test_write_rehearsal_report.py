@@ -18,6 +18,7 @@ REHEARSAL_SCRIPT = SCRIPTS_DIR / "rehearsal.py"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from write_rehearsal_report import (  # noqa: E402
+    _summarize_turns,
     default_report_path,
     write_rehearsal_report,
 )
@@ -136,6 +137,50 @@ def test_write_rehearsal_report_full_transcript(
     content = output_path.read_text(encoding="utf-8")
     assert "## Conversation Transcript (full)" in content
     assert '"status": "active"' in content
+
+
+def test_parallel_tool_returns_match_call_order() -> None:
+    messages = [
+        {"role": "user", "content": "Look up account and send email"},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_account",
+                        "arguments": json.dumps({"account_id": "123"}),
+                    },
+                },
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {
+                        "name": "send_email",
+                        "arguments": json.dumps({"to": "user@example.com"}),
+                    },
+                },
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": json.dumps({"status": "active"}),
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_2",
+            "content": json.dumps({"sent": True}),
+        },
+        {"role": "assistant", "content": "Done."},
+    ]
+
+    turns = _summarize_turns(messages)
+    assert [name for name, _ in turns[0].tool_returns] == [
+        "lookup_account",
+        "send_email",
+    ]
 
 
 def test_done_message_generates_report(

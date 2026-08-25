@@ -775,6 +775,53 @@ def _resolved_models_differ(a: ResolvedModel, b: ResolvedModel) -> bool:
     return a.to_config() != b.to_config()
 
 
+def _model_was_substituted(
+    catalog: ModelCatalog | LazyModelCatalog,
+    requested: str,
+    current: ResolvedModel,
+    *,
+    prefer_source: str | None = None,
+) -> bool:
+    """True when the active model differs from the originally requested one."""
+    requested = requested.strip()
+    if not requested:
+        return True
+    expected, _ = catalog.pick_available(
+        requested,
+        prefer_source=prefer_source,
+    )
+    return _resolved_models_differ(current, expected)
+
+
+def _agent_model_was_substituted(
+    catalog: ModelCatalog | LazyModelCatalog,
+    config: dict[str, Any],
+    current: ResolvedModel,
+) -> bool:
+    requested = str(
+        config.get("requested_deployment_id") or config.get("requested_model") or ""
+    )
+    prefer_source = SOURCE_DEPLOYED if config.get("requested_deployment_id") else None
+    return _model_was_substituted(
+        catalog,
+        requested,
+        current,
+        prefer_source=prefer_source,
+    )
+
+
+def _simulation_model_was_substituted(
+    catalog: ModelCatalog | LazyModelCatalog,
+    current: ResolvedModel,
+) -> bool:
+    return _model_was_substituted(
+        catalog,
+        SIMULATION_MODEL,
+        current,
+        prefer_source=SOURCE_GATEWAY,
+    )
+
+
 def _new_session_id() -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"{timestamp}_{uuid.uuid4().hex[:8]}"
@@ -874,6 +921,13 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
     tools = spec.get("tools", [])
     examples = spec.get("examples", [])
     session_id = os.path.basename(session_dir)
+    model_substituted = _model_was_substituted(
+        catalog,
+        requested_deployment_id or requested_model,
+        agent_model,
+        prefer_source=SOURCE_DEPLOYED if requested_deployment_id else None,
+    )
+    sim_substituted = _simulation_model_was_substituted(catalog, simulation_model)
 
     with open(os.path.join(session_dir, "config.json"), "w") as f:
         json.dump(
@@ -1009,6 +1063,9 @@ def cmd_turn(session_dir: str, message: str, target_dir: Path | None = None) -> 
         saved_agent = ResolvedModel.from_config(config["model"], catalog)
         if _resolved_models_differ(agent_model, saved_agent):
             config["model"] = agent_model.to_config()
+            config["model_substituted"] = _agent_model_was_substituted(
+                catalog, config, agent_model
+            )
             _save_config(session_dir, config)
         elapsed = time.monotonic() - t0
         usage = resp.get("usage", {})
@@ -1041,6 +1098,9 @@ def cmd_turn(session_dir: str, message: str, target_dir: Path | None = None) -> 
             )
             if _resolved_models_differ(simulation_model, saved_simulation):
                 config["simulation_model"] = simulation_model.to_config()
+                config["simulation_substituted"] = _simulation_model_was_substituted(
+                    catalog, simulation_model
+                )
                 _save_config(session_dir, config)
             messages.extend(tool_messages)
         else:
