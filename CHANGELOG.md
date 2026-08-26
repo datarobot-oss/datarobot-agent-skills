@@ -3,11 +3,14 @@
 All notable changes to DataRobot agent skills are tracked here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
-version numbers track the shared plugin version maintained across
+version numbers track the shared plugin version maintained across `package.json`,
 `.claude-plugin/`, `.cursor-plugin/plugin.json`, and `gemini-extension.json`.
 
 Each entry should be prefixed with the affected skill folder name (for example,
 `` `datarobot-predictions`: ... ``) so it's easy to scan what changed per skill.
+
+Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
+[`CONTRIBUTING.md`](CONTRIBUTING.md#plugin-version-management).
 
 ## [Unreleased]
 

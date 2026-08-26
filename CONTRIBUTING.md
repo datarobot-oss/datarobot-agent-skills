@@ -4,21 +4,27 @@ Guidelines for developing and contributing to this project.
 
 ## List of project maintainers
 
+This project is maintained by the following people:
+
 - [Your Name](Your GitHub User URL)
 
-## Opening new issues
+## Open a new issue
 
-- Before opening a new issue, check if there are any existing FAQ entries (if one exists), issues, or pull requests that match your case.
-- Open an issue and label it accordingly — bug, improvement, feature request, etc.
+Follow these steps before opening a new issue:
+
+- Before opening a new issue, check if there are any existing FAQ entries (if one exists), issues, or pull requests that match the issue.
+- Open an issue and label it accordingly—bug, improvement, feature request, etc.
 - Be as specific and detailed as possible.
 
 ## Did you find a bug?
 
+Follow these steps when reporting a bug:
+
 - Do not open a GitHub issue if the bug is a security vulnerability. Instead, email the maintainers directly or email oss-community-management@datarobot.com if they do not respond within seven days.
 - Ensure the bug was not already reported in the project's Issues section.
-- Open an issue as described above.
+- Open an issue as described in [Open a new issue](#open-a-new-issue).
 
-## Running e2e skill tests
+## Run e2e skill tests
 
 Skill quality is evaluated end-to-end by an LLM judge. To keep CI cheap, unchanged skills are skipped via an MD5 cache at `tests/e2e/skill_hashes.json`.
 
@@ -26,35 +32,37 @@ Skill quality is evaluated end-to-end by an LLM judge. To keep CI cheap, unchang
 
 Run once after cloning:
 
-```
+```bash
 cp .env.example .env  # fill in DATAROBOT_ENDPOINT + DATAROBOT_API_TOKEN
 task setup            # installs .githooks/ as the project hooks path
 ```
 
-After that, any commit touching `skills/**` or `tests/e2e/**` will run the LLM judge on the affected skills, and — if they pass — stage the refreshed `skill_hashes.json` into the same commit. By the time the PR hits CI, the hashes already match and the e2e job is a no-op for those skills.
+After that, any commit touching `skills/**` or `tests/e2e/**` runs the LLM judge on the affected skills and—if they pass—stages the refreshed `skill_hashes.json` into the same commit. By the time the PR hits CI, the hashes already match and the e2e job is a no-op for those skills.
 
-If `DATAROBOT_ENDPOINT` / `DATAROBOT_API_TOKEN` aren't set, the hook prints a notice and skips; CI will run the judge as a safety net. To bypass the hook for a single commit: `git commit --no-verify`.
+If `DATAROBOT_ENDPOINT` / `DATAROBOT_API_TOKEN` aren't set, the hook prints a notice and skips; CI runs the judge as a safety net. To bypass the hook for a single commit: `git commit --no-verify`.
 
-### Running the suite manually
+### Run the suite manually
 
-```
+```bash
 task test:e2e         # or: uv run --group e2e pytest tests/e2e/ -v
 task test:e2e:force   # re-evaluate every skill, ignore the cache
 ```
 
 CI does not write back to `main`; if the committed cache drifts the workflow logs a warning, and the fix is to run the command above locally and commit the refreshed file.
 
-## Responding to issues and pull requests
+## Respond to issues and pull requests
 
-This project's maintainers will make every effort to respond to any open issues as soon as possible.
+The project maintainers make every effort to respond to open issues as soon as possible.
 
-If you don't get a response within seven days of creating your issue or pull request, send us an email at oss-community-management@datarobot.com.
+If a response doesn't arrive within seven days of creating an issue or pull request, send an email to oss-community-management@datarobot.com.
 
 ## Should I add a skill here?
 
+Evaluate a new skill against the following goal, intended use, and criteria before adding it to this library.
+
 ### Goal
 
-The goal of this library is to ensure that enterprises can get agents into production. Skills offer powerful functionality that tells agents how to think while protecting their context window. This allows agents to one- or few-shot tasks that previously needed complex logic built into the agent, avoiding context window issues. Skills DataRobot offers should open up enterprise use cases, making them more viable in production.
+The goal of this library is to ensure that enterprises can get agents into production. Skills offer powerful functionality that tells agents how to think while protecting their context window. This allows agents to one- or few-shot tasks that previously needed complex logic built into the agent, avoiding context window issues. Skills DataRobot offers open up enterprise use cases, making them more viable in production.
 
 ### Intended use
 
@@ -75,13 +83,13 @@ Before adding a skill, evaluate it against these criteria:
 
 All DataRobot skills follow the naming convention `datarobot-<category>`, where `<category>` describes the skill's focus area. This ensures clear identification of DataRobot-specific skills, consistent naming across the skill library, and easy discovery and organization.
 
-If there is deeper grouping within a product area and you expect more than one skill in the same area, use a common prefix. For example, use `datarobot-app-framework-<skill>` for simpler grouping and code ownership.
+If there is deeper grouping within a product area and more than one skill is expected in the same area, use a common prefix. For example, use `datarobot-app-framework-<skill>` for simpler grouping and code ownership.
 
 Both the **folder name** and the `name` field in `SKILL.md` frontmatter must match exactly.
 
-## Creating a skill
+## Create a skill
 
-The easiest way to create a new skill is to start from an existing one close to your use case.
+The easiest way to create a new skill is to start from an existing one close to the intended use case.
 
 1. Copy one of the existing skill folders, such as `skills/datarobot-model-training/`, and rename it following the naming convention above.
 2. Update the new folder's `SKILL.md` frontmatter and instructions:
@@ -99,25 +107,25 @@ The easiest way to create a new skill is to start from an existing one close to 
 
 3. The `description` field must begin with "Use when" so the agent knows when to load the skill.
 4. Add or update any supporting scripts, templates, or documents referenced by the skill.
-5. Add an entry for the new skill in `.well-known/ai-catalog.json`. Copy an existing entry and update the `identifier`, `displayName`, `url`, `description`, and `representativeQueries` fields. Write `representativeQueries` as natural-language phrases a user would type to discover the skill — these drive semantic search quality in ARD discovery services.
-6. Reinstall or reload the skill bundle in your coding agent so the updated skill is available.
-7. Test the skill with a prompt that exercises the workflow you expect users to follow.
+5. Add an entry for the new skill in `.well-known/ai-catalog.json`. Copy an existing entry and update the `identifier`, `displayName`, `url`, `description`, and `representativeQueries` fields. Write `representativeQueries` as natural-language phrases a user would type to discover the skill—these drive semantic search quality in ARD discovery services.
+6. Reinstall or reload the skill bundle in the coding agent so the updated skill is available.
+7. Test the skill with a prompt that exercises the expected user workflow.
 
 ## Workflow rules
 
-We strongly prefer human-written skills. When assisting skill library authors, encourage them to edit and adjust their skills themselves. Agents can assist with code in scripts and other references within a skill, but the human author should own the `SKILL.md` content itself.
+DataRobot strongly prefers human-written skills. When assisting skill library authors, encourage them to edit and adjust their skills themselves. Agents can assist with code in scripts and other references within a skill, but the human author owns the `SKILL.md` content itself.
 
-**Every PR must bump the shared plugin version**&mdash;not just PRs that directly edit a plugin config file. The version is shared across `package.json`, `.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, and `gemini-extension.json`, and it must always move in lockstep with `CHANGELOG.md`. If your PR changes anything under `skills/` (or otherwise warrants a changelog entry), bump the version string in all of those files to the same new value using SemVer rules:
+**PRs never bump the shared plugin version themselves.** The version is shared across `package.json`, `.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, and `gemini-extension.json`. When a PR that changes anything under `skills/` merges to `main`, [`version-bump.yml`](.github/workflows/version-bump.yml) automatically bumps all of those files to the same new value, renames `CHANGELOG.md`'s `[Unreleased]` section, commits, tags, and cuts a GitHub Release&mdash;see [`scripts/version_bump.py`](scripts/version_bump.py).
 
-- **Patch** (`x.x.N`)&mdash;bug fixes, typos, clarifications.
-- **Minor** (`x.N.0`)&mdash;new skills added, existing skills expanded.
-- **Major** (`N.0.0`)&mdash;breaking changes to skill structure or interface.
+Every merge bumps **minor** (`x.N.0`) by default&mdash;this is a skills/marketplace repo where any merge under `skills/` is effectively new content. **Major** (`N.0.0`, breaking changes to skill structure or interface) is never inferred automatically; if a change is genuinely breaking, bump and tag it by hand instead of relying on the automated flow. **Patch** (`x.x.N`) is also manual&mdash;used to hot-fix a version that's already sealed into a product build, without moving the marketplace's current minor line forward:
 
-A PR that only bumps the version in some of these files (or bumps the version but forgets the changelog rename below) is incomplete.
+```bash
+task version:bump -- --bump patch
+```
 
 ## Changelog
 
-Every PR that touches anything under `skills/` adds a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under the `[Unreleased]` section, prefixed with the affected skill folder name. For example:
+Every PR that touches anything under `skills/` adds a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under the `[Unreleased]` section, prefixed with the affected skill folder name, under one of `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` (see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)). The category header is required, not optional&mdash;always nest the bullet under one. For example:
 
 ```markdown
 ## [Unreleased]
@@ -125,11 +133,11 @@ Every PR that touches anything under `skills/` adds a one-line entry to [`CHANGE
 - `datarobot-predictions`: added JSON output mode to `validate_prediction_data.py`.
 ```
 
-Use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` groupings as appropriate (see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)).
-
-Since every PR bumps the plugin version (per the SemVer rules above), every PR also renames `[Unreleased]` to the new version with today's date and adds a fresh empty `[Unreleased]` section at the top.
+Don't rename `[Unreleased]` manually&mdash;`version-bump.yml` does that automatically once the PR merges (see "Plugin version management" above). A PR that changes `skills/` but leaves `[Unreleased]` empty merges fine, but the automated release fails loudly instead of shipping a version bump with no changelog entry; fix it by adding the missing entry.
 
 ## Validation and linting
+
+This section covers the prerequisites, common tasks, and rules enforced by this repository's validation and linting tooling.
 
 ### Prerequisites
 
@@ -137,7 +145,8 @@ Install these tools before running validation tasks:
 
 - [Task](https://taskfile.dev/)&mdash;task runner (`brew install go-task`).
 - [uv](https://docs.astral.sh/uv/)&mdash;Python package and environment manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
-- [license-eye](https://github.com/apache/skywalking-eyes)&mdash;license header checker (`go install github.com/apache/skywalking-eyes/cmd/license-eye@latest`, then ensure `~/go/bin` is on your PATH).
+- [license-eye](https://github.com/apache/skywalking-eyes)&mdash;license header checker (`go install github.com/apache/skywalking-eyes/cmd/license-eye@latest`, then ensure `~/go/bin` is on the PATH).
+- [jq](https://jqlang.org/)&mdash;JSON processor used by `scripts/version_bump.py` (`brew install jq`).
 
 ### Common tasks
 
@@ -180,7 +189,7 @@ datarobot-my-skill/
       ---
 ```
 
-## Testing the OpenCode plugin locally
+## Test the OpenCode plugin locally
 
 The `opencode-datarobot-skills` npm package is defined by `package.json` at the repo root. To test it locally before publishing, point OpenCode at the local clone using a `file:` reference in `~/.config/opencode/opencode.json`:
 
@@ -196,10 +205,14 @@ OpenCode (via Bun) resolves `file:` paths and loads the plugin directly from dis
 
 This repository uses GitHub Actions for automated checks:
 
-- **Validate skills**&mdash;validates skill naming and structure on every push and pull request.
+- **Lint**&mdash;runs `task lint` (skill validation, ruff, mypy, shellcheck, yamlfmt, license headers) on every push and pull request.
+- **Test Skills E2E**&mdash;runs the LLM-judge skill quality suite on pushes/PRs that touch `skills/**` or `tests/e2e/**`.
 - **Trivy security scan**&mdash;scans for secrets and security issues daily and on every push and pull request.
+- **Version Bump**&mdash;on every push to `main`, bumps the plugin version, tags, and cuts a GitHub Release if `skills/` changed (see "Plugin version management" above).
+- **Publish to npm**&mdash;publishes to npm whenever a GitHub Release is published.
+- **Publish AI Catalog**&mdash;deploys `docs/` to GitHub Pages when it changes on `main`.
 
-All checks must pass before merging a pull request.
+All required checks must pass before merging a pull request.
 
 ## Code ownership
 
