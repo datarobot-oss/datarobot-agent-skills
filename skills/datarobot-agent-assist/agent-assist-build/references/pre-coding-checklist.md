@@ -99,11 +99,18 @@ When step 2 finds a problem in `agent_spec.md`:
 
 4. **Classify `<target_dir>`** (evaluate in order; first match wins):
 
+   **Design-phase artifacts (allowed in Spec-only):** dress rehearsal may leave these before coding — they do **not** count as a messy workspace:
+   - `agent_spec.md`, `.env`
+   - `.datarobot/rehearsal/` (session cache only)
+   - `rehearsal_report/rehearsal_report.md` (and the `rehearsal_report/` directory that contains it)
+
+   Any other path under `<target_dir>` — including `.datarobot/answers/`, swarm dirs, source code, or unrelated files — still classifies as **Everything else**.
+
    | Classification | Conditions |
    |----------------|------------|
    | **Existing template** | Git repository, `origin` matches `REPO_URL`, `AGENTS.md` present |
-   | **Spec-only** | Not existing template, and directory contains only `agent_spec.md` and/or `.env` (no other files or directories) |
-   | **Everything else** | Any other state — including wrong git remote, git repo without `AGENTS.md`, or extra files/directories (e.g. `src/`, `.datarobot/`, `.gitignore`) |
+   | **Spec-only** | Not existing template, and every file/directory in `<target_dir>` is one of the design-phase artifacts above (nothing else) |
+   | **Everything else** | Any other state — including wrong git remote, git repo without `AGENTS.md`, or extra files/directories (e.g. `src/`, `.datarobot/answers/`, `.gitignore`) |
 
    **Deploy → coding handoff:** After classifying, jump to the matching step below — do not re-run Bootstrap step 1.
 
@@ -117,7 +124,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
 6. **Spec-only** — clone and set up the template in `<target_dir>`:
 
-   a. **Move `agent_spec.md` aside** if present — move to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it is not overwritten. Restore it after cloning completes.
+   a. **Move `agent_spec.md` aside** if present — move to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it is not overwritten. Restore it after cloning completes. Leave design-phase rehearsal artifacts in place (`.datarobot/rehearsal/`, `rehearsal_report/`) — do not move or delete them.
 
    b. **Notify, then clone** — tell the user (1–2 sentences, no wait): *"Your workspace is spec-only. I'll clone the DataRobot agent template into `<target_dir>` now."* Then run [clone_template.py](helper-scripts.md#clone_templatepy).
 
