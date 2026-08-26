@@ -13,7 +13,6 @@ Usage:
 """
 
 import argparse
-import os
 from typing import Any
 
 import datarobot as dr
@@ -75,12 +74,7 @@ def main() -> None:
     parser.add_argument("--list-existing", action="store_true")
     args = parser.parse_args()
 
-    dr.Client(
-        token=os.environ["DATAROBOT_API_TOKEN"],
-        endpoint=os.environ.get(
-            "DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2"
-        ),
-    )
+    dr.Client()
 
     if args.list_existing:
         matrices = ShapMatrix.list(entity_id=args.model_id)

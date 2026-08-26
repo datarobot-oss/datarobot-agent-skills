@@ -35,7 +35,6 @@ produced that prediction.
 
 import argparse
 import json
-import os
 import sys
 
 import datarobot as dr
@@ -55,10 +54,7 @@ def make_prediction(
     passthrough_columns: str | None = None,
 ) -> dict:
     """Score `data` against `deployment_id`, optionally returning prediction explanations."""
-    dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
 

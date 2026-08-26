@@ -12,7 +12,6 @@ Generates a CSV template with all required columns and sample values.
 """
 
 import csv
-import os
 import sys
 
 import datarobot as dr
@@ -33,10 +32,7 @@ def generate_prediction_data_template(
         CSV template content
     """
     # Initialize client
-    client = dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     # Get deployment features
     deployment = dr.Deployment.get(deployment_id)

@@ -137,12 +137,9 @@ Claude can run this script directly or use it as reference when writing code.
 ### Pattern 1: Upload and validate
 ```python
 import datarobot as dr
-import os
 
 # Initialize client
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"), endpoint=os.getenv("DATAROBOT_ENDPOINT")
-)
+dr.Client()
 
 # Upload dataset
 dataset = dr.Dataset.create_from_file(
@@ -226,12 +223,8 @@ pip install datarobot
 
 ```python
 import datarobot as dr
-import os
 
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"),
-    endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-)
+dr.Client()
 ```
 
 ## Resources

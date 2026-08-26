@@ -76,11 +76,8 @@ Initialize client:
 
 ```python
 import datarobot as dr
-import os
 
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"), endpoint=os.getenv("DATAROBOT_ENDPOINT")
-)
+dr.Client()
 ```
 
 See each skill's "Using DataRobot SDK" section for specific operations and examples.

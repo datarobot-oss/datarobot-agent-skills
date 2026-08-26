@@ -12,7 +12,6 @@ Outputs JSON with feature information, types, importance, and time series config
 """
 
 import json
-import os
 import sys
 
 import datarobot as dr
@@ -29,10 +28,7 @@ def get_deployment_features(deployment_id: str) -> dict:
         Dictionary with feature information, types, importance, and time series config
     """
     # Initialize client
-    client = dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
     model = dr.Model.get(deployment.model["id"])

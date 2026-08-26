@@ -129,12 +129,9 @@ See the [Common Patterns](#common-patterns) section below for complete examples.
 ### Pattern 1: Standard deployment
 ```python
 import datarobot as dr
-import os
 
 # Initialize client
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"), endpoint=os.getenv("DATAROBOT_ENDPOINT")
-)
+dr.Client()
 
 # Get best model from project
 models = dr.Model.list("abc123")
@@ -206,12 +203,8 @@ pip install datarobot
 
 ```python
 import datarobot as dr
-import os
 
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"),
-    endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-)
+dr.Client()
 ```
 
 ## Resources

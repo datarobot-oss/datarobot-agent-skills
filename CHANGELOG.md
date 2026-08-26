@@ -11,6 +11,22 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-08-26
+
+### Fixed
+- `datarobot-model-monitoring`: The Pattern 1 health-check example read `stats.prediction_count` and `stats.mean_response_time`, which do not exist on the SDK 3.x `ServiceStats` object (`AttributeError`). Read them from the `.metrics` dict instead (`stats.metrics["totalPredictions"]`, `stats.metrics["responseTime"]`). Also corrected the SDK reference list: `model.get_metrics()` → `model.metrics` (a dict of `{metric: {partition: score}}`); `get_metrics()` does not exist.
+
+## [1.5.4] - 2026-08-25
+
+### Fixed
+
+- All skills: helper scripts and examples now call plain `dr.Client()` instead of re-reading `DATAROBOT_API_TOKEN` and `DATAROBOT_ENDPOINT` and passing them back in. The SDK reads those variables itself and then falls back to `~/.config/datarobot/drconfig.yaml`, so this fixes setups where only `drconfig.yaml` is configured — what `dr auth login` (per `datarobot-setup`) writes. Previously most sites hardcoded a `"https://app.datarobot.com"` endpoint default, which supplied an endpoint with no matching token and failed with `ValueError: Token must be specified if endpoint is specified` (and was missing the `/api/v2` suffix); `datarobot-model-explainability` used `os.environ["DATAROBOT_API_TOKEN"]` and failed the same setup with `KeyError`.
+
+## [1.5.3] - 2026-08-25
+
+### Fixed
+- `datarobot-model-training`: Update the sample code and helper scripts for the current `datarobot` SDK (3.x). `set_target()` → `analyze_and_model()` (sets the target and starts AutoPilot), the removed `Project.start(autopilot_on=, max_wait=)` → `wait_for_autopilot()`, `project.status` → `project.stage`, `model.get_metrics()` → `model.metrics`, and select the recommended model via `ModelRecommendation.get(project.id).get_model()` instead of a broken `max(models, key=lambda m: m.metrics.get("AUC", 0))` that treats a per-partition dict as a scalar. `list_models.py` now sorts on the validation partition score (null-safe).
+
 ## [1.5.1] - 2026-08-13
 
 ### Fixed

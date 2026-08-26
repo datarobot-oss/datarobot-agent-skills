@@ -120,12 +120,9 @@ See the [Common Patterns](#common-patterns) section below for complete examples.
 ### Pattern 1: Feature importance analysis
 ```python
 import datarobot as dr
-import os
 
 # Initialize client
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"), endpoint=os.getenv("DATAROBOT_ENDPOINT")
-)
+dr.Client()
 
 # Get model and feature importance
 model = dr.Model.get("xyz123")
@@ -207,12 +204,8 @@ pip install datarobot
 
 ```python
 import datarobot as dr
-import os
 
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"),
-    endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-)
+dr.Client()
 ```
 
 ## Resources

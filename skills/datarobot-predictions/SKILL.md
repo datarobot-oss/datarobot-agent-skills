@@ -105,7 +105,7 @@ Execute predictions using various methods:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+pip install datarobot datarobot-predict
 ```
 
 ### Key SDK Operations
@@ -148,7 +148,7 @@ import datarobot as dr
 import pandas as pd
 from datarobot_predict.deployment import predict as dr_predict
 
-dr.Client(token=..., endpoint=...)
+dr.Client()
 deployment = dr.Deployment.get("abc123")
 
 result = dr_predict(
@@ -244,15 +244,11 @@ Claude can run these scripts directly or use them as reference when writing code
 ### Pattern 1: Get deployment features and make single prediction (optionally with explanations)
 ```python
 import datarobot as dr
-import os
 import pandas as pd
 from datarobot_predict.deployment import predict as dr_predict
 
 # Initialize client
-dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"),
-    endpoint=os.getenv("DATAROBOT_ENDPOINT"),
-)
+dr.Client()
 
 deployment = dr.Deployment.get("abc123")
 
@@ -276,12 +272,9 @@ print(result.dataframe.to_dict(orient="records"))
 ```python
 import datarobot as dr
 import pandas as pd
-import os
 
 # Initialize client
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"), endpoint=os.getenv("DATAROBOT_ENDPOINT")
-)
+dr.Client()
 
 # Get deployment features
 deployment = dr.Deployment.get("abc123")
@@ -340,20 +333,16 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+pip install datarobot datarobot-predict
 ```
 
 ### Initialize Client
 
 ```python
 import datarobot as dr
-import os
 
 # Initialize client with API credentials
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"),
-    endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-)
+dr.Client()
 ```
 
 ### Environment Variables

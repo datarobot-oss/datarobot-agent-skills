@@ -34,10 +34,7 @@ def upload_dataset(
         Dataset information including dataset_id
     """
     # Initialize client
-    client = dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")

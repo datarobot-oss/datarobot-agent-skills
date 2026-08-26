@@ -31,10 +31,7 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
         Validation report with errors, warnings, and info
     """
     # Initialize client
-    client = dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
     model = dr.Model.get(deployment.model["id"])
