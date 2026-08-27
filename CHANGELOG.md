@@ -11,6 +11,12 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-26
+
+### Added
+
+- `datarobot-llm-gateway`:  Added a new skill which helps setting up llm gateway, it lists available llm models directly from `SKILL.md`. The CLI handles auth via its own credential store, and syncs env variables.
+
 ## [1.5.5] - 2026-08-26
 
 ### Fixed
