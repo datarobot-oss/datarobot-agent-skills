@@ -94,7 +94,9 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
                         )
 
     # Use the importance already returned by deployment.get_features() for warnings
-    # (a model-independent measure of feature/target relationship strength)
+    # (a model-independent measure of feature/target relationship strength; direction
+    # is not encoded — negative values mean no detectable relationship, so the signed
+    # comparison below is intentional: don't take abs()).
     low_importance_features = [
         f["name"] for f in features if (f["importance"] or 0) < 0.05
     ]

@@ -16,6 +16,7 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -46,9 +47,10 @@ def wait_for_running(
         if status == "running":
             return w
         if status in TERMINAL_FAILURES:
+            diagnose = Path(__file__).parent / "diagnose_workload.py"
             raise RuntimeError(
                 f"Workload {workload_id} entered terminal state {status!r}. "
-                f"Run: python scripts/diagnose_workload.py {workload_id}"
+                f"Run: python {diagnose} {workload_id}"
             )
         time.sleep(interval)
     raise TimeoutError(
