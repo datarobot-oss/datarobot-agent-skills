@@ -91,8 +91,10 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+python -m pip install datarobot
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
 
 ### Key SDK Operations
 
@@ -103,11 +105,13 @@ Use these DataRobot SDK and MLOps API methods for monitoring:
 - `deployment.get_feature_drift(...)` - Get feature drift metrics (returns `FeatureDrift` objects)
 - `deployment.get_target_drift(...)` - Get target drift metrics (returns `TargetDrift`)
   - **SDK 3.18.0 bug**: on unsegmented deployments this raises `DataError: {'segment_value': 'is required'}`. Workaround — call the REST endpoint directly:
-    `data = dr.Client().get(f"deployments/{deployment_id}/targetDrift/").json()`, then read camelCase keys `data["driftScore"]`, `data["targetName"]`, `data["sampleSize"]`
+    `data = dr.Client().get(f"deployments/{deployment_id}/targetDrift/", params={"start": start_iso, "end": end_iso}).json()` — `start`/`end` are optional (default: last 7 days) and take hour-aligned ISO-8601 timestamps (`startTime`/`endTime` are rejected with 400); then read camelCase keys `data["driftScore"]`, `data["targetName"]`, `data["sampleSize"]`
 - `deployment.get_prediction_results(...)` - Retrieve recorded prediction results (if enabled)
 
 **Note**: Monitoring endpoints reject `start_time`/`end_time` not aligned to the top of an hour (HTTP 400).
-Truncate first: `end_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)`.
+Truncate `end_time` *forward* to the top of the next hour — truncating back silently drops the in-progress
+hour's traffic (reports 0 predictions), and the API accepts a future `end_time`:
+`end_time = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)`.
 
 **Model Performance**:
 - `model.metrics` - Model performance metrics (dict of `{metric: {partition: score}}`)
@@ -212,8 +216,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+python -m pip install datarobot
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
 
 ### Initialize Client
 

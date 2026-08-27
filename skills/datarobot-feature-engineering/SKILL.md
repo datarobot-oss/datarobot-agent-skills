@@ -45,7 +45,8 @@ Use this skill when you need to:
 
 Note: Feature Impact scores are unsigned magnitudes - they say how much a feature matters, not
 which direction it pushes predictions. For direction, use partial dependence via
-`model.get_or_request_feature_effect(source)` (valid sources from `model.get_feature_effect_metadata()`).
+`model.get_or_request_feature_effect(source)` — Pattern 3 below shows how. Do not state direction
+in a report without it.
 
 ### 3. Feature Optimization
 
@@ -91,8 +92,10 @@ which direction it pushes predictions. For direction, use partial dependence via
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+python -m pip install datarobot
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
 
 ### Key SDK Operations
 
@@ -157,6 +160,25 @@ important_features = [f for f in feature_impact if f.get("impactNormalized", 0) 
 print(f"Found {len(important_features)} features with importance > 0.1")
 ```
 
+### Pattern 3: Feature effects (direction of impact)
+
+Feature Impact never tells you *which way* a feature pushes predictions. When a report describes
+direction ("higher X increases churn"), compute partial dependence first:
+
+```python
+import datarobot as dr
+
+model = dr.Model.get(project_id, model_id)
+sources = model.get_feature_effect_metadata().sources  # e.g. ["training", "validation"]
+fe = model.get_or_request_feature_effect(source=sources[0])  # source is required
+
+for eff in fe.feature_effects[:5]:
+    # partial_dependence["data"] is [{"label": <feature value>, "dependence": <prediction>}];
+    # direction is how dependence changes across labels — there is no single signed field.
+    points = eff["partial_dependence"]["data"]
+    print(eff["feature_name"], [(p["label"], p["dependence"]) for p in points[:3]])
+```
+
 ## Feature types in DataRobot
 
 ### Numeric Features
@@ -192,6 +214,10 @@ Feature importance scores indicate:
 
 Note: Importance thresholds vary by model type and problem domain.
 
+**Output rule**: Feature Impact is magnitude only, never direction. A report that has not called
+`model.get_or_request_feature_effect(source=...)` (Pattern 3) must not claim direction — write
+"`tenure_months` is the 4th most impactful feature", not "longer tenure reduces churn".
+
 ## Error handling
 
 Common errors and solutions:
@@ -206,8 +232,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+python -m pip install datarobot
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
 
 ### Initialize Client
 

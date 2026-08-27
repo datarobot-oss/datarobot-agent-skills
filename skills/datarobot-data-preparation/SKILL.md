@@ -88,8 +88,10 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+python -m pip install datarobot
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
 
 ### Key SDK Operations
 
@@ -217,8 +219,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+python -m pip install datarobot
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
 
 ### Initialize Client
 

@@ -105,8 +105,10 @@ Execute predictions using various methods:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot datarobot-predict
+python -m pip install datarobot datarobot-predict
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot datarobot-predict` instead.
 
 ### Key SDK Operations
 
@@ -316,7 +318,7 @@ job = dr.BatchPredictionJob.score(
 )
 
 # Equivalent one-liner:
-# dr.BatchPredictionJob.score_to_file(deployment, "prediction_template.csv", "predictions_output.csv")
+# dr.BatchPredictionJob.score_to_file(deployment, intake_path="prediction_template.csv", output_path="predictions_output.csv")
 ```
 
 ## Error handling
@@ -325,7 +327,7 @@ Common errors and solutions:
 
 - **Missing required features**: Use `get_deployment_features` to get complete list
 - **Wrong data types**: Check feature types and convert accordingly
-- **Invalid categorical values**: Use training data sample to see valid values
+- **Invalid categorical values**: Get the real training levels via `dr.Feature.get(deployment.model["project_id"], feature_name).get_histogram().plot` — each bin's `label` is a valid level (max 60 bins by default). Custom-model deployments have no `project_id`; check their training data instead.
 - **Time series format errors**: Ensure datetime format matches training data
 
 ## SDK Setup
@@ -333,8 +335,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot datarobot-predict
+python -m pip install datarobot datarobot-predict
 ```
+
+If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot datarobot-predict` instead.
 
 ### Initialize Client
 

@@ -45,6 +45,26 @@ def generate_prediction_data_template(
     # Filter out target feature
     prediction_features = [f for f in features if f["name"] != target_name]
 
+    # Look up the real training levels for categorical features. Only DataRobot-built
+    # models have a backing project; custom-model deployments fall back to the
+    # "sample_category" placeholder below.
+    project_id = deployment.model.get("project_id")
+    categorical_levels: dict[str, list[str]] = {}
+    if project_id:
+        for feature in prediction_features:
+            if feature["feature_type"] == "Categorical":
+                try:
+                    histogram = dr.Feature.get(
+                        project_id, feature["name"]
+                    ).get_histogram()
+                    # Each bin is {"label": <level>, "count": ..., "target": ...};
+                    # high-cardinality features get at most 60 bins by default.
+                    categorical_levels[feature["name"]] = [
+                        b["label"] for b in histogram.plot
+                    ]
+                except Exception:
+                    pass  # keep the placeholder for this feature
+
     # Generate template rows with sample values
     import io
 
@@ -59,7 +79,10 @@ def generate_prediction_data_template(
             if feature["feature_type"] == "Numeric":
                 row[feature["name"]] = 0.0
             elif feature["feature_type"] == "Categorical":
-                row[feature["name"]] = "sample_category"
+                levels = categorical_levels.get(feature["name"])
+                row[feature["name"]] = (
+                    levels[i % len(levels)] if levels else "sample_category"
+                )
             elif feature["feature_type"] == "Text":
                 row[feature["name"]] = "sample text"
             elif feature["feature_type"] == "Date":
@@ -71,11 +94,15 @@ def generate_prediction_data_template(
     csv_content = output.getvalue()
 
     # Add metadata comments
+    level_comments = "".join(
+        f"# Valid values for {name}: {', '.join(levels)}\n"
+        for name, levels in categorical_levels.items()
+    )
     metadata_comments = f"""# Prediction Data Template for Deployment: {deployment_id}
 # Model: {deployment.model.get("project_name", "unknown")}
 # Target: {target_name}
 # Generated: {n_rows} template rows
-# 
+{level_comments}#
 # Instructions:
 # 1. Fill in the values for each feature
 # 2. Ensure data types match feature types

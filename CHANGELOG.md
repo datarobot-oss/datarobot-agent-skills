@@ -44,6 +44,12 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-llm-gateway`:  Added a new skill which helps setting up llm gateway, it lists available llm models directly from `SKILL.md`. The CLI handles auth via its own credential store, and syncs env variables.
 
+Follow-ups from a second behavioral test round against these fixes (each verified live):
+- `datarobot-model-monitoring`: the hour-alignment note now truncates `end_time` *forward* to the top of the next hour — the original back-truncation silently dropped the in-progress hour's traffic (a report answered 0 predictions for a window that served 60; the API accepts a future hour-aligned `end_time`); also replaced deprecated `datetime.utcnow()` with a timezone-aware form, and documented the raw `targetDrift` endpoint's time params (`start`/`end`, hour-aligned ISO-8601, default last 7 days — `startTime`/`endTime` are rejected with 400).
+- `datarobot-feature-engineering`: added Pattern 3 (feature effects / direction via `model.get_or_request_feature_effect(source=...)`, reading direction from the `partial_dependence` points) and an explicit output rule — a report that has not computed feature effects must not claim direction; a prohibition note alone did not stop unsupported directional claims in behavioral runs.
+- `datarobot-predictions`: `generate_prediction_data_template.py` now fills categorical columns with the real training levels via `dr.Feature.get(project_id, name).get_histogram()` and lists them in a "Valid values" header (custom-model deployments fall back to the placeholder); the error-handling section names that API instead of "use training data sample"; `score_to_file` example shows explicit `intake_path=`/`output_path=` kwargs; `deployment.model["target_name"]` reads use `.get()` (key absent on unsupervised/anomaly deployments).
+- All SDK skills: `pip install datarobot` (12 sites across 6 skills) is now `python -m pip install datarobot` with a `uv pip install` fallback note for pip-less venvs and PEP 668 systems — the bare form produced `command not found: pip` and PEP 668 refusals in behavioral runs.
+
 ## [1.5.5] - 2026-08-26
 
 ### Fixed
