@@ -34,43 +34,46 @@ def generate_prediction_data_template(
     # Initialize client
     dr.Client()
 
-    # Get deployment features
+    # Get deployment features (list of plain dicts with keys name, feature_type,
+    # importance, date_format, known_in_advance)
     deployment = dr.Deployment.get(deployment_id)
-    model = dr.Model.get(deployment.model["id"])
-    features = model.get_features()
+    features = deployment.get_features()
+    target_name = deployment.model.get(
+        "target_name"
+    )  # None for unsupervised/anomaly deployments
 
     # Filter out target feature
-    prediction_features = [f for f in features if f.name != model.target_name]
+    prediction_features = [f for f in features if f["name"] != target_name]
 
     # Generate template rows with sample values
     import io
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=[f.name for f in prediction_features])
+    writer = csv.DictWriter(output, fieldnames=[f["name"] for f in prediction_features])
     writer.writeheader()
 
     # Generate sample rows based on feature types
     for i in range(n_rows):
         row = {}
         for feature in prediction_features:
-            if feature.feature_type == "Numeric":
-                row[feature.name] = 0.0
-            elif feature.feature_type == "Categorical":
-                row[feature.name] = "sample_category"
-            elif feature.feature_type == "Text":
-                row[feature.name] = "sample text"
-            elif feature.feature_type == "Date":
-                row[feature.name] = "2024-01-01"
+            if feature["feature_type"] == "Numeric":
+                row[feature["name"]] = 0.0
+            elif feature["feature_type"] == "Categorical":
+                row[feature["name"]] = "sample_category"
+            elif feature["feature_type"] == "Text":
+                row[feature["name"]] = "sample text"
+            elif feature["feature_type"] == "Date":
+                row[feature["name"]] = "2024-01-01"
             else:
-                row[feature.name] = ""
+                row[feature["name"]] = ""
         writer.writerow(row)
 
     csv_content = output.getvalue()
 
     # Add metadata comments
     metadata_comments = f"""# Prediction Data Template for Deployment: {deployment_id}
-# Model: {model.project_name}
-# Target: {model.target_name}
+# Model: {deployment.model.get("project_name", "unknown")}
+# Target: {target_name}
 # Generated: {n_rows} template rows
 # 
 # Instructions:

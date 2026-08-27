@@ -11,9 +11,9 @@ This skill provides guidance for working with features in DataRobot, including u
 
 **Most common use case**: Analyze feature importance for a model
 
-1. **Get feature importance**: `get_feature_importance(model_id)` to get importance scores
+1. **Get feature importance**: `model = dr.Model.get(project_id, model_id)`, then `model.get_or_request_feature_impact()` to get importance scores
 2. **Analyze top features**: Sort by importance and identify key drivers
-3. **Export feature list**: `export_feature_list(project_id)` to document features
+3. **Export feature list**: `dr.Project.get(project_id).get_features()`, then iterate `f.name`, `f.feature_type`, `f.importance` to document features
 
 **Example**: "Show me the top 10 most important features for model xyz123"
 
@@ -42,6 +42,10 @@ Use this skill when you need to:
 - Understand which features drive predictions
 - Compare feature importance across models
 - Identify redundant or low-value features
+
+Note: Feature Impact scores are unsigned magnitudes - they say how much a feature matters, not
+which direction it pushes predictions. For direction, use partial dependence via
+`model.get_or_request_feature_effect(source)` (valid sources from `model.get_feature_effect_metadata()`).
 
 ### 3. Feature Optimization
 
@@ -95,8 +99,8 @@ pip install datarobot
 Use these DataRobot SDK methods for feature analysis:
 
 **Feature Information**:
-- `model.get_features()` - List all features in a model
-- `model.get_feature_impact()` - Get feature importance scores
+- `model.get_features_used()` - List feature names used by a model (bare strings, includes the target)
+- `model.get_or_request_feature_impact()` - Get feature importance scores (computes them first if needed)
 - `project.get_features()` - List features in a project
 
 **Feature Analysis**:
@@ -124,9 +128,9 @@ import datarobot as dr
 # Initialize client
 dr.Client()
 
-# Get model and feature importance
-model = dr.Model.get("xyz123")
-feature_impact = model.get_feature_impact()
+# Get model and feature importance (Model.get requires both project and model ids)
+model = dr.Model.get(project_id, model_id)
+feature_impact = model.get_or_request_feature_impact()
 
 # Sort by importance
 sorted_features = sorted(
@@ -143,9 +147,9 @@ for feature in top_features:
 ```python
 import datarobot as dr
 
-# Get model and feature importance
-model = dr.Model.get("xyz123")
-feature_impact = model.get_feature_impact()
+# Get model and feature importance (Model.get requires both project and model ids)
+model = dr.Model.get(project_id, model_id)
+feature_impact = model.get_or_request_feature_impact()
 
 # Filter by importance threshold (> 0.1)
 important_features = [f for f in feature_impact if f.get("impactNormalized", 0) > 0.1]
@@ -177,6 +181,10 @@ print(f"Found {len(important_features)} features with importance > 0.1")
 
 ## Understanding feature importance
 
+Feature Impact rows report `impactUnnormalized` (how much worse the model's error metric gets when
+the feature is shuffled - not a percentage or share of predictive signal) and `impactNormalized`
+(the same value scaled so the largest is 1.0). The thresholds below apply to the normalized score.
+
 Feature importance scores indicate:
 - **High importance (> 0.1)**: Feature significantly impacts predictions
 - **Medium importance (0.05-0.1)**: Feature contributes to predictions
@@ -189,6 +197,7 @@ Note: Importance thresholds vary by model type and problem domain.
 Common errors and solutions:
 
 - **Feature not found**: Verify feature name and model compatibility
+- **ClientError (404) from `get_feature_impact`**: Feature Impact was never computed - use `model.get_or_request_feature_impact()` instead
 - **Importance unavailable**: Some model types don't provide importance scores
 - **Feature access errors**: Check project and model permissions
 

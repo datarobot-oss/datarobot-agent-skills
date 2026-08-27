@@ -10,6 +10,10 @@ Usage:
 
 Supports CSV, Parquet, and other formats. Optionally links the dataset to
 an existing Use Case so it isn't orphaned in the DataRobot UI.
+
+Note: the upload is a blocking call that returns only after server-side
+ingestion completes (default max_wait=600 seconds) — run it with an adequate
+timeout or in the background, and raise max_wait for large files.
 """
 
 import json
@@ -41,16 +45,16 @@ def upload_dataset(
 
     use_cases = [dr.UseCase.get(use_case_id)] if use_case_id else None
 
-    # Upload dataset
-    dataset = dr.Dataset.create_from_file(
-        file_path=file_path, name=dataset_name, use_cases=use_cases
-    )
+    # Upload dataset (create_from_file has no name parameter; rename after)
+    dataset = dr.Dataset.create_from_file(file_path=file_path, use_cases=use_cases)
+    if dataset_name:
+        dataset.modify(name=dataset_name)
 
     return {
         "dataset_id": dataset.id,
         "dataset_name": dataset.name,
         "row_count": dataset.row_count,
-        "column_count": dataset.column_count,
+        "column_count": len(dataset.get_all_features()),
         "file_path": file_path,
         "use_case_id": use_case_id,
     }

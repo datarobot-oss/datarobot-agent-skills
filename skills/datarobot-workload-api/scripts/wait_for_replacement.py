@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -108,7 +109,7 @@ def main() -> int:
     if outcome == "failed":
         print(
             f"Replacement FAILED — workload reverted to the old artifact. "
-            f"Diagnose with: python ../../datarobot-workload-debug/scripts/diagnose_workload.py {args.workload_id}",
+            f"Diagnose with: python {Path(__file__).parent / 'diagnose_workload.py'} {args.workload_id}",
             file=sys.stderr,
         )
         if last:

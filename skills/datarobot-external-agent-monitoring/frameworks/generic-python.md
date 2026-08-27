@@ -143,9 +143,9 @@ from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
 RequestsInstrumentor().instrument()
 
-from opentelemetry.instrumentation.httpx import HTTPXInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
-HTTPXInstrumentor().instrument()
+HTTPXClientInstrumentor().instrument()
 ```
 
 ## Extra Dependencies

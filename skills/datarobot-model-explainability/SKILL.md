@@ -26,7 +26,7 @@ This skill covers SHAP insights, XEMP prediction explanations, anomaly explanati
 |------|-----------|---------------|
 | SHAP values for all features, all rows | `ShapMatrix.create(entity_id=model_id)` | None - universal SHAP |
 | Per-row top-feature explanations | `ShapPreview.create(entity_id=model_id)` | None |
-| Aggregated feature importance via SHAP | `ShapImpact.create(entity_id=model_id)` | None |
+| Aggregated feature importance via SHAP | `ShapImpact.create(entity_id=model_id, source="validation")` | None - but note `ShapImpact` defaults to `source="training"` |
 | SHAP value distributions across features | `ShapDistributions.create(entity_id=model_id)` | None |
 | SHAP for a filtered segment | `dr.DataSlice.create(...)` + `ShapMatrix.create(..., data_slice_id=...)` | Data slice definition |
 | XEMP-based prediction explanations | `dr.PredictionExplanations.create(...)` | Feature Impact; PE initialization; dataset uploaded |
@@ -80,7 +80,7 @@ model_id = "YOUR_MODEL_ID"
 matrix = ShapMatrix.create(entity_id=model_id)
 df = pd.DataFrame(matrix.matrix, columns=matrix.columns)
 
-impact = ShapImpact.create(entity_id=model_id)
+impact = ShapImpact.create(entity_id=model_id, source="validation")
 preview = ShapPreview.create(entity_id=model_id)
 distributions = ShapDistributions.create(entity_id=model_id)
 ```
@@ -89,6 +89,10 @@ Use `ShapMatrix` for full row-by-feature SHAP values, `ShapPreview` for compact 
 `ShapImpact` for aggregated SHAP importance, and `ShapDistributions` for per-feature SHAP
 distributions. Use `source="externalTestSet"` plus `external_dataset_id` for external datasets.
 See `references/shap_api_reference.md` for parameters, exports, and limitations.
+
+**Note**: `ShapImpact.create`/`.compute` default to `source="training"`, unlike the other three
+classes (`"validation"`) — and `ShapImpact.get` defaults to `source="validation"`, so a bare
+`create()` followed by a bare `get()` finds nothing. Always pass `source` explicitly.
 
 ---
 
@@ -107,7 +111,8 @@ import datarobot as dr
 
 model = dr.Model.get(project=project_id, model_id=model_id)
 model.request_feature_impact().wait_for_completion()
-dr.PredictionExplanationsInitialization.create(project_id=project_id, model_id=model_id)
+init_job = dr.PredictionExplanationsInitialization.create(project_id=project_id, model_id=model_id)
+init_job.wait_for_completion()
 
 dataset = dr.Dataset.upload("./data/scoring_data.csv")
 pe_job = dr.PredictionExplanations.create(
@@ -138,7 +143,7 @@ from datarobot.insights import ShapMatrix
 
 data_slice = dr.DataSlice.create(
     name="high_income_customers",
-    filters=[{"operand": "income", "operator": ">", "values": 100000}],
+    filters=[{"operand": "income", "operator": ">", "values": [100000]}],
     project=project_id,
 )
 
@@ -218,6 +223,9 @@ feature_effects = model.get_feature_effect(source="validation")
 - **Magnitude**: size of influence; larger absolute value = stronger effect
 - **Sum**: all SHAP values for a row sum to `prediction - base_value` in the link-function space
 - **`base_value`**: the model's mean prediction (the "no information" baseline)
+- **Aggregated impact (`ShapImpact`)**: mean absolute SHAP — magnitude only, never direction.
+  For direction use signed per-row values (`ShapMatrix`/`ShapPreview`) or
+  `model.get_feature_effect(source=...)`
 
 Example: if `base_value = 0.35` and a row's prediction is `0.72`, the row's SHAP values sum to
 `0.37` when `link_function = "identity"`. A feature with SHAP `+0.20` contributed 20 units in
@@ -237,7 +245,7 @@ Task: explain predictions
     |
     - Need all features + all rows?     -> ShapMatrix.create(entity_id=model_id)
     - Need top-N features per row?      -> ShapPreview.create(entity_id=model_id)
-    - Need aggregated importance?       -> ShapImpact.compute(entity_id=model_id)
+    - Need aggregated importance?       -> ShapImpact.create(entity_id=model_id, source="validation")
     - Need feature SHAP distributions?  -> ShapDistributions.create(entity_id=model_id)
     - Need a segment/cohort only?       -> dr.DataSlice + data_slice_id
     - XEMP required (regulatory/type)?  -> dr.PredictionExplanations.create(...)

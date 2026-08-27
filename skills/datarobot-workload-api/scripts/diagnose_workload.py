@@ -22,7 +22,7 @@ from typing import Any, cast
 import httpx
 
 CONSOLE_URL = "https://app.datarobot.com/console-nextgen/workloads/{wid}/overview"
-FLAG_EVENT_REASON_KEYWORDS = ("failed", "error", "kill", "oom", "backoff", "evict")
+FLAG_EVENT_TYPE_KEYWORDS = ("failed", "error", "kill", "oom", "backoff", "evict")
 
 Headers = dict[str, str]
 Json = dict[str, Any]
@@ -32,6 +32,21 @@ def get_workload(base: str, headers: Headers, wid: str) -> Json:
     r = httpx.get(f"{base}/workloads/{wid}/", headers=headers, timeout=30)
     r.raise_for_status()
     return cast(Json, r.json())
+
+
+def get_error_logs(
+    base: str, headers: Headers, wid: str, limit: int = 30
+) -> list[Json]:
+    r = httpx.get(
+        f"{base}/otel/workload/{wid}/logs/",
+        headers=headers,
+        params={"level": "error", "limit": limit},
+        timeout=30,
+    )
+    if r.status_code == 404:
+        return []
+    r.raise_for_status()
+    return cast(list[Json], r.json().get("data", []))
 
 
 def get_events(base: str, headers: Headers, wid: str, limit: int = 20) -> list[Json]:
@@ -71,13 +86,11 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     """Returns a dict with: status, summary, evidence, recommended_next_step."""
     w = get_workload(base, headers, wid)
     status = w.get("status", "unknown")
-    status_details = w.get("statusDetails") or {}
-    log_tail = status_details.get("logTail", []) or []
 
     findings: list[str] = []
     evidence: str | None = None
 
-    # Step 1 — scan logTail for obvious signals
+    # Step 1 — scan recent error-level application logs for obvious signals
     keywords = (
         "error",
         "exception",
@@ -87,14 +100,13 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
         "connection refused",
         "exec format error",
     )
-    for line in log_tail[-30:]:
-        lower = (line or "").lower()
+    for record in get_error_logs(base, headers, wid, limit=30):
+        message = (record.get("message") or "").strip()
+        lower = message.lower()
         for kw in keywords:
             if kw in lower:
-                evidence = line.strip()
-                findings.append(
-                    f"logTail line matched keyword {kw!r}: {evidence[:200]}"
-                )
+                evidence = message
+                findings.append(f"error log matched keyword {kw!r}: {evidence[:200]}")
                 break
         if evidence:
             break
@@ -102,17 +114,15 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     # Step 2 — flag noteworthy lifecycle events
     flagged_events: list[str] = []
     for ev in get_events(base, headers, wid, limit=30):
-        ev_type = (ev.get("type") or "").lower()
-        ev_reason = (ev.get("reason") or "").lower()
-        if ev_type == "warning" or any(
-            k in ev_reason for k in FLAG_EVENT_REASON_KEYWORDS
-        ):
+        ev_type = (ev.get("eventType") or "").lower()
+        if any(k in ev_type for k in FLAG_EVENT_TYPE_KEYWORDS):
+            details = json.dumps(ev.get("details") or {}, default=str)
             flagged_events.append(
-                f"  [{ev.get('timestamp', '')[:19]}] {ev.get('type', '?')} "
-                f"{ev.get('reason', '?')}: {(ev.get('message') or '')[:200]}"
+                f"  [{(ev.get('timestamp') or '')[:19]}] "
+                f"{ev.get('eventType', '?')}: {details[:200]}"
             )
             if not evidence:
-                evidence = ev.get("message") or f"{ev.get('reason')}"
+                evidence = f"{ev.get('eventType')}: {details[:200]}"
 
     # Step 3/4 — drill into the active (or most recent) proton
     proton_summary: str | None = None
@@ -165,14 +175,14 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     elif status == "errored":
         if not evidence:
             recommendation = (
-                "errored with no specific signal in logTail/events. Pull application logs "
-                "(`datarobot-workload-telemetry`: GET /otel/workload/<id>/logs/) for the underlying cause."
+                "errored with no specific signal in logs/events. Pull application logs "
+                "(SKILL.md section 3: GET /otel/workload/<id>/logs/) for the underlying cause."
             )
         else:
             recommendation = (
                 "errored. Fix the root cause flagged above. For image/spec/env-var changes use "
-                "`datarobot-workload-artifacts`; for replicas/memory/bundle changes use "
-                "`datarobot-workload-management`."
+                "SKILL.md section 4 (artifact lifecycle); for replicas/memory/bundle changes use "
+                "SKILL.md section 1 (PATCH /workloads/{id}/settings/)."
             )
     elif status in ("stopping", "stopped"):
         recommendation = "Workload is shutting down or stopped. Start it via POST /workloads/<id>/start/ if unintended."
@@ -182,7 +192,7 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     return {
         "workload_id": wid,
         "status": status,
-        "logTail_findings": findings,
+        "log_findings": findings,
         "events_flagged": flagged_events,
         "proton_summary": proton_summary,
         "proton_detail": proton_detail_summary,
@@ -194,9 +204,9 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
 def print_report(d: Json) -> None:
     print(f"Workload {d['workload_id']} — Diagnosis")
     print(f"  Status:           {d['status']}")
-    if d["logTail_findings"]:
-        print("  logTail signals:")
-        for line in d["logTail_findings"]:
+    if d["log_findings"]:
+        print("  Error-log signals:")
+        for line in d["log_findings"]:
             print(f"    - {line}")
     if d["events_flagged"]:
         print(f"  Flagged events ({len(d['events_flagged'])}):")

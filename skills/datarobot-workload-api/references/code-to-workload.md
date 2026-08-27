@@ -89,15 +89,15 @@ curl -sS -X POST "${DATAROBOT_ENDPOINT}/artifacts/" \
 1. Zips the project directory (respects `.dockerignore`).
 2. Uploads the zip to the Files API as a new catalog version.
 3. Waits for the catalog version to finish processing.
-4. PATCHes the artifact's container spec to set `codeRef.datarobot.catalogId` and `codeRef.datarobot.catalogVersionId`.
+4. PATCHes the artifact's container spec to set `imageBuildConfig.codeRef.datarobot.catalogId` and `imageBuildConfig.codeRef.datarobot.catalogVersionId`.
 
-`codeRef` on the container looks like:
+`imageBuildConfig.codeRef` on the container looks like (`codeRef` is NOT a direct container property — it lives inside `imageBuildConfig`):
 
 ```json
-{"codeRef": {"datarobot": {"catalogId": "<id>", "catalogVersionId": "<vid>"}}}
+{"imageBuildConfig": {"codeRef": {"datarobot": {"catalogId": "<id>", "catalogVersionId": "<vid>"}}}}
 ```
 
-If the CLI isn't available, the agent can reproduce sync manually: `POST /api/v2/files/fromFile/` with the zipped project, then `PATCH /artifacts/{id}/` with the container's `codeRef` set to the returned catalog id + version id.
+If the CLI isn't available, the agent can reproduce sync manually: `POST /api/v2/files/fromFile/` with the zipped project, then `PATCH /artifacts/{id}/` with the container's `imageBuildConfig.codeRef` set to the returned catalog id + version id.
 
 ## Triggering and watching a build
 
@@ -108,7 +108,7 @@ dr artifact build create                 # uses linked artifact
 dr artifact build create <artifact_id>   # explicit
 ```
 
-Raw fallback (empty body — `codeRef` on the artifact already tells the build system where to find the source):
+Raw fallback (empty body — the container's `imageBuildConfig.codeRef` already tells the build system where to find the source):
 
 ```shell
 curl -sS -X POST "${DATAROBOT_ENDPOINT}/artifacts/${ARTIFACT_ID}/builds" \
@@ -123,7 +123,7 @@ Poll with `python scripts/wait_for_build.py <artifact_id> <build_id>` (enforces 
 **Build status progression — `BUILT` is NOT terminal-success:**
 
 ```
-pending → in-progress → BUILT → COMPLETED       (or → FAILED)
+pending → in-progress → BUILT → COMPLETED       (or → FAILED / CANCELLED)
 ```
 
 - `BUILT` means the image was built locally on the build host but **has NOT been pushed to the registry yet**.
@@ -180,7 +180,7 @@ Once a draft artifact builds cleanly and the workload runs the way the user want
 |---|---|
 | Artifact `imageUri` | Set to `"placeholder:latest"` on create; populated by the build on success |
 | Artifact `imageBuildConfig` | Persists across rebuilds; the build instruction set |
-| Artifact `codeRef` | Pointer to the catalog version with source code; updated each `dr artifact code sync` |
+| Container `imageBuildConfig.codeRef` | Pointer to the catalog version with source code; updated each `dr artifact code sync` |
 | Catalog versions | Immutable snapshots of synced source; listed by `dr artifact code versions` |
 | Builds | `POST /artifacts/{id}/builds/` produces one; listed by `GET /artifacts/{id}/builds/` |
 | Workload | References artifact by `artifactId`; runs whatever image the artifact currently points at |

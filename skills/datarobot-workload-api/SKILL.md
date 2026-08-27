@@ -34,7 +34,7 @@ Runnable Python in `scripts/` (this skill's folder). Each uses `httpx` and reads
 
 - `wait_for_running.py <workload_id>` — poll until `running`; exit 2 on terminal failure, 3 on timeout
 - `diagnose_workload.py <workload_id>` — run the 5-step debug flow, print a structured diagnosis (`--json` for machine-readable)
-- `wait_for_build.py <artifact_id> <build_id>` — poll a server-side image build; dumps last 2KB of logs on `FAILED`
+- `wait_for_build.py <artifact_id> <build_id>` — poll a server-side image build; dumps last 2KB of logs on `FAILED`/`CANCELLED`
 - `wait_for_replacement.py <workload_id>` — poll a rolling replacement; handles the 404-when-cleared case
 - `check_limits.py` — print the user's effective org-set scaling limits via `/account/info/`
 
@@ -51,10 +51,10 @@ SKILL.md is the operational core; occasional detail lives in `references/`:
 
 ## OpenAPI spec is source of truth
 
-At `${DATAROBOT_ENDPOINT}/openapi.yaml`. **~5 MB — never dump it whole.** Save once, then slice with `yq` (or `print()` only the specific key in Python):
+Use the docs-site spec below — `${DATAROBOT_ENDPOINT}/openapi.yaml` lacks the workload/artifact namespace. **~6 MB — never dump it whole.** Save once, then slice with `yq` (or `print()` only the specific key in Python):
 
 ```bash
-curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
+curl -sS "https://docs.datarobot.com/en/docs/api/reference/public-api/openapi.yaml" -o /tmp/wapi-spec.yaml
 yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml
 yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i workload   # discover
 ```
@@ -104,11 +104,11 @@ Raw fallback when CLI unavailable: `httpx.post(f"{base}/workloads/", headers=hea
 
 **Critical gotchas:**
 
-- `importance`: `low`/`moderate`/`high`/`critical`; `type`: `service` (default) or `nim`. Exactly one container per group has `primary: true`.
+- `importance`: `low`/`moderate`/`high`/`critical`; `type`: `service` (default), `nim`, `agent`, or `mcp`. Exactly one container per group has `primary: true`.
 - `cpu` is cores (float OK). `memory` accepts decimal string (`"512MB"`, units B/KB/MB/GB) or byte integer; Kubernetes binary suffixes (`Mi`/`Gi`) NOT supported.
 - `port` MUST be `>= 1024`. The container must actually listen on it (set via image env vars or entrypoint).
 - Image must include a **linux/amd64** manifest. Apple Silicon defaults to ARM64 and crash-loops with `exec format error`. Build with `docker buildx build --platform linux/amd64,linux/arm64 -t <ref> --push .`.
-- Status lifecycle: `submitted` → `provisioning` → `launching` → `running` (happy path); `updating` during rolling redeploys; `errored` recoverable; `failed`/`terminated` unrecoverable. Full table in `references/status-vocabulary.md`.
+- Status lifecycle: `submitted` → `provisioning` → `launching` → `running` (happy path); `errored` recoverable; `terminated` unrecoverable. No `updating`/`failed` statuses — rolling redeploys show on the `candidate` proton. Full table in `references/status-vocabulary.md`.
 
 ## Serving a browser-facing web UI through the endpoint
 
@@ -142,9 +142,9 @@ httpx.patch(
                             "resourceAllocation": {"cpu": 2, "memory": "1GB"},
                         }
                     ],
-                    # OR: "autoscaling": {"enabled": True, "policies": [{
-                    #       "scalingMetric": "cpuAverageUtilization",
-                    #       "target": 70, "minCount": 1, "maxCount": 10}]}
+                    # OR: "autoscaling": {"enabled": True, "minReplicaCount": 1,
+                    #       "maxReplicaCount": 10, "policies": [{
+                    #       "scalingMetric": "cpuAverageUtilization", "target": 70}]}
                 }
             ]
         }
@@ -152,7 +152,7 @@ httpx.patch(
 )
 ```
 
-Valid `scalingMetric` values: `cpuAverageUtilization`, `httpRequestsConcurrency`, `gpuCacheUtilization`, `gpuRequestQueueDepth`, or a custom NIM metric. Settings updates are **rolling**; zero-downtime only with `replicaCount >= 2` (or autoscaling `minCount >= 2`).
+Valid `scalingMetric` values: `cpuAverageUtilization`, `httpRequestsConcurrency`, `gpuCacheUtilization`, `gpuRequestQueueDepth`, or a custom NIM metric. Settings updates are **rolling**; zero-downtime only with `replicaCount >= 2` (or autoscaling `minReplicaCount >= 2`).
 
 ## Org-set scaling limits — check before scaling
 
@@ -190,14 +190,14 @@ Provide `artifactId` instead of the inline `artifact` block. The `containerGroup
 python scripts/diagnose_workload.py <workload_id>
 ```
 
-Runs all 5 steps below, prints a structured report (status / logTail signals / flagged events / proton K8s detail / evidence / recommended next step / console URL). `--json` for machine-readable. If `Evidence` is empty, pull application logs via section 3 — don't guess from status alone.
+Runs all 5 steps below, prints a structured report (status / error-log signals / flagged events / proton K8s detail / evidence / recommended next step / console URL). `--json` for machine-readable. If `Evidence` is empty, pull application logs via section 3 — don't guess from status alone.
 
 ## The 5-step flow
 
 The script encapsulates this; use the model below for ambiguous output or one-off calls.
 
-1. **`GET /workloads/{id}/`** — `status`, `statusDetails.logTail` (~30 lines; scan for `error`/`exception`/`traceback`/`killed`/`permission denied`/`connection refused`), `statusDetails.conditions`. Guard `statusDetails` — it's `null` during `submitted`/`provisioning`.
-2. **`GET /workloads/{id}/events/`** — flag `type: Warning` or `reason` with `Failed`/`Error`/`Kill`/`OOM`; the last Warning before `errored` is usually the trigger.
+1. **`GET /workloads/{id}/`** — `status` only (no logs/conditions in the body). Then `GET /otel/workload/{id}/logs/?level=error` and scan `message` for `error`/`exception`/`traceback`/`killed`/`permission denied`/`connection refused`. Conditions come from step 4.
+2. **`GET /workloads/{id}/events/`** — records carry `eventType` + `details`; flag `eventType` containing `Errored`/`Failed` (e.g. `"Replacement Errored"`), read `details`; the last flagged event before `errored` is usually the trigger.
 3. **`GET /workloads/{id}/protons/`** — pick `role: "active"` (or the `candidate` during a rolling replacement; else newest `createdAt`).
 4. **`GET /workloads/{id}/protons/{pid}/statusDetails/`** — `204` while initializing (not an error). Read `replicas[*].containers[*].status`+`restartCount` → `replicas[*].conditions[*]` (any `value:false`) → `overallStatus.summary`.
 5. **Application logs** — section 3.
@@ -210,7 +210,7 @@ Common patterns (`CrashLoopBackOff`, `ImagePullBackOff`, `OOMKilled`, probe/pend
 Workload {id} — Diagnosis
 - Status: {current}
 - Root cause: {one sentence}
-- Evidence: {the specific logTail line, condition, container reason, or event}
+- Evidence: {the specific error-log line, condition, container reason, or event}
 - Recommended fix: {actionable next step — section 1 (settings), section 4 (artifact), or app code}
 - Console: https://app.datarobot.com/console-nextgen/workloads/{id}/overview
 ```
@@ -259,7 +259,7 @@ r = httpx.get(
 traces = httpx.get(f"{base}/otel/workload/{wid}/traces/", headers=headers).json()[
     "data"
 ]
-# summary: traceId, rootSpanName, rootServiceName, duration (NANOSECONDS), spansCount, errorSpansCount
+# summary: traceId, rootSpanName, rootServiceName, duration (SECONDS), spansCount, errorSpansCount
 trace_id = next(
     (t["traceId"] for t in traces if t.get("errorSpansCount", 0) > 0),
     traces[0]["traceId"],
@@ -269,11 +269,11 @@ trace = httpx.get(
 ).json()
 ```
 
-> **`duration` is NANOSECONDS** on summaries AND spans. Divide by 1,000,000 for ms before display. Empty `data` = app isn't instrumented; direct the user to wire up OTEL.
+> **Units differ by level:** trace list/detail `duration` is SECONDS (×1000 for ms); span `duration` is MICROSECONDS (÷1000 for ms); span `startTime` is epoch ms. Empty `data` = app isn't instrumented; direct the user to wire up OTEL.
 
 ## Metrics + service stats
 
-Convert before display: `bytes`→MB (`/1024**2`), `nanocores`→cores (`/1_000_000`), `percentage` already %.
+Branch on each record's `unit`: `bytes`→MiB (`/1024**2`), `mebibytes` already MiB, `nanocores`→cores (`/1_000_000_000`), `percentagedecimal`→% (`*100`), `percentage` already %, `null` unitless — show raw.
 
 ```python
 stats = httpx.get(f"{base}/workloads/{wid}/stats/", headers=headers).json()
@@ -281,7 +281,7 @@ stats = httpx.get(f"{base}/workloads/{wid}/stats/", headers=headers).json()
 #   responseTime, requestsPerMinute, concurrentRequests, *ErrorRate}}. /workloads/stats/ = aggregate.
 ```
 
-> **Destructive:** `DELETE /workloads/{id}/stats/?metricName=<name>` zeroes a metric's history — only on explicit request.
+> **Destructive:** `DELETE /workloads/{id}/stats/` clears stats history (scope with `protonId`/`startTime`/`endTime`; no per-metric delete) — only on explicit request.
 
 ## Presenting results
 

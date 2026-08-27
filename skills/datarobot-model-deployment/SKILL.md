@@ -11,9 +11,10 @@ This skill provides comprehensive guidance for deploying models, managing deploy
 
 **Most common use case**: Deploy a trained model to production
 
-1. **Get best model**: Find the best model from a project (highest metric score)
-2. **Create deployment**: `create_deployment(model_id, deployment_name)` to deploy model
-3. **Get endpoint**: `get_deployment_endpoint(deployment_id)` to retrieve prediction URL
+1. **Get best model**: `dr.ModelRecommendation.get(project_id).get_model()` to get the recommended model
+2. **Register the model**: `dr.RegisteredModelVersion.create_for_leaderboard_item(model_id=..., name=...)` to create a registered model version
+3. **Create deployment**: `dr.Deployment.create_from_registered_model_version(model_package_id=version.id, label=..., default_prediction_server_id=...)` to deploy it
+4. **Get endpoint**: `(deployment.default_prediction_server or {}).get("url")` to retrieve the prediction URL (`None` for DataRobot Serverless deployments)
 
 **Example**: "Deploy the best model from project abc123 as 'Sales Prediction v1'"
 
@@ -65,7 +66,7 @@ Use this skill when you need to:
 **User request**: "Deploy the best model from project abc123 to production with the name 'Sales Prediction v1'."
 
 **Agent workflow**:
-1. Get the best model from the project (highest metric score)
+1. Get DataRobot's recommended model from the project (`dr.ModelRecommendation.get(project_id).get_model()`)
 2. Create a new deployment with the model
 3. Configure deployment settings (name, description, environment)
 4. Set up prediction environment (DataRobot Serverless recommended)
@@ -97,14 +98,16 @@ pip install datarobot
 Use these DataRobot SDK methods for deployment management:
 
 **Deployments**:
-- `dr.Deployment.create_from_learning_model(model_id, label)` - Create deployment
+- `dr.RegisteredModelVersion.create_for_leaderboard_item(model_id, name)` - Register a model for deployment (`dr.Deployment.create_from_learning_model` is deprecated — do not use it)
+- `dr.Deployment.create_from_registered_model_version(model_package_id, label, default_prediction_server_id=...)` - Create deployment. `default_prediction_server_id` is typed Optional but DataRobot Cloud returns a 422 error without it; for DataRobot Serverless, pass `prediction_environment_id=...` instead
+- `dr.PredictionServer.list()` - List prediction servers; objects expose only `.id`, `.url`, and `.datarobot_key` (no `.name`)
 - `dr.Deployment.get(deployment_id)` - Get deployment details
-- `dr.Deployment.list(project_id)` - List deployments
+- `dr.Deployment.list()` - List all deployments (optionally `search=<label substring>`; deployments cannot be filtered by project id via the SDK)
 - `deployment.delete()` - Delete deployment
 
 **Model Replacement (champion swap)**:
 - `deployment.validate_replacement_model(new_model_id=...)` - Validate replacement eligibility
-- `deployment.perform_model_replace(new_model_id=..., reason=...)` - Replace champion model (async)
+- `deployment.perform_model_replace(new_registered_model_version_id=..., reason=...)` - Replace champion model (async). Register the new model first via `dr.RegisteredModelVersion.create_for_leaderboard_item(model_id=..., registered_model_id=<deployed registered model>)` and pass the version's id — a leaderboard model id is rejected. `reason` takes a `dr.enums.MODEL_REPLACEMENT_REASON` value (`ACCURACY`, `DATA_DRIFT`, `ERRORS`, `OTHER`, `SCHEDULED_REFRESH`, `SCORING_SPEED`)
 
 **Challenger Models (limited via SDK)**:
 - `deployment.list_challengers()` - List challenger models (if enabled/configured)
@@ -112,6 +115,7 @@ Use these DataRobot SDK methods for deployment management:
 
 **Deployment Info**:
 - `deployment.get_features()` - Get required features
+- `deployment.default_prediction_server` - Prediction endpoint info: a dict with `"url"` and `"datarobot-key"` keys (kebab-case; the key is sent as a request header), or `None` for DataRobot Serverless deployments
 
 See the [Common Patterns](#common-patterns) section below for complete examples.
 
@@ -133,27 +137,42 @@ import datarobot as dr
 # Initialize client
 dr.Client()
 
-# Get best model from project
-models = dr.Model.list("abc123")
-best_model = max(models, key=lambda m: m.metrics.get("AUC", 0))
+# Get DataRobot's recommended model from the project
+best_model = dr.ModelRecommendation.get("abc123").get_model()
+
+# Register the model (required before deploying)
+registered_version = dr.RegisteredModelVersion.create_for_leaderboard_item(
+    model_id=best_model.id, name="Sales Prediction v1"
+)
+
+# DataRobot Cloud requires a prediction server (the param is typed Optional but the API 422s without it)
+servers = dr.PredictionServer.list()  # PredictionServer has ONLY .id, .url, .datarobot_key (no .name)
 
 # Create deployment
-deployment = dr.Deployment.create_from_learning_model(
-    model_id=best_model.id,
+deployment = dr.Deployment.create_from_registered_model_version(
+    model_package_id=registered_version.id,
     label="Sales Prediction v1",
     description="Production deployment for sales forecasting",
+    default_prediction_server_id=servers[0].id,
 )
 
 print(f"Deployment created: {deployment.id}")
 ```
 
+For DataRobot Serverless, pass `prediction_environment_id=<serverless prediction environment id>` instead of `default_prediction_server_id`.
+
 ### Pattern 2: Deployment with challenger
 ```python
 import datarobot as dr
 
-# Create deployment with primary model
-deployment = dr.Deployment.create_from_learning_model(
-    model_id=primary_model.id, label="Sales Prediction v2"
+# Register the primary model, then create the deployment
+registered_version = dr.RegisteredModelVersion.create_for_leaderboard_item(
+    model_id=primary_model.id, name="Sales Prediction v2"
+)
+deployment = dr.Deployment.create_from_registered_model_version(
+    model_package_id=registered_version.id,
+    label="Sales Prediction v2",
+    default_prediction_server_id=dr.PredictionServer.list()[0].id,
 )
 
 # List challengers (if challenger models are configured/enabled)

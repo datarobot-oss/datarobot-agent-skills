@@ -13,7 +13,9 @@ This skill provides comprehensive guidance for monitoring deployed models, track
 
 1. **Check service stats**: `deployment.get_service_stats(...)` to review prediction volume/latency
 2. **Check drift**: `deployment.get_feature_drift(...)` / `deployment.get_target_drift(...)`
-3. **Compare over time**: Use `get_service_stats_over_time(...)` and drift periods to assess trends
+3. **Compare over time**: Use `get_service_stats_over_time(...)` and drift periods to assess trends.
+   Each element of `.buckets` is a dict with keys `period`, `model_id`, `value` — the metric value is under `"value"`,
+   e.g. `total = sum(b["value"] or 0 for b in sot.buckets)`
 
 **Example**: "Check the health of deployment abc123 and report any data drift issues"
 
@@ -100,11 +102,16 @@ Use these DataRobot SDK and MLOps API methods for monitoring:
 - `deployment.get_service_stats(...)` - Get service statistics (latency, volume, etc.)
 - `deployment.get_feature_drift(...)` - Get feature drift metrics (returns `FeatureDrift` objects)
 - `deployment.get_target_drift(...)` - Get target drift metrics (returns `TargetDrift`)
+  - **SDK 3.18.0 bug**: on unsegmented deployments this raises `DataError: {'segment_value': 'is required'}`. Workaround — call the REST endpoint directly:
+    `data = dr.Client().get(f"deployments/{deployment_id}/targetDrift/").json()`, then read camelCase keys `data["driftScore"]`, `data["targetName"]`, `data["sampleSize"]`
 - `deployment.get_prediction_results(...)` - Retrieve recorded prediction results (if enabled)
+
+**Note**: Monitoring endpoints reject `start_time`/`end_time` not aligned to the top of an hour (HTTP 400).
+Truncate first: `end_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)`.
 
 **Model Performance**:
 - `model.metrics` - Model performance metrics (dict of `{metric: {partition: score}}`)
-- `model.get_roc_curve()` - Get ROC curve for comparison
+- `model.get_roc_curve("validation")` - Get ROC curve for comparison (`source` is required: `"validation"`, `"crossValidation"`, or `"holdout"`)
 
 **Note**: Some monitoring features may require DataRobot MLOps API. See the [Common Patterns](#common-patterns) section below for examples.
 
@@ -133,7 +140,7 @@ deployment = dr.Deployment.get("abc123")
 # ServiceStats exposes values via the .metrics dict, not as attributes.
 stats = deployment.get_service_stats()
 print(f"Prediction count: {stats.metrics['totalPredictions']}")
-print(f"Mean response time (ms): {stats.metrics['responseTime']}")
+print(f"Median response time (ms): {stats.metrics['responseTime']}")  # p50 by default; adjust via response_time_quantile
 
 # Get recorded prediction results (if available / enabled)
 try:

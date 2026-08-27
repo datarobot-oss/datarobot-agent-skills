@@ -34,12 +34,16 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
     dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
-    model = dr.Model.get(deployment.model["id"])
-    features = model.get_features()
+    # List of plain dicts with keys name, feature_type, importance, date_format,
+    # known_in_advance
+    features = deployment.get_features()
+    target_name = deployment.model.get(
+        "target_name"
+    )  # None for unsupervised/anomaly deployments
 
     # Get required features (exclude target)
     required_features = {
-        f.name: f.feature_type for f in features if f.name != model.target_name
+        f["name"]: f["feature_type"] for f in features if f["name"] != target_name
     }
 
     # Read CSV data
@@ -89,24 +93,16 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
                             f"Row {row_num}, {feature_name}: Expected numeric, got '{value}'"
                         )
 
-    # Get feature importance for warnings
-    try:
-        feature_importance = model.get_feature_impact()
-        low_importance_features = [
-            fi["featureName"]
-            for fi in feature_importance
-            if fi.get("impactNormalized", 0) < 0.05
-        ]
+    # Use the importance already returned by deployment.get_features() for warnings
+    # (a model-independent measure of feature/target relationship strength)
+    low_importance_features = [
+        f["name"] for f in features if (f["importance"] or 0) < 0.05
+    ]
 
-        missing_low_importance = missing_features & set(low_importance_features)
-        if missing_low_importance:
-            warnings.append(
-                f"Missing low-importance features: {', '.join(sorted(missing_low_importance))}"
-            )
-    except dr.errors.ClientError as e:
-        print(
-            f"Note: feature impact unavailable, skipping importance warnings: {e}",
-            file=sys.stderr,
+    missing_low_importance = missing_features & set(low_importance_features)
+    if missing_low_importance:
+        warnings.append(
+            f"Missing low-importance features: {', '.join(sorted(missing_low_importance))}"
         )
 
     return {
