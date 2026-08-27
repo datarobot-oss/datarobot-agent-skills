@@ -57,6 +57,9 @@ Follow-ups from a third behavioral round (12 runs at `bb02176`; all round-2 fixe
 - `datarobot-model-monitoring`: Pattern 2's drift filter used an undocumented 0.2 threshold that contradicted the skill's own 0.15/0.3 alert table; now 0.15 with a pointer to the table.
 - `datarobot-predictions`: `generate_prediction_data_template.py` now fills numeric columns with the feature's training median and lists min/max ranges in the header (was `0.0` placeholders), via the same `dr.Feature.get` stats already fetched for categorical levels; custom-model deployments keep the placeholder fallback.
 
+Follow-up from a fourth behavioral round (6/6 pass at `11d3c29`, friction down to one signal):
+- All SDK skills: the install guidance now states the installer decision in prose next to the command ("if `python -c "import pip"` fails, go straight to `uv pip install`") — round 4 showed agents that rewrite the command (adding `-r requirements.txt`) keep the ordering but drop the `||` operator, so the decision must survive outside shell syntax. A repo-wide sweep for other example-code constants contradicting their skill's own guidance tables (the round-3 `0.2` class) found none.
+
 ## [1.5.5] - 2026-08-26
 
 ### Fixed

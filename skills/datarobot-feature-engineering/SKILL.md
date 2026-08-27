@@ -95,7 +95,9 @@ This skill guides you to use the DataRobot Python SDK directly. Install the SDK 
 python -m pip install datarobot || uv pip install datarobot
 ```
 
-The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
+The `uv pip` fallback covers environments with no pip (uv-created venvs, PEP 668 systems). If you
+rewrite this command (extra packages, `-r requirements.txt`), decide the installer first: when
+`python -c "import pip"` fails, go straight to `uv pip install`.
 
 ### Key SDK Operations
 
@@ -238,7 +240,9 @@ Common errors and solutions:
 python -m pip install datarobot || uv pip install datarobot
 ```
 
-The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
+The `uv pip` fallback covers environments with no pip (uv-created venvs, PEP 668 systems). If you
+rewrite this command (extra packages, `-r requirements.txt`), decide the installer first: when
+`python -c "import pip"` fails, go straight to `uv pip install`.
 
 ### Initialize Client
 
