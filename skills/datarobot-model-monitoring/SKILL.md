@@ -91,10 +91,10 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-python -m pip install datarobot
+python -m pip install datarobot || uv pip install datarobot
 ```
 
-If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
+The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
 
 ### Key SDK Operations
 
@@ -164,8 +164,9 @@ deployment = dr.Deployment.get("abc123")
 # Get feature drift (requires MLOps monitoring)
 try:
     drifts = deployment.get_feature_drift()
-    high = [d for d in drifts if (d.drift_score or 0) > 0.2]
-    print(f"Features with drift_score > 0.2: {len(high)}")
+    # 0.15/0.3 are the documented medium/high thresholds (see Alert thresholds below)
+    high = [d for d in drifts if (d.drift_score or 0) > 0.15]
+    print(f"Features with drift_score > 0.15: {len(high)}")
     for d in high[:10]:
         print(f"{d.name}: {d.drift_score}")
 except Exception as e:
@@ -216,10 +217,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-python -m pip install datarobot
+python -m pip install datarobot || uv pip install datarobot
 ```
 
-If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
+The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
 
 ### Initialize Client
 

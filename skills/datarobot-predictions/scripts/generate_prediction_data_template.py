@@ -45,15 +45,16 @@ def generate_prediction_data_template(
     # Filter out target feature
     prediction_features = [f for f in features if f["name"] != target_name]
 
-    # Look up the real training levels for categorical features. Only DataRobot-built
-    # models have a backing project; custom-model deployments fall back to the
-    # "sample_category" placeholder below.
+    # Look up real training values: categorical levels and numeric ranges. Only
+    # DataRobot-built models have a backing project; custom-model deployments fall
+    # back to the type placeholders below.
     project_id = deployment.model.get("project_id")
     categorical_levels: dict[str, list[str]] = {}
+    numeric_stats: dict[str, dict[str, float]] = {}
     if project_id:
         for feature in prediction_features:
-            if feature["feature_type"] == "Categorical":
-                try:
+            try:
+                if feature["feature_type"] == "Categorical":
                     histogram = dr.Feature.get(
                         project_id, feature["name"]
                     ).get_histogram()
@@ -62,8 +63,16 @@ def generate_prediction_data_template(
                     categorical_levels[feature["name"]] = [
                         b["label"] for b in histogram.plot
                     ]
-                except Exception:
-                    pass  # keep the placeholder for this feature
+                elif feature["feature_type"] == "Numeric":
+                    stats = dr.Feature.get(project_id, feature["name"])
+                    if isinstance(stats.median, (int, float)):
+                        numeric_stats[feature["name"]] = {
+                            "min": stats.min,
+                            "max": stats.max,
+                            "median": stats.median,
+                        }
+            except Exception:
+                pass  # keep the type placeholder for this feature
 
     # Generate template rows with sample values
     import io
@@ -77,7 +86,8 @@ def generate_prediction_data_template(
         row = {}
         for feature in prediction_features:
             if feature["feature_type"] == "Numeric":
-                row[feature["name"]] = 0.0
+                stats = numeric_stats.get(feature["name"])
+                row[feature["name"]] = stats["median"] if stats else 0.0
             elif feature["feature_type"] == "Categorical":
                 levels = categorical_levels.get(feature["name"])
                 row[feature["name"]] = (
@@ -97,6 +107,9 @@ def generate_prediction_data_template(
     level_comments = "".join(
         f"# Valid values for {name}: {', '.join(levels)}\n"
         for name, levels in categorical_levels.items()
+    ) + "".join(
+        f"# Range for {name}: {s['min']} to {s['max']} (median {s['median']})\n"
+        for name, s in numeric_stats.items()
     )
     metadata_comments = f"""# Prediction Data Template for Deployment: {deployment_id}
 # Model: {deployment.model.get("project_name", "unknown")}

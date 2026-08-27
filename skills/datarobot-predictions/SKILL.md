@@ -105,10 +105,10 @@ Execute predictions using various methods:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-python -m pip install datarobot datarobot-predict
+python -m pip install datarobot datarobot-predict || uv pip install datarobot datarobot-predict
 ```
 
-If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot datarobot-predict` instead.
+The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
 
 ### Key SDK Operations
 
@@ -335,10 +335,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-python -m pip install datarobot datarobot-predict
+python -m pip install datarobot datarobot-predict || uv pip install datarobot datarobot-predict
 ```
 
-If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot datarobot-predict` instead.
+The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
 
 ### Initialize Client
 

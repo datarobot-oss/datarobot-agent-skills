@@ -92,10 +92,10 @@ in a report without it.
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-python -m pip install datarobot
+python -m pip install datarobot || uv pip install datarobot
 ```
 
-If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
+The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
 
 ### Key SDK Operations
 
@@ -217,6 +217,9 @@ Note: Importance thresholds vary by model type and problem domain.
 **Output rule**: Feature Impact is magnitude only, never direction. A report that has not called
 `model.get_or_request_feature_effect(source=...)` (Pattern 3) must not claim direction — write
 "`tenure_months` is the 4th most impactful feature", not "longer tenure reduces churn".
+Impact scores are also not shares of predictive signal and cannot be summed into proportions —
+never write "accounts for 65% of the signal" or "these features carry the majority of the
+model's predictive power", with or without a number.
 
 ## Error handling
 
@@ -232,10 +235,10 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-python -m pip install datarobot
+python -m pip install datarobot || uv pip install datarobot
 ```
 
-If the environment has no pip (uv-created venvs, PEP 668 systems), use `uv pip install datarobot` instead.
+The `uv pip` fallback runs automatically when the environment has no pip (uv-created venvs, PEP 668 systems).
 
 ### Initialize Client
 

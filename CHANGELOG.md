@@ -50,6 +50,13 @@ Follow-ups from a second behavioral test round against these fixes (each verifie
 - `datarobot-predictions`: `generate_prediction_data_template.py` now fills categorical columns with the real training levels via `dr.Feature.get(project_id, name).get_histogram()` and lists them in a "Valid values" header (custom-model deployments fall back to the placeholder); the error-handling section names that API instead of "use training data sample"; `score_to_file` example shows explicit `intake_path=`/`output_path=` kwargs; `deployment.model["target_name"]` reads use `.get()` (key absent on unsupervised/anomaly deployments).
 - All SDK skills: `pip install datarobot` (12 sites across 6 skills) is now `python -m pip install datarobot` with a `uv pip install` fallback note for pip-less venvs and PEP 668 systems — the bare form produced `command not found: pip` and PEP 668 refusals in behavioral runs.
 
+Follow-ups from a third behavioral round (12 runs at `bb02176`; all round-2 fixes verified held, zero skill-logic friction remained):
+- All SDK skills: the install command is now a single chained `python -m pip install ... || uv pip install ...` (14 sites) — presenting `uv` as a separate fallback step cost two wasted calls per install in pip-less environments; the `||` chain resolves the right tool in one call (`python -m pip` exits 1 when pip is missing).
+- `datarobot-external-agent-monitoring`: Step 4 now says to install the target project's own declared dependencies (`-r requirements.txt` / `uv sync` / `poetry install`) before running it — the OTel packages alone are not enough to run a project the agent did not set up (caused round 3's only scenario failure: `ModuleNotFoundError: langchain_core` after successful instrumentation).
+- `datarobot-feature-engineering`: the output rule now also forbids share/proportion language about impact ("accounts for X% of the signal", "majority of predictive power") — the percentage-only wording let the same claim survive in qualitative form.
+- `datarobot-model-monitoring`: Pattern 2's drift filter used an undocumented 0.2 threshold that contradicted the skill's own 0.15/0.3 alert table; now 0.15 with a pointer to the table.
+- `datarobot-predictions`: `generate_prediction_data_template.py` now fills numeric columns with the feature's training median and lists min/max ranges in the header (was `0.0` placeholders), via the same `dr.Feature.get` stats already fetched for categorical levels; custom-model deployments keep the placeholder fallback.
+
 ## [1.5.5] - 2026-08-26
 
 ### Fixed
