@@ -22,6 +22,8 @@ jobs:
       - name: Install gemini CLI
         run: npm install -g @google/gemini-cli
       - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.3"
       - name: Install go tools
         run: |
           go install github.com/google/yamlfmt/cmd/yamlfmt@latest
