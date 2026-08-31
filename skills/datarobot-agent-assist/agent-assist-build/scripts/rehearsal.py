@@ -634,7 +634,7 @@ def llm_call(
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=240) as resp:
             return cast(dict[str, Any], json.loads(resp.read())), resolved
     except urllib.error.HTTPError as e:
         body = e.read().decode()

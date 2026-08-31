@@ -97,10 +97,15 @@ def rehearsal_session(tmp_path: Path) -> Path:
 
 def test_default_report_path() -> None:
     target = Path("/tmp/project")
-    assert default_report_path(target) == target / "rehearsal_report" / "rehearsal_report.md"
+    assert (
+        default_report_path(target)
+        == target / "rehearsal_report" / "rehearsal_report.md"
+    )
 
 
-def test_write_rehearsal_report_summary(rehearsal_session: Path, tmp_path: Path) -> None:
+def test_write_rehearsal_report_summary(
+    rehearsal_session: Path, tmp_path: Path
+) -> None:
     output_path = default_report_path(tmp_path)
     summary = write_rehearsal_report(
         rehearsal_session,
@@ -183,9 +188,7 @@ def test_parallel_tool_returns_match_call_order() -> None:
     ]
 
 
-def test_done_message_generates_report(
-    rehearsal_session: Path, tmp_path: Path
-) -> None:
+def test_done_message_generates_report(rehearsal_session: Path, tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,

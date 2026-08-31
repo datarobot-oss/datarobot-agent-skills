@@ -12,16 +12,9 @@ description: >-
 
 # DataRobot Agent Assist
 
-This skill covers **agent design, coding, battle-testing, and deployment** with an optional **dress-rehearsal simulation** — a try-before-you-build session that lets you chat with your agent design before writing any code.
+This skill covers **agent design, coding, battle-testing, and deployment** with an optional **dress-rehearsal simulation** before any code is written.
 
-Assistance falls into four categories:
-
-1. **Designing an AI agent** → Clarify requirements, build `agent_spec.md`, optionally simulate the agent before coding
-2. **Coding an AI agent** → Adapt the DataRobot agent application template to the spec
-3. **Battle-testing an AI agent** → Run adversarial swarm simulation against an implemented agent
-4. **Deploying an AI agent** → Follow `AGENTS.md` deployment instructions
-
-A first message of `1`–`4` selects the corresponding category. If the first message is free text that clearly maps to one category (e.g. "I want to build an agent" → Design), state the inference briefly and proceed as that option. If the intent is ambiguous, ask which of the four options applies — do not guess.
+A first message of `1`–`4` selects the corresponding category. If free text clearly maps to one category (e.g. "I want to build an agent" → Design), state the inference briefly and proceed. If ambiguous, ask which option applies — do not guess.
 
 ---
 
@@ -74,7 +67,7 @@ Before invoking any helper script, resolve `<skill_scripts_dir>` once for the se
 
 Track these for the conversation:
 
-- `<target_dir>` — project root for design, coding, and deployment. Set during [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) or the [Pre-deployment Checklist](agent-assist-build/references/pre-deployment-checklist.md). Reuse across phases in the same session. Only change when the user explicitly asks, during [pre-coding Bootstrap step 2](agent-assist-build/references/pre-coding-checklist.md) (spec path recovery), during [pre-coding subdir recovery](agent-assist-build/references/pre-coding-checklist.md) (step 7), or in a new session.
+- `<target_dir>` — project root. Set during [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) or the [Pre-deployment Checklist](agent-assist-build/references/pre-deployment-checklist.md). Reuse across phases. Change only on explicit user request, [pre-coding Bootstrap step 2](agent-assist-build/references/pre-coding-checklist.md) (spec path recovery), [pre-coding step 7](agent-assist-build/references/pre-coding-checklist.md) (subdir recovery), or a new session.
 - `<prerequisites_passed>` — `false` until the [Pre-requisite Check](#pre-requisite-check) completes successfully once this session.
 - `<workspace_resolved>` — `false` until [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) completes for menu options **1** or **2**.
 - `<workspace_resolved_target_dir>` — the `<target_dir>` set when workspace resolution last completed.
@@ -85,11 +78,10 @@ Track these for the conversation:
 
 ### `.env` placement
 
-Project credentials and config live **only** at `<target_dir>/.env` — never in cwd when `<target_dir>` is a subdirectory. This includes DataRobot CLI credentials, LLM config, and **tool/service secrets** (API keys, bearer tokens, OAuth client secrets). Pulumi reads these from the environment at deploy time (`os.environ`); if a secret is missing from `.env`, the corresponding DataRobot credential and runtime parameter are not created.
+Project credentials and config live **only** at `<target_dir>/.env` — never in cwd when `<target_dir>` is a subdirectory. This includes DataRobot CLI credentials, LLM config, and **tool/service secrets**. Pulumi reads these from the environment at deploy time (`os.environ`); a secret missing from `.env` means the corresponding credential and runtime parameter are not created.
 
-- Complete [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) before any step that needs credentials or creates a `.env` file (model selection, dress rehearsal, template setup).
-- Always pass `--target-dir <target_dir>` to helper scripts that read or create `.env` (`list_llm_models.py`, `rehearsal.py`, `setup_template.py`).
-- Do **not** run `dr dotenv setup` manually in cwd — use helper scripts with `--target-dir <target_dir>` so `.env` is created in the project root.
+- Complete [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) before any step that needs credentials or creates a `.env` file.
+- Always pass `--target-dir <target_dir>` to helper scripts that read or create `.env` (`list_llm_models.py`, `rehearsal.py`, `setup_template.py`). Do **not** run `dr dotenv setup` in cwd.
 - Never put secret values in `agent_spec.md` or source code — only env var **names** belong in infra; values stay in `.env`.
 
 ### Dependency check session rule
@@ -182,16 +174,12 @@ Then set `frontend` in the spec (write to `<target_dir>/agent_spec.md` when the 
 - **Always write the current spec to `<target_dir>/agent_spec.md`** (YAML format) whenever showing it to the user. The first draft must include `frontend.type` from [Frontend Check](#frontend-check) (or clarification).
 - Show the spec frequently and iteratively — even if incomplete or partial.
 - Do **not** summarize the spec in prose; display it as YAML in a code block.
-- After displaying, invite the user to refine system prompts, add/modify tools, change the model, or update examples. Do **not** ask about dress rehearsal, coding, template setup, or "moving on" in the same turn — and do **not** offer "proceed to coding" as an alternative to refinement (including on [Resume Design](agent-assist-build/references/resume-design.md) after pre-coding [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues)).
+- After displaying, invite the user to refine system prompts, tools, model, or examples. Do **not** ask about dress rehearsal, coding, template setup, or "moving on" in the same turn, and do **not** offer "proceed to coding" as an alternative to refinement (including on [Resume Design](agent-assist-build/references/resume-design.md) after pre-coding [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues)).
 - If the user requests changes, update the spec and show it again. If the user indicates they are done refining (e.g. "looks good", "no changes", "move on"), proceed to [Agent Simulation (Before Coding)](#agent-simulation-before-coding) in your **next** response — not to [Post-design next steps](#post-design-next-steps) or coding.
 
 ### Agent Simulation (Before Coding)
 
-When spec refinement is complete, read [agent-assist-build/references/dress-rehearsal.md](agent-assist-build/references/dress-rehearsal.md) and present the **Initial prompt (design phase)** using the **exact wording** below — in its own turn, with no spec-refinement question in the same message:
-
-> **Dress rehearsal** is a try-before-you-build session: you chat with your agent design as if it were already running. The agent uses your spec's model and system prompt; tool calls return **simulated** (fake but realistic) data — no real APIs, no deployment, no code written yet. It's a safe way to test prompts, tools, and conversation flow before implementation.
->
-> Would you like to run a dress rehearsal simulation first? (recommended)
+When spec refinement is complete, read [agent-assist-build/references/dress-rehearsal.md](agent-assist-build/references/dress-rehearsal.md) and present the **Initial prompt (design phase)** using that file's **exact wording** — in its own turn, with no spec-refinement question in the same message.
 
 Then follow dress-rehearsal.md for the user's reply (yes → rehearsal; no → [Post-design next steps](#post-design-next-steps)).
 
@@ -209,7 +197,7 @@ Wait for their choice. **Do not** assume a default or proceed without a reply.
 
 | Choice | Action |
 |--------|--------|
-| 1 or "code" / "implement" | Set `<design_to_code>` = true. Follow **[2. Coding an AI Agent](#2-coding-an-ai-agent)** — read and follow [agent-assist-build/references/pre-coding-checklist.md](agent-assist-build/references/pre-coding-checklist.md). This choice does **not** authorize cloning or subdirectory creation — if the workspace is not spec-only, complete [pre-coding step 7](agent-assist-build/references/pre-coding-checklist.md) and wait for explicit confirmation first. |
+| 1 or "code" / "implement" | Set `<design_to_code>` = true. Follow **[2. Coding an AI Agent](#2-coding-an-ai-agent)** — read and follow [pre-coding-checklist.md](agent-assist-build/references/pre-coding-checklist.md). This does **not** authorize cloning or subdirectory creation; if the workspace is not spec-only, complete [pre-coding step 7](agent-assist-build/references/pre-coding-checklist.md) and wait for explicit confirmation first. |
 | 2 or "review" / "edit spec" | Display `<target_dir>/agent_spec.md` as YAML, invite changes, update the file, then show this menu again |
 | 3 or "rehearsal" / "simulate" | Follow **[Dress Rehearsal](#dress-rehearsal)** |
 | 4 or "review report" / "rehearsal report" | If `<target_dir>/rehearsal_report/rehearsal_report.md` exists, read it and present a structured summary (metadata, notes, conversation highlights, suggested changes). If missing, say no report exists yet and offer option 3. Then show this menu again. |
@@ -308,16 +296,11 @@ Field definitions: [agent-assist-build/references/agent-spec-schema.md](agent-as
 - Welcome-menu routing: prefer `1`–`4`; for clear free-text intent, infer and state the category then proceed; if ambiguous, ask which option applies
 - If the user insists on a task outside these four categories, politely decline
 - If a user asks to code before designing, strongly encourage designing first
-- Before running any CLI command or helper script, provide a clear explanation in 2-5 sentences. The explanation must include why this specific command is needed now, what it will check/change/create.
-- **Template clone** — follow [Clone discipline](agent-assist-build/references/pre-coding-checklist.md#clone-discipline): spec-only workspaces get a brief notice then clone; messy workspaces require explicit subdirectory confirmation (step 7) before any clone; never treat **Code the agent** as that confirmation.
-- **Pre-coding spec validation** — on cold Code entry and deploy → coding handoff, Bootstrap step 2 must check every [spec complete](agent-assist-build/references/resume-design.md#spec-complete) field and report pass/fail to the user before workspace classification or template setup. Do not run `ls`, clone, or classify `<target_dir>` until validation passes or [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues) is resolved.
-- **Pre-coding spec issues** — if `agent_spec.md` has gaps during Bootstrap step 2, do not fix inline; route to Design via [resume-design.md](agent-assist-build/references/resume-design.md). Exception: missing `tools` only may be waived when the user confirms no tools are needed.
+- Before running any CLI command or helper script, explain in 2–5 sentences why it is needed now and what it will check/change/create
+- **Template clone / spec validation / spec issues** — follow [pre-coding-checklist.md](agent-assist-build/references/pre-coding-checklist.md) ([Clone discipline](agent-assist-build/references/pre-coding-checklist.md#clone-discipline), Bootstrap step 2, [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues)) and [spec complete](agent-assist-build/references/resume-design.md#spec-complete)
 - After the user declines dress rehearsal, always show **[Post-design next steps](#post-design-next-steps)** — never skip to framework selection or the pre-coding checklist
-- During **rehearsal turns**: display only the `output_file` contents — never add performance commentary or replace the script's bottom decoration / DONE hint (see [dress-rehearsal.md](agent-assist-build/references/dress-rehearsal.md))
-- When the user types **DONE** during rehearsal: **always run** `rehearsal.py --report --session <session_dir>` (or `--session <session_dir> "DONE"`) before any summary or menu; do not skip this shell command
-- After **rehearsal ends**: write suggestions into `<target_dir>/rehearsal_report/rehearsal_report.md`; announce the path so the user can share it with QA, product, and data science
-- **Never** show [Post-design next steps](#post-design-next-steps) after a rehearsal until `<target_dir>/rehearsal_report/rehearsal_report.md` exists
+- During rehearsal, follow [dress-rehearsal.md](agent-assist-build/references/dress-rehearsal.md): display `output_file` verbatim; on **DONE** always run `--report` before any summary or menu; write `<target_dir>/rehearsal_report/rehearsal_report.md` before showing Post-design next steps
 - During **coding**: keep responses to 1–3 sentences; no introductions or conclusions
 - During **design**: be conversational and thorough
 
-For helper script commands, see [agent-assist-build/references/helper-scripts.md](agent-assist-build/references/helper-scripts.md). For plugin tool mapping, see [agent-assist-build/references/tool-mapping.md](agent-assist-build/references/tool-mapping.md).
+For helper script commands, see [helper-scripts.md](agent-assist-build/references/helper-scripts.md). For plugin tool mapping, see [tool-mapping.md](agent-assist-build/references/tool-mapping.md).

@@ -251,9 +251,7 @@ def write_rehearsal_report(
 
     turns = _summarize_turns(messages)
     tool_activity = _tool_activity(turns)
-    defined_tools = [
-        str(tool.get("function_name") or "unknown") for tool in spec_tools
-    ]
+    defined_tools = [str(tool.get("function_name") or "unknown") for tool in spec_tools]
     exercised_tools = sorted({name for name, _, _ in tool_activity})
     unused_tools = sorted(set(defined_tools) - set(exercised_tools))
 
@@ -286,7 +284,13 @@ def write_rehearsal_report(
         "## Agent Design Snapshot",
         f"- Tools defined: {len(defined_tools)}",
         f"- Tools exercised: {len(exercised_tools)}",
-        *( [f"- Tools not exercised: {', '.join(f'`{name}`' for name in unused_tools)}"] if unused_tools else [] ),
+        *(
+            [
+                f"- Tools not exercised: {', '.join(f'`{name}`' for name in unused_tools)}"
+            ]
+            if unused_tools
+            else []
+        ),
         "",
         "**System prompt preview**",
         "",
@@ -328,7 +332,9 @@ def write_rehearsal_report(
     if tool_activity:
         for name, count, keys in tool_activity:
             key_text = ", ".join(f"`{key}`" for key in keys) if keys else "(none)"
-            lines.append(f"- `{name}`: {count} invocation(s); argument keys: {key_text}")
+            lines.append(
+                f"- `{name}`: {count} invocation(s); argument keys: {key_text}"
+            )
     else:
         lines.append("_No tool calls were recorded._")
     lines.append("")
