@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO_URL = "https://github.com/datarobot-community/datarobot-agent-application.git"
 BRANCH: str | None = None
-TAG: str | None = "11.10.7"
+TAG: str | None = "11.11.6"
 
 
 def cleanup_git_dir(target_dir: Path) -> None:

@@ -11,6 +11,24 @@ Each entry should be prefixed with the affected skill folder name (for example,
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-01
+
+### Added
+
+- `datarobot-agent-assist`: Dress rehearsal exports a shareable Markdown report to `<target_dir>/rehearsal_report/rehearsal_report.md` (archived under `.datarobot/rehearsal/<session_id>/`). `DONE` always runs `--report` before any summary or menu; post-design next steps add **Review rehearsal report**. `NOTE:` observations persist via `rehearsal.py --note`. Session state lives under `.datarobot/rehearsal/` instead of the system temp dir.
+
+### Changed
+
+- `datarobot-agent-assist`: Bumped application template version to 11.11.6.
+- `datarobot-agent-assist`: Deduplicated `SKILL.md` by pointing dress rehearsal, clone discipline, and spec validation at the reference files instead of restating them.
+- `datarobot-agent-assist`: Welcome menu infers a clear free-text category (and asks when ambiguous). `frontend.type` may be held from the Clarification Phase before the first spec draft exists.
+- `datarobot-agent-assist`: Tool/service secrets stay in `.env` only — coding appends `VAR_NAME=` and asks the user to paste values in their editor, never in chat, `agent_spec.md`, or source.
+- `datarobot-agent-assist`: Spec-only / messy-cwd classification treats dress-rehearsal artifacts (`.datarobot/rehearsal/`, `rehearsal_report/`) as design-phase files so they do not force a subdirectory clone.
+
+### Fixed
+
+- `datarobot-agent-assist`: Rehearsal reports pair parallel tool returns with the matching call (previously every return was labeled with the last tool). `model_substituted` / `simulation_substituted` now compare against the originally requested model so a runtime fallback does not leave a stale flag.
+
 ## [1.6.0] - 2026-08-26
 
 ### Added
