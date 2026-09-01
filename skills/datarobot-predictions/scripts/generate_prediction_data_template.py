@@ -50,19 +50,36 @@ def generate_prediction_data_template(
     # back to the type placeholders below.
     project_id = deployment.model.get("project_id")
     categorical_levels: dict[str, list[str]] = {}
+    level_notes: dict[str, str] = {}
     numeric_stats: dict[str, dict[str, float]] = {}
     if project_id:
         for feature in prediction_features:
             try:
                 if feature["feature_type"] == "Categorical":
-                    histogram = dr.Feature.get(
-                        project_id, feature["name"]
-                    ).get_histogram()
+                    dr_feature = dr.Feature.get(project_id, feature["name"])
                     # Each bin is {"label": <level>, "count": ..., "target": ...};
                     # high-cardinality features get at most 60 bins by default.
-                    categorical_levels[feature["name"]] = [
-                        b["label"] for b in histogram.plot
+                    labels = [b["label"] for b in dr_feature.get_histogram().plot]
+                    # The histogram injects aggregate pseudo-buckets that are NOT
+                    # real levels: "=All Other=" (levels beyond the bin cap) and
+                    # "==Missing==" (the feature had NAs in training). Filter them
+                    # out, but surface what they tell us in the header notes.
+                    levels = [
+                        label
+                        for label in labels
+                        if not (str(label).startswith("=") and str(label).endswith("="))
                     ]
+                    if levels:
+                        categorical_levels[feature["name"]] = levels
+                    notes = []
+                    if "=All Other=" in labels and dr_feature.unique_count:
+                        notes.append(
+                            f"top {len(levels)} of {dr_feature.unique_count} levels"
+                        )
+                    if "==Missing==" in labels:
+                        notes.append("missing allowed - leave blank")
+                    if notes:
+                        level_notes[feature["name"]] = "; ".join(notes)
                 elif feature["feature_type"] == "Numeric":
                     stats = dr.Feature.get(project_id, feature["name"])
                     if isinstance(stats.median, (int, float)):
@@ -105,7 +122,9 @@ def generate_prediction_data_template(
 
     # Add metadata comments
     level_comments = "".join(
-        f"# Valid values for {name}: {', '.join(levels)}\n"
+        f"# Valid values for {name}: {', '.join(levels)}"
+        + (f" ({level_notes[name]})" if name in level_notes else "")
+        + "\n"
         for name, levels in categorical_levels.items()
     ) + "".join(
         f"# Range for {name}: {s['min']} to {s['max']} (median {s['median']})\n"

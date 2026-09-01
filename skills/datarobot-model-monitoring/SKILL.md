@@ -106,7 +106,7 @@ Use these DataRobot SDK and MLOps API methods for monitoring:
 - `deployment.get_service_stats(...)` - Get service statistics (latency, volume, etc.)
 - `deployment.get_feature_drift(...)` - Get feature drift metrics (returns `FeatureDrift` objects)
 - `deployment.get_target_drift(...)` - Get target drift metrics (returns `TargetDrift`)
-  - **SDK 3.18.0 bug**: on unsegmented deployments this raises `DataError: {'segment_value': 'is required'}`. Workaround — call the REST endpoint directly:
+  - **SDK bug (still present in 3.19.0)**: on unsegmented deployments this raises `DataError: {'segment_value': 'is required'}`. Workaround — call the REST endpoint directly:
     `data = dr.Client().get(f"deployments/{deployment_id}/targetDrift/", params={"start": start_iso, "end": end_iso}).json()` — `start`/`end` are optional (default: last 7 days) and take hour-aligned ISO-8601 timestamps (`startTime`/`endTime` are rejected with 400); then read camelCase keys `data["driftScore"]`, `data["targetName"]`, `data["sampleSize"]`
 - `deployment.get_prediction_results(...)` - Retrieve recorded prediction results (if enabled)
 
