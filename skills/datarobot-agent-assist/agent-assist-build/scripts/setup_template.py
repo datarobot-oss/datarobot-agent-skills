@@ -222,32 +222,30 @@ def create_env_file(
         print(f"Error: {error_msg}", file=sys.stderr)
         return False, error_msg
 
-    lines = [
-        "DATAROBOT_ENDPOINT=\n",
-        "DATAROBOT_API_TOKEN=\n",
-        f'LLM_DEFAULT_MODEL="{llm_default_model}"\n',
-    ]
-
-    if llm_deployment_id:
-        lines.extend(
-            [
-                f'LLM_DEPLOYMENT_ID="{llm_deployment_id}"\n',
-                f'INFRA_ENABLE_LLM="{DEPLOYED_LLM_CONFIGURATION}"\n',
-                # 'dr dotenv setup' also derives this from INFRA_ENABLE_LLM, but it
-                # runs after this file is written and may be skipped entirely, so
-                # the deployed .env has to stand on its own.
-                'USE_DATAROBOT_LLM_GATEWAY="0"\n',
-            ]
-        )
-
     if external_api_key:
-        lines.extend(
-            [
-                f'EXTERNAL_LLM_MODEL="{llm_default_model}"\n',
-                f'EXTERNAL_LLM_API_KEY="{external_api_key}"\n',
-                f'EXTERNAL_LLM_BASE_URL="{external_base_url}"\n',
-            ]
-        )
+        lines = [
+            f'EXTERNAL_LLM_MODEL="{llm_default_model}"\n',
+            f'EXTERNAL_LLM_API_KEY="{external_api_key}"\n',
+            f'EXTERNAL_LLM_BASE_URL="{external_base_url}"\n',
+            'USE_DATAROBOT_LLM_GATEWAY="0"\n',
+        ]
+    elif llm_deployment_id:
+        lines = [
+            "DATAROBOT_ENDPOINT=\n",
+            "DATAROBOT_API_TOKEN=\n",
+            f'LLM_DEPLOYMENT_ID="{llm_deployment_id}"\n',
+            f'INFRA_ENABLE_LLM="{DEPLOYED_LLM_CONFIGURATION}"\n',
+            # 'dr dotenv setup' also derives this from INFRA_ENABLE_LLM, but it
+            # runs after this file is written and may be skipped entirely, so
+            # the deployed .env has to stand on its own.
+            'USE_DATAROBOT_LLM_GATEWAY="0"\n',
+        ]
+    else:
+        lines = [
+            "DATAROBOT_ENDPOINT=\n",
+            "DATAROBOT_API_TOKEN=\n",
+            f'LLM_DEFAULT_MODEL="{llm_default_model}"\n',
+        ]
 
     try:
         print(f"Creating .env file in {target_dir}")

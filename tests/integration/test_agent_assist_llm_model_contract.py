@@ -336,6 +336,42 @@ def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
     assert f'LLM_DEFAULT_MODEL="{CANONICAL}"' in (tmp_path / ".env").read_text()
 
 
+def test_env_file_for_a_deployed_llm_has_only_deployed_configuration(
+    tmp_path: Path,
+) -> None:
+    ok, _ = setup_template.create_env_file(
+        tmp_path,
+        "datarobot/datarobot-deployed-llm",
+        DEPLOYED_ENTRY["id"],
+    )
+
+    contents = (tmp_path / ".env").read_text()
+    assert ok
+    assert f'LLM_DEPLOYMENT_ID="{DEPLOYED_ENTRY["id"]}"' in contents
+    assert 'INFRA_ENABLE_LLM="deployed_llm.py"' in contents
+    assert "LLM_DEFAULT_MODEL=" not in contents
+    assert "EXTERNAL_LLM_" not in contents
+
+
+def test_env_file_for_an_external_llm_has_only_external_configuration(
+    tmp_path: Path,
+) -> None:
+    ok, _ = setup_template.create_env_file(
+        tmp_path,
+        "local-ollama",
+        external_api_key="key",
+        external_base_url="http://localhost:4000/v1",
+    )
+
+    contents = (tmp_path / ".env").read_text()
+    assert ok
+    assert 'EXTERNAL_LLM_MODEL="local-ollama"' in contents
+    assert 'EXTERNAL_LLM_API_KEY="key"' in contents
+    assert 'EXTERNAL_LLM_BASE_URL="http://localhost:4000/v1"' in contents
+    assert "LLM_DEFAULT_MODEL=" not in contents
+    assert "LLM_DEPLOYMENT_ID=" not in contents
+
+
 def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> None:
     """The value lands in a double-quoted line the template's loader re-parses, so
     a quote closes it early and the rest becomes further keys."""
