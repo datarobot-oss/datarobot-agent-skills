@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-02
+
 ### Added
 
 - `datarobot-agent-assist`: Dress rehearsal exports a shareable Markdown report to `<target_dir>/rehearsal_report/rehearsal_report.md` (archived under `.datarobot/rehearsal/<session_id>/`). `DONE` always runs `--report` before any summary or menu; post-design next steps add **Review rehearsal report**. `NOTE:` observations persist via `rehearsal.py --note`. Session state lives under `.datarobot/rehearsal/` instead of the system temp dir.
