@@ -10,6 +10,9 @@ This script performs initial setup for a DataRobot agent application template by
 2. Initializing a Pulumi stack with the generated passphrase
 3. Running the template's start-non-interactive task
 
+For an external OpenAI-compatible LLM (--llm-base-url), it writes .env only and
+skips steps 1-3, which assume a DataRobot backend a raw base URL does not have.
+
 Usage:
     python setup_template.py --llm-model <model-name> [--llm-deployment-id <id>]
                              [--llm-base-url <url>]
@@ -46,6 +49,14 @@ from list_llm_models import (
 # directly. See the template's infra/configurations/llm/deployed_llm.py and
 # docs/llm.md ("DataRobot Deployed LLM").
 DEPLOYED_LLM_CONFIGURATION = "deployed_llm.py"
+
+
+# litellm routes to OPENAI_API_BASE only for the "openai" provider, so an external
+# base-URL model must carry that prefix; litellm strips it back off on the wire.
+def as_openai_compatible_model(model: str) -> str:
+    """Return an ``openai/``-prefixed model for external OpenAI-compatible routing."""
+    model = model.removeprefix("datarobot/")
+    return model if model.startswith("openai/") else f"openai/{model}"
 
 
 def generate_random_secret(length: int = 32) -> str:
@@ -222,6 +233,18 @@ def create_env_file(
         print(f"Error: {error_msg}", file=sys.stderr)
         return False, error_msg
 
+    # Same interpolation risk for the external creds: a quote, backslash, '$' or
+    # backtick would end the double-quoted .env line early and spill into new keys.
+    if external_api_key and any(
+        c in external_base_url + external_api_key for c in '"\\$`\n\r'
+    ):
+        error_msg = (
+            "the external base URL or API key contains a character that cannot go in "
+            'a .env value (one of " \\ $ ` or a newline).'
+        )
+        print(f"Error: {error_msg}", file=sys.stderr)
+        return False, error_msg
+
     lines = [
         "DATAROBOT_ENDPOINT=\n",
         "DATAROBOT_API_TOKEN=\n",
@@ -241,11 +264,16 @@ def create_env_file(
         )
 
     if external_api_key:
+        # USE_DATAROBOT_LLM_GATEWAY=0 selects datarobot-genai's EXTERNAL path; litellm
+        # then resolves the endpoint and key from OPENAI_API_BASE / OPENAI_API_KEY.
         lines.extend(
             [
-                f'EXTERNAL_LLM_MODEL="{llm_default_model}"\n',
-                f'EXTERNAL_LLM_API_KEY="{external_api_key}"\n',
-                f'EXTERNAL_LLM_BASE_URL="{external_base_url}"\n',
+                'USE_DATAROBOT_LLM_GATEWAY="0"\n',
+                f'OPENAI_API_BASE="{external_base_url}"\n',
+                f'OPENAI_API_KEY="{external_api_key}"\n',
+                # The external path skips 'dr dotenv setup', which normally generates this;
+                # fastapi_server has it as a required field and won't boot without it.
+                f'SESSION_SECRET_KEY="{generate_random_secret(64)}"\n',
             ]
         )
 
@@ -263,7 +291,10 @@ def create_env_file(
                 "USE_DATAROBOT_LLM_GATEWAY=0)"
             )
         elif external_api_key:
-            print(f'✓ Created .env file for external LLM "{llm_default_model}"')
+            print(
+                f"✓ Created .env file for external OpenAI-compatible LLM "
+                f'"{llm_default_model}" at {external_base_url}'
+            )
         else:
             print(f'✓ Created .env file with LLM_DEFAULT_MODEL="{llm_default_model}"')
 
@@ -529,6 +560,10 @@ def setup_and_run(
         if canonical is None:
             return 1
         llm_default_model = canonical
+    elif is_external_model:
+        # Route through litellm's OpenAI-compatible provider so it calls OPENAI_API_BASE
+        # (the LiteLLM proxy / custom endpoint), not api.openai.com.
+        llm_default_model = as_openai_compatible_model(llm_default_model)
 
     # Step 1: Create .env file
     success, _ = create_env_file(
@@ -540,6 +575,23 @@ def setup_and_run(
     )
     if not success:
         return 1
+
+    if is_external_model:
+        # 'dr dotenv setup' rewrites .env to the gateway path (dropping the OPENAI_* keys)
+        # and the Pulumi deploy wants a governed DataRobot deployment; a base URL fits neither.
+        print("\n" + "=" * 80)
+        print(
+            "✓ External OpenAI-compatible LLM written to .env. This path prepares .env "
+            "only: it skips 'dr dotenv setup' and the Pulumi deploy, which assume a "
+            "DataRobot backend a raw base URL does not have.\n"
+            "Run locally with `task install` then `task dev`. DATAROBOT_ENDPOINT and "
+            "DATAROBOT_API_TOKEN are left empty, so the LLM works but DataRobot-backed "
+            "app features (auth, chat history) need them set. A non-default agentic "
+            "framework must be materialized via the normal template setup first; deploy "
+            "separately once a deploy path is wired."
+        )
+        print("=" * 80)
+        return 0
 
     # Step 2: Run dr dotenv setup
     success, _ = run_command("dr dotenv setup --yes --output .", target_dir)

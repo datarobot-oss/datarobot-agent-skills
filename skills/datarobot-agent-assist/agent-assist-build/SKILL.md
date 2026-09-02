@@ -56,7 +56,7 @@ Run in order before proceeding:
 3. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
 4. **Codespace** — run `python <skill_scripts_dir>/check_codespace.py` (no-op outside a Codespace). On non-zero exit, relay its message and stop; otherwise relay any exposed-ports warning it prints.
 
-If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` immediately and retry the script — do not present options to the user. The scripts create `.env` automatically via `dr dotenv setup`; the only prerequisite is an authenticated CLI session.
+If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` immediately and retry the script — do not present options to the user. The scripts create `.env` automatically (via `dr dotenv setup` for DataRobot models); for a DataRobot model the only prerequisite is an authenticated CLI session.
 
 ---
 
@@ -238,6 +238,14 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
      --target-dir .
    ```
 
+   If the spec has `llm_base_url` instead, the choice is an external OpenAI-compatible LLM — pass it, or the `OPENAI_*` keys are not written and setup fails. This path writes `.env` and stops for local `task dev` rather than deploying:
+   ```
+   python <skill_scripts_dir>/setup_template.py \
+     --llm-model <model-name> \
+     --llm-base-url <base-url> \
+     --target-dir .
+   ```
+
    **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
 
    g. **Re-read `AGENTS.md`** now that the template is ready.
@@ -317,6 +325,8 @@ python <skill_scripts_dir>/setup_template.py \
 ```
 
 Add `--llm-deployment-id <deployment-id>` for a DataRobot-deployed LLM, so the template routes to the deployment instead of the gateway.
+
+Add `--llm-base-url <base-url>` for an external OpenAI-compatible LLM (the `external` source), so the template writes `USE_DATAROBOT_LLM_GATEWAY=0` / `OPENAI_API_BASE` / `OPENAI_API_KEY`, reads the key from `AGENT_ASSIST_LLM_API_KEY`, and stops after `.env` for local `task dev`.
 
 ### select_framework.py
 
