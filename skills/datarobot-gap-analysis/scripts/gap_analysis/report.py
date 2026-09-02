@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .posture import migration_advice
 from .models import AnalysisResult, Finding, PILLARS
 
 _SEV_BADGE = {
@@ -76,6 +77,9 @@ def render_report(
             f"**Python:** {inv.get('python_version') or 'n/a'} &nbsp;|&nbsp; "
             f"**Top types:** {langs or 'n/a'}"
         )
+        stack = stack_line(inv)
+        if stack:
+            lines.append(stack)
 
     # Summary line
     lines.append("\n## Summary\n")
@@ -106,7 +110,8 @@ def render_report(
 
     if not result.findings:
         lines.append("_No gaps detected._")
-    for pillar in [p for p in PILLARS if p in by_pillar]:
+    # Regulatory (POL) findings render inside the Layer 4 section below.
+    for pillar in [p for p in PILLARS if p in by_pillar and p != "POL"]:
         lines.append(f"\n### {PILLARS[pillar]} ({pillar})\n")
         for f in by_pillar[pillar]:
             conf = "" if f.confidence == "high" else f" _(confidence: {f.confidence})_"
@@ -118,6 +123,7 @@ def render_report(
                 f"  - **Why it matters:** {f.explanation or '—'}\n"
                 f"  - **Fix:** {f.remediation or '—'}"
             )
+            lines.extend(_fix_details(f))
 
     # Conformance scorecard (Layer 3)
     lines.append("\n## IT Conformance Scorecard\n")
@@ -125,13 +131,13 @@ def render_report(
 
     # DataRobot risk-management coverage (Layer 4)
     lines.append("\n## DataRobot Risk-Management Coverage\n")
-    lines.append(_regulatory_coverage_table(result))
+    lines.append(_regulatory_section(result))
 
     # Skips & notes
     if result.skipped:
         lines.append("\n## Not Evaluated (skipped)\n")
         for s in result.skipped:
-            lines.append(f"- **{s.condition_id}** — {s.reason}")
+            lines.append(f"- **{s.condition_id}**: {_clip(s.reason)}")
     if result.notes:
         lines.append("\n## Engine Notes\n")
         for n in result.notes:
@@ -168,12 +174,8 @@ def _posture_section(posture: dict[str, Any]) -> str:
         for d in drivers:
             sev = _SEV_BADGE.get(d.get("severity", ""), d.get("severity", ""))
             out.append(f"- **{d['condition_id']}** {sev} — {d['title']}")
-        if rec != "PATCH":
-            out.append(
-                "\n_For these, hand off to the `datarobot-agent-assist` skill: extract the "
-                "business logic into a fresh af-components base rather than restructuring "
-                "in place._"
-            )
+        if rec != "PATCH" and posture.get("advice"):
+            out.append(f"\n_{posture['advice']}_")
     return "\n".join(out)
 
 
@@ -186,7 +188,137 @@ def _conformance_table(result: AnalysisResult, policy: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def _regulatory_coverage_table(result: AnalysisResult) -> str:
+def stack_line(inv: dict[str, Any]) -> str:
+    """Template provenance and agent framework, when known."""
+    parts = []
+    if inv.get("template_sources"):
+        parts.append("**Template:** " + ", ".join(inv["template_sources"]))
+    if inv.get("agent_frameworks"):
+        parts.append(
+            "**Agent framework:** "
+            + ", ".join(
+                f"{f['name']} ({'native DataRobot template' if f['native'] else 'Base template'})"
+                for f in inv["agent_frameworks"]
+            )
+        )
+    return " &nbsp;|&nbsp; ".join(parts)
+
+
+def _clip(text: str, limit: int = 400) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _fix_details(f: Finding) -> list[str]:
+    """Structured remediation lines (Layer 4): prerequisite, steps, docs."""
+    out: list[str] = []
+    if f.prerequisite:
+        out.append(f"  - **Needs:** {f.prerequisite}")
+    if f.steps:
+        out.append("  - **How:**")
+        out.extend(f"    {i}. {step}" for i, step in enumerate(f.steps, start=1))
+    if f.docs_url:
+        out.append(f"  - **Docs:** {f.docs_url}")
+    elif f.docs_topic:
+        out.append(f"  - **Docs:** search docs.datarobot.com for {f.docs_topic!r}")
+    return out
+
+
+def compliance_path(result: AnalysisResult) -> list[dict[str, Any]]:
+    """Group the regulatory gaps into the ordered steps that close them.
+
+    Eighteen guard and monitoring gaps on an application-only Pulumi program
+    collapse into one architectural step (deploy the LLM path through
+    DataRobot) followed by configuration, compliance tests and console work.
+    """
+    pol = [f for f in result.findings if f.pillar == "POL"]
+    if not pol:
+        return []
+    iac = result.iac or {}
+    has = {
+        "deployment": bool(iac.get("deployment")),
+        "custom_model": bool(iac.get("custom_model")),
+    }
+
+    def needs(f: Finding) -> str:
+        return f.fix_requires or ("deployment" if f.fix_via == "automatic" else "")
+
+    blocked = [f for f in pol if needs(f) and not has.get(needs(f), False)]
+    ready = [f for f in pol if f.fix_via == "pulumi" and f not in blocked]
+    free = [f for f in pol if f.fix_via == "automatic" and f not in blocked]
+    tests = [f for f in pol if f.fix_via == "api" and "compliance_test" in f.detector]
+    console = [
+        f for f in pol if f.fix_via in ("api", "organizational") and f not in tests
+    ]
+    steps: list[dict[str, Any]] = []
+    if blocked:
+        resources = sorted({_RESOURCE_LABEL.get(needs(f), needs(f)) for f in blocked})
+        automatic = [f for f in blocked if f.fix_via == "automatic"]
+        configure = [f for f in blocked if f.fix_via != "automatic"]
+        steps.append(
+            {
+                "title": "Put the model or LLM path behind DataRobot",
+                "detail": (
+                    f"Add {' and '.join(resources)} to the Pulumi program (a RegisteredModel "
+                    "or CustomModel deployed through a datarobot.Deployment). "
+                    f"{migration_advice(result.inventory)} "
+                    f"Unlocks {len(blocked)} mitigation(s): {len(automatic)} come with the "
+                    f"deployment, {len(configure)} then need a settings block."
+                ),
+                "items": blocked,
+            }
+        )
+    if ready:
+        steps.append(
+            {
+                "title": "Configure the existing Deployment / CustomModel in Pulumi",
+                "detail": "Settings blocks and guard configurations on resources the program already declares.",
+                "items": ready,
+            }
+        )
+    if free:
+        steps.append(
+            {
+                "title": "Provided by the platform once deployed",
+                "detail": "Nothing to configure; verify in Console after the first deploy.",
+                "items": free,
+            }
+        )
+    if tests:
+        steps.append(
+            {
+                "title": "Run the compliance tests in the LLM test suite",
+                "detail": "Use Case playground evaluation tools; attach results to the risk assessment.",
+                "items": tests,
+            }
+        )
+    if console:
+        steps.append(
+            {
+                "title": "Complete in the DataRobot console or API",
+                "detail": "Risk assessment, compliance documentation and organizational confirmations.",
+                "items": console,
+            }
+        )
+    return steps
+
+
+_RESOURCE_LABEL = {
+    "deployment": "a datarobot.Deployment",
+    "custom_model": "a datarobot.CustomModel",
+}
+
+
+def _short_title(f: Finding) -> str:
+    return f.title.replace("DataRobot risk-management: ", "").replace(
+        " not satisfied", ""
+    )
+
+
+def _regulatory_section(result: AnalysisResult) -> str:
+    """Layer 4 in one place: every required mitigation, grouped by the step that
+    closes it, each gap expanded with its evidence and fix; then what passed and
+    what could not be assessed."""
     if not result.regulatory_coverage:
         return (
             "_No DataRobot risk-management policy was reachable for this run "
@@ -194,8 +326,36 @@ def _regulatory_coverage_table(result: AnalysisResult) -> str:
             "no local fallback checklist, this section is empty rather than "
             "misleadingly reassuring._"
         )
-    out = ["| Mitigation | Status |", "|---|---|"]
-    for row in result.regulatory_coverage:
-        status = COVERAGE_STATUS_LABEL.get(row["status"], row["status"])
-        out.append(f"| {row['title']} | {status} |")
+    coverage = result.regulatory_coverage
+    gaps = [f for f in result.findings if f.pillar == "POL"]
+    passed = [r for r in coverage if r["status"] == "pass"]
+    unassessed = [r for r in coverage if r["status"] not in ("pass", "gap")]
+    out = [
+        f"{len(coverage)} required mitigation(s): {len(gaps)} gap(s), {len(passed)} with "
+        f"evidence, {len(unassessed)} not assessed."
+    ]
+    for i, step in enumerate(compliance_path(result), start=1):
+        out.append(f"\n**{i}. {step['title']}.** {step['detail']}\n")
+        for f in step["items"]:
+            docs = f" · [docs]({f.docs_url})" if f.docs_url else ""
+            if not docs and f.docs_topic:
+                docs = f" · docs: search {f.docs_topic!r}"
+            conf = "" if f.confidence == "high" else f" _(confidence: {f.confidence})_"
+            out.append(f"- ❌ **{_short_title(f)}** (`{f.condition_id}`){docs}{conf}")
+            out.append(f"  - **Where:** {_loc(f)}")
+            out.append(f"  - **Evidence:** {f.evidence or 'n/a'}")
+            out.append(f"  - **Why it matters:** {f.explanation or 'n/a'}")
+            out.append(f"  - **Fix:** {f.remediation or 'n/a'}")
+            out.extend(
+                line for line in _fix_details(f) if not line.startswith("  - **Docs")
+            )
+    if passed:
+        out.append("\n**Evidence found**\n")
+        out.extend(f"- ✅ {r['title']}" for r in passed)
+    if unassessed:
+        out.append("\n**Required, not assessed**\n")
+        out.extend(
+            f"- {COVERAGE_STATUS_LABEL.get(r['status'], r['status'])}: {r['title']}"
+            for r in unassessed
+        )
     return "\n".join(out)

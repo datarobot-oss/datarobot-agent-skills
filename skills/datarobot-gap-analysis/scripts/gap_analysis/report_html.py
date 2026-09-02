@@ -17,7 +17,13 @@ from pathlib import Path
 from typing import Any
 
 from .models import AnalysisResult, Finding, PILLARS
-from .report import CONFORMANCE_ROWS, COVERAGE_STATUS_LABEL
+from .report import (
+    CONFORMANCE_ROWS,
+    COVERAGE_STATUS_LABEL,
+    _clip,
+    _short_title,
+    compliance_path,
+)
 
 _SEV_LABEL = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
 _FIX_LABEL = {"auto": "auto-fix", "assisted": "assisted-fix", "advisory": "advisory"}
@@ -68,13 +74,10 @@ def _fix_all_cmd(repo: str) -> str:
     return f"{_cli_prog()} {_cmd_target(repo)} --fix"
 
 
-def _migrate_cmd(repo: str) -> str:
+def _migrate_cmd(repo: str, advice: str = "") -> str:
     """Re-platforming has no CLI flag; it is a request to the coding agent."""
     target = repo or "<repo>"
-    return (
-        f"Use the datarobot-agent-assist skill to re-platform {target} onto "
-        "af-components: extract its business logic into agent_spec.md first."
-    )
+    return f"For {target}: {advice} Do not change the agent framework unless I ask."
 
 
 def _verification_banner(v: dict[str, Any]) -> str:
@@ -158,6 +161,19 @@ def render_html(
         meta.append(f"<b>Python:</b> {_esc(inv.get('python_version') or 'n/a')}")
     if meta:
         body.append('<p class="meta">' + " &nbsp;|&nbsp; ".join(meta) + "</p>")
+    stack = []
+    if inv.get("template_sources"):
+        stack.append("<b>Template:</b> " + _esc(", ".join(inv["template_sources"])))
+    if inv.get("agent_frameworks"):
+        stack.append(
+            "<b>Agent framework:</b> "
+            + ", ".join(
+                f"{_esc(f['name'])} ({'native DataRobot template' if f['native'] else 'Base template'})"
+                for f in inv["agent_frameworks"]
+            )
+        )
+    if stack:
+        body.append('<p class="meta">' + " &nbsp;|&nbsp; ".join(stack) + "</p>")
     body.append("</header>")
 
     # Post-fix verification banner (deploy-readiness), when this is an "after" report.
@@ -231,7 +247,7 @@ def render_html(
         by_pillar.setdefault(f.pillar, []).append(f)
     if not result.findings:
         body.append('<p class="empty">No gaps detected.</p>')
-    for pillar in [p for p in PILLARS if p in by_pillar]:
+    for pillar in [p for p in PILLARS if p in by_pillar and p != "POL"]:
         items = by_pillar[pillar]
         body.append('<details class="pillar" open>')
         body.append(
@@ -246,14 +262,19 @@ def render_html(
     # Scorecards
     found_ids = {f.condition_id for f in result.findings}
     body.append(_conformance_section(found_ids))
-    body.append(_regulatory_coverage_section(result.regulatory_coverage))
+    body.append(_regulatory_section(result, repo))
 
     # Skips & notes
     if result.skipped:
-        body.append('<section class="notes"><h2>Not Evaluated (skipped)</h2><ul>')
+        body.append(
+            '<section class="notes"><details><summary><h2>Not Evaluated (skipped) '
+            f'<span class="count">{len(result.skipped)}</span></h2></summary><ul>'
+        )
         for s in result.skipped:
-            body.append(f"<li><b>{_esc(s.condition_id)}</b> — {_esc(s.reason)}</li>")
-        body.append("</ul></section>")
+            body.append(
+                f"<li><b>{_esc(s.condition_id)}</b>: {_esc(_clip(s.reason))}</li>"
+            )
+        body.append("</ul></details></section>")
     if result.notes:
         body.append('<section class="notes"><h2>Engine Notes</h2><ul>')
         for n in result.notes:
@@ -295,13 +316,9 @@ def _posture_banner(posture: dict[str, Any], repo: str = "") -> str:
             )
         out.append("</ul>")
         if rec != "PATCH":
+            out.append(f'<p class="hint">{_esc(posture.get("advice", ""))}</p>')
             out.append(
-                '<p class="hint">For these, prefer re-platforming: extract '
-                "the business logic into a fresh af-components base rather than "
-                "restructuring in place.</p>"
-            )
-            out.append(
-                f'<button class="fixbtn migrate" data-cmd="{_esc(_migrate_cmd(repo))}" '
+                f'<button class="fixbtn migrate" data-cmd="{_esc(_migrate_cmd(repo, posture.get("advice", "")))}" '
                 'onclick="copyCmd(this)" title="Copy the request to hand to your coding agent">'
                 "⧉ Copy re-platform request</button>"
             )
@@ -337,9 +354,29 @@ def _finding_card(f: Finding, repo: str = "") -> str:
         f'<div class="kv"><span class="k">Evidence</span><span class="v">{_esc(f.evidence) or "—"}</span></div>'
         f'<div class="kv"><span class="k">Why it matters</span><span class="v">{_esc(f.explanation) or "—"}</span></div>'
         f'<div class="kv"><span class="k">Fix</span><span class="v">{_esc(f.remediation) or "—"}</span></div>'
+        f"{_fix_details_html(f)}"
         f"{_fix_action(f, repo)}"
         f"</article>"
     )
+
+
+def _fix_details_html(f: Finding) -> str:
+    out = []
+    if f.prerequisite:
+        out.append(
+            f'<div class="kv"><span class="k">Needs</span><span class="v">{_esc(f.prerequisite)}</span></div>'
+        )
+    if f.steps:
+        items = "".join(f"<li>{_esc(s)}</li>" for s in f.steps)
+        out.append(
+            f'<div class="kv"><span class="k">How</span><span class="v"><ol class="steps">{items}</ol></span></div>'
+        )
+    docs = _docs_link(f)
+    if docs:
+        out.append(
+            f'<div class="kv"><span class="k">Docs</span><span class="v">{docs}</span></div>'
+        )
+    return "".join(out)
 
 
 def _fix_action(f: Finding, repo: str) -> str:
@@ -384,35 +421,71 @@ def _conformance_section(found_ids: set[str]) -> str:
     )
 
 
-_STATUS_CSS_CLASS = {
-    "gap": "gap",
-    "pass": "pass",
-    "not_assessed": "skip",
-    "unknown_type": "skip",
-}
+def _docs_link(f: Finding, label: str | None = None) -> str:
+    if f.docs_url:
+        return (
+            f'<a href="{_esc(f.docs_url)}" target="_blank" rel="noopener" '
+            f'onclick="event.stopPropagation()">{_esc(label or f.docs_url)}</a>'
+        )
+    if f.docs_topic:
+        return f'<span class="muted">search docs.datarobot.com for {_esc(repr(f.docs_topic))}</span>'
+    return ""
 
 
-def _regulatory_coverage_section(coverage: list[dict[str, str]]) -> str:
+def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
+    """Layer 4 in one place: every required mitigation grouped by the step that
+    closes it, each gap expandable to its evidence and fix; then what passed and
+    what could not be assessed."""
+    coverage = result.regulatory_coverage
+    head = '<section class="scorecard reg"><h2>DataRobot Risk-Management Coverage</h2>'
     if not coverage:
         return (
-            '<section class="scorecard"><h2>DataRobot Risk-Management Coverage</h2>'
-            '<p class="empty">No DataRobot risk-management policy was reachable '
+            head + '<p class="empty">No DataRobot risk-management policy was reachable '
             "for this run (see Engine Notes below for why); nothing to show here. "
             "There is no local fallback checklist, this section is empty rather "
             "than misleadingly reassuring.</p></section>"
         )
-    rows = []
-    for row in coverage:
-        label = COVERAGE_STATUS_LABEL.get(row["status"], row["status"])
-        css = _STATUS_CSS_CLASS.get(row["status"], "skip")
-        status = f'<span class="st {css}">{_esc(label)}</span>'
-        rows.append(f"<tr><td>{_esc(row['title'])}</td><td>{status}</td></tr>")
-    return (
-        '<section class="scorecard"><h2>DataRobot Risk-Management Coverage</h2>'
-        "<table><thead><tr><th>Mitigation</th><th>Status</th></tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table></section>"
-    )
+    gaps = [f for f in result.findings if f.pillar == "POL"]
+    passed = [r for r in coverage if r["status"] == "pass"]
+    unassessed = [r for r in coverage if r["status"] not in ("pass", "gap")]
+    out = [
+        head,
+        f'<p class="sub">{len(coverage)} required mitigation(s): {len(gaps)} gap(s), '
+        f"{len(passed)} with evidence, {len(unassessed)} not assessed. "
+        "Expand a gap for its evidence and fix.</p>",
+    ]
+    for i, step in enumerate(compliance_path(result), start=1):
+        out.append(
+            f'<h3 class="step">{i}. {_esc(step["title"])}</h3>'
+            f'<p class="path-lead">{_esc(step["detail"])}</p>'
+        )
+        for f in step["items"]:
+            out.append(
+                '<details class="mit"><summary>'
+                f'<span class="st gap">{_esc(COVERAGE_STATUS_LABEL["gap"])}</span>'
+                f'<span class="mit-title">{_esc(_short_title(f))}</span>'
+                f"<code>{_esc(f.condition_id)}</code>{_docs_link(f, 'docs')}</summary>"
+                f"{_finding_card(f, repo)}</details>"
+            )
+    if passed:
+        out.append('<h3 class="step">Evidence found</h3><ul class="mit-list">')
+        out.extend(
+            f'<li><span class="st pass">{_esc(COVERAGE_STATUS_LABEL["pass"])}</span> '
+            f"{_esc(r['title'])}</li>"
+            for r in passed
+        )
+        out.append("</ul>")
+    if unassessed:
+        out.append('<h3 class="step">Required, not assessed</h3><ul class="mit-list">')
+        out.extend(
+            f'<li><span class="st skip">'
+            f"{_esc(COVERAGE_STATUS_LABEL.get(r['status'], r['status']))}</span> "
+            f"{_esc(r['title'])}</li>"
+            for r in unassessed
+        )
+        out.append("</ul>")
+    out.append("</section>")
+    return "".join(out)
 
 
 _DOC = """\
@@ -421,52 +494,77 @@ _DOC = """\
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="darkreader-lock">
 <title>Gap Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 try{var _t=localStorage.getItem('gap-theme');
 if(_t==='light'||_t==='dark')document.documentElement.setAttribute('data-theme',_t);}catch(e){}
 </script>
 <style>
 :root{
-  --crit:#d92d20; --high:#e8801a; --med:#caa800; --med-ink:#8a7400; --low:#667085;
-  --bg:#f6f7f9; --card:#fff; --line:#e4e7ec; --ink:#1d2433; --muted:#667085;
-  --accent:#3538cd; --accent-bg:#eef2ff;
-  --ok:#0a7d3c; --ok-bg:#e7f6ec; --bad:#b42318; --bad-bg:#fdecea;
-  --warn-bg:#fff8e6; --warn-line:#f3e1b0; --warn-ink:#6b5a16;
+  /* dr-ui semantic tokens (alpine-light palette). Severity and state colors are
+     the theme's destructive / warning / success / muted-foreground roles. */
+  --dr-radius:0.375rem;
+  --bg:oklch(0.9817 0.0057 264.53); --card:oklch(1 0 0); --popover:oklch(0.9634 0.0115 264.51);
+  --muted-bg:oklch(0.9149 0.0146 264.49); --line:oklch(0.8486 0.0248 259.82);
+  --ink:oklch(0.2352 0.0059 271.16); --muted:oklch(0.5533 0.0224 260.15);
+  --primary:oklch(0.2352 0.0059 271.16); --primary-ink:oklch(1 0 0);
+  --accent:oklch(0.6226 0.1981 281.26); --accent-bg:oklch(0.9793 0.0083 271.33);
+  --link:oklch(0.4667 0.1532 256.44);
+  --ok:oklch(0.5553 0.1431 152.95); --warn:oklch(0.5533 0.1149 79.08); --bad:oklch(0.5585 0.1652 24.19);
+  --crit:var(--bad); --high:oklch(0.6702 0.1689 52.07); --med:var(--warn); --med-ink:var(--warn); --low:var(--muted);
+  --ok-bg:color-mix(in oklch, var(--ok) 12%, var(--card)); --bad-bg:color-mix(in oklch, var(--bad) 12%, var(--card));
+  --warn-bg:color-mix(in oklch, var(--warn) 12%, var(--card)); --warn-line:color-mix(in oklch, var(--warn) 35%, var(--card));
+  --warn-ink:var(--warn); --code-bg:oklch(0.2274 0.0108 242.21); --code-ink:oklch(0.9383 0.0042 236.5);
+  /* saturated fills for banners carry white text in both themes */
+  --ok-fill:oklch(0.5553 0.1431 152.95); --high-fill:oklch(0.6702 0.1689 52.07); --bad-fill:oklch(0.5585 0.1652 24.19);
+  --med-fill:oklch(0.5533 0.1149 79.08); --low-fill:oklch(0.5533 0.0224 260.15);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --med-ink:#d3b322; --low:#98a2b3;
-    --bg:#0d1117; --card:#161b22; --line:#30363d; --ink:#e6edf3; --muted:#8b949e;
-    --accent:#8098f9; --accent-bg:#22284e;
-    --ok:#3fb968; --ok-bg:#15301d; --bad:#f07567; --bad-bg:#3a1f1c;
-    --warn-bg:#2c2712; --warn-line:#5a4d1f; --warn-ink:#dfc266;
+    --bg:oklch(0.2274 0.0108 242.21); --card:oklch(0.2694 0.0104 242.08); --popover:oklch(0.3058 0.0137 248.27);
+    --muted-bg:oklch(0.3871 0.0165 251.76); --line:oklch(0.3871 0.0165 251.76);
+    --ink:oklch(0.9383 0.0042 236.5); --muted:oklch(0.6731 0.0174 253.95);
+    --primary:oklch(1 0 0); --primary-ink:oklch(0.2274 0.0108 242.21);
+    --accent:oklch(0.7179 0.1312 277.26); --accent-bg:oklch(0.3871 0.0165 251.76);
+    --link:oklch(0.7024 0.1524 240.74);
+    --ok:oklch(0.7242 0.1737 153.06); --warn:oklch(0.8659 0.1555 103.53); --bad:oklch(0.6952 0.1538 21.86);
+    --high:oklch(0.7828 0.1141 61.47); --low-fill:oklch(0.5784 0.0175 248.13);
   }
 }
 :root[data-theme="dark"]{
-  --med-ink:#d3b322; --low:#98a2b3;
-  --bg:#0d1117; --card:#161b22; --line:#30363d; --ink:#e6edf3; --muted:#8b949e;
-  --accent:#8098f9; --accent-bg:#22284e;
-  --ok:#3fb968; --ok-bg:#15301d; --bad:#f07567; --bad-bg:#3a1f1c;
-  --warn-bg:#2c2712; --warn-line:#5a4d1f; --warn-ink:#dfc266;
+  --bg:oklch(0.2274 0.0108 242.21); --card:oklch(0.2694 0.0104 242.08); --popover:oklch(0.3058 0.0137 248.27);
+  --muted-bg:oklch(0.3871 0.0165 251.76); --line:oklch(0.3871 0.0165 251.76);
+  --ink:oklch(0.9383 0.0042 236.5); --muted:oklch(0.6731 0.0174 253.95);
+  --primary:oklch(1 0 0); --primary-ink:oklch(0.2274 0.0108 242.21);
+  --accent:oklch(0.7179 0.1312 277.26); --accent-bg:oklch(0.3871 0.0165 251.76);
+  --link:oklch(0.7024 0.1524 240.74);
+  --ok:oklch(0.7242 0.1737 153.06); --warn:oklch(0.8659 0.1555 103.53); --bad:oklch(0.6952 0.1538 21.86);
+  --high:oklch(0.7828 0.1141 61.47); --low-fill:oklch(0.5784 0.0175 248.13);
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
-  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--link)} a:hover{text-decoration:underline}
+code,.mono{font-family:"Roboto Mono",ui-monospace,Menlo,monospace}
 .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
 .hdr{position:relative}
-.themebtn{position:absolute;top:0;right:0;cursor:pointer;border:1px solid var(--line);
-  background:var(--card);color:var(--muted);border-radius:8px;padding:5px 12px;
+.themebtn{position:absolute;top:0;right:0;cursor:pointer;border:1px solid var(--line);width:96px;height:30px;text-align:center;
+  background:var(--card);color:var(--muted);border-radius:var(--dr-radius);padding:0 12px;line-height:28px;
   font-size:12px;font-weight:600}
 .themebtn:hover{color:var(--ink)}
+.themebtn:focus{outline:none} .themebtn:focus-visible{border-color:var(--accent);color:var(--ink)}
 h1{font-size:22px;margin:0 0 6px} h2{font-size:16px;margin:26px 0 12px}
 .meta,.sub{color:var(--muted)} .meta{margin:4px 0 0}
 .prereq{margin:14px 0 0;padding:9px 12px;background:var(--warn-bg);border:1px solid var(--warn-line);
   border-radius:8px;color:var(--warn-ink);font-size:13px}
-.prereq code{background:#0d1117;color:#e6edf3;padding:1px 6px;border-radius:4px;font-size:12px}
+.prereq code{background:var(--code-bg);color:var(--code-ink);padding:1px 6px;border-radius:4px;font-size:12px}
 /* post-fix verification */
 .verify{margin:14px 0 0;border-radius:12px;padding:16px 18px;color:#fff}
-.verify.ready{background:#0a7d3c} .verify.notready{background:#b42318}
+.verify.ready{background:var(--ok-fill)} .verify.notready{background:var(--bad-fill)}
 .verify-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .verify .badge{background:rgba(255,255,255,.22);padding:4px 12px;border-radius:999px;
   font-weight:800;letter-spacing:.3px}
@@ -475,9 +573,15 @@ h1{font-size:22px;margin:0 0 6px} h2{font-size:16px;margin:26px 0 12px}
 .verify code{background:rgba(255,255,255,.22);padding:1px 6px;border-radius:4px}
 section{margin-top:18px}
 /* posture */
+.reg h3.step{font-size:14px;margin:18px 0 2px} .path-lead{margin:0 0 8px;color:var(--muted)}
+.mit{border-top:1px solid var(--line);padding:7px 0} .mit summary{cursor:pointer;display:flex;gap:10px;align-items:center;list-style:none}
+.mit summary::-webkit-details-marker{display:none} .mit-title{flex:1} .mit .card{margin:8px 0 2px}
+.mit-list{margin:0;padding:0;list-style:none} .mit-list li{border-top:1px solid var(--line);padding:7px 0;display:flex;gap:10px}
+.muted{color:var(--muted)}
+.steps{margin:0;padding-left:18px} .steps li{margin:2px 0}
 .posture{border-radius:12px;padding:16px 18px;border:1px solid var(--line);color:#fff}
-.posture.patch{background:#0a7d3c} .posture.hybrid{background:#b97309}
-.posture.replatform{background:#b42318}
+.posture.patch{background:var(--ok-fill)} .posture.hybrid{background:var(--high-fill)}
+.posture.replatform{background:var(--bad-fill)}
 .posture-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .posture .badge{background:rgba(255,255,255,.22);padding:4px 12px;border-radius:999px;
   font-weight:700;letter-spacing:.5px}
@@ -487,15 +591,15 @@ section{margin-top:18px}
 .posture .drivers li{padding:3px 0} .posture .hint{opacity:.92;margin:8px 0 0}
 .posture code{background:rgba(255,255,255,.22);padding:1px 5px;border-radius:4px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}
-.dot-critical{background:#fff} .dot-high{background:#ffe0b3}
-.dot-medium{background:#fff4bf} .dot-low{background:#d6dae0}
+.dot-critical{background:#fff} .dot-high{background:rgba(255,255,255,.75)}
+.dot-medium{background:rgba(255,255,255,.55)} .dot-low{background:rgba(255,255,255,.35)}
 /* summary */
 .total{font-size:18px;font-weight:700;margin:0}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .chip{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:999px;
   padding:5px 12px;font-size:13px;font-weight:600;color:var(--ink)}
 .chip .n{opacity:.6;margin-left:4px}
-.chip.active{outline:2px solid #1570ef33}
+.chip.active{outline:2px solid var(--accent)}
 .chip-critical{border-color:var(--crit);color:var(--crit)}
 .chip-high{border-color:var(--high);color:var(--high)}
 .chip-medium{border-color:var(--med);color:var(--med-ink)}
@@ -509,7 +613,7 @@ details.pillar{background:var(--card);border:1px solid var(--line);border-radius
 details.pillar>summary{cursor:pointer;font-weight:700;padding:6px 0;list-style:none}
 details.pillar>summary::-webkit-details-marker{display:none}
 .pill-id{color:var(--muted);font-weight:500}
-.count{float:right;background:var(--bg);border-radius:999px;padding:1px 9px;color:var(--muted)}
+.count{float:right;background:var(--muted-bg);border-radius:999px;padding:1px 9px;color:var(--muted)}
 .card{border:1px solid var(--line);border-left:4px solid var(--low);border-radius:8px;
   padding:11px 13px;margin:9px 0;background:var(--card)}
 .card.sev-critical{border-left-color:var(--crit)}
@@ -517,16 +621,15 @@ details.pillar>summary::-webkit-details-marker{display:none}
 .card.sev-medium{border-left-color:var(--med)}
 .card.sev-low{border-left-color:var(--low)}
 .card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
-.cid{font-weight:700;font-family:ui-monospace,Menlo,monospace}
+.cid{font-weight:700;font-family:"Roboto Mono",ui-monospace,Menlo,monospace}
 .title{font-weight:600} .conf{color:var(--muted);font-size:12px}
 .tag{font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px;text-transform:uppercase;
   letter-spacing:.3px}
 .tag-sev{color:#fff}
-.tag-critical{background:var(--crit)} .tag-high{background:var(--high)}
-.tag-medium{background:var(--med)} .tag-low{background:var(--low)}
-.tag-fix{background:var(--accent-bg);color:var(--accent)}
-.tag-plumbing{background:var(--ok-bg);color:var(--ok)}
-.tag-business_logic{background:var(--bad-bg);color:var(--bad)}
+.tag-critical{background:var(--bad-fill)} .tag-high{background:var(--high-fill)}
+.tag-medium{background:var(--med-fill)} .tag-low{background:var(--low-fill)}
+.tag-fix,.tag-plumbing,.tag-business_logic{background:transparent;border:1px solid currentColor;padding:1px 6px}
+.tag-fix{color:var(--accent)} .tag-plumbing{color:var(--ok)} .tag-business_logic{color:var(--bad)}
 .kv{display:flex;gap:10px;padding:2px 0}
 .kv .k{flex:0 0 116px;color:var(--muted);font-size:12px;text-transform:uppercase;
   letter-spacing:.3px;padding-top:1px}
@@ -539,6 +642,8 @@ th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
 th{background:var(--bg);font-size:12px;text-transform:uppercase;color:var(--muted)}
 tr:last-child td{border-bottom:none}
 .st{font-weight:700} .st.gap{color:var(--crit)} .st.pass{color:var(--ok)} .st.skip{color:var(--muted)}
+.notes summary{cursor:pointer;list-style:none} .notes summary::-webkit-details-marker{display:none}
+.notes summary h2{display:inline-block} .notes summary .count{float:none;margin-left:8px;font-size:12px;vertical-align:middle}
 .notes ul{margin:0;padding-left:18px}
 footer{margin-top:30px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);
   padding-top:12px}
@@ -546,15 +651,15 @@ footer{margin-top:30px;color:var(--muted);font-size:12px;border-top:1px solid va
 .head-actions{display:flex;gap:8px;align-items:center}
 .fixbtn{cursor:pointer;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent);
   border-radius:6px;padding:4px 11px;font-size:12px;font-weight:700;white-space:nowrap}
-.fixbtn:hover{background:var(--accent);color:#fff}
+.fixbtn:hover{background:var(--accent);color:var(--card)}
 .fixbtn.fixall{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
-.fixbtn.fixall:hover{background:var(--ok);color:#fff}
+.fixbtn.fixall:hover{background:var(--ok);color:var(--card)}
 .fixbtn.migrate{margin-top:10px;border-color:#fff;background:rgba(255,255,255,.18);color:#fff}
-.fixbtn.migrate:hover{background:#fff;color:#b42318}
+.fixbtn.migrate:hover{background:#fff;color:var(--bad-fill)}
 .card-action{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;
   padding-top:9px;border-top:1px dashed var(--line)}
-.card-action .cmd{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#0d1117;
-  color:#e6edf3;padding:3px 8px;border-radius:5px;user-select:all}
+.card-action .cmd{font-family:"Roboto Mono",ui-monospace,Menlo,monospace;font-size:12px;background:var(--code-bg);
+  color:var(--code-ink);padding:3px 8px;border-radius:5px;user-select:all}
 .card-action .warn{font-size:12px;color:var(--crit);font-weight:600}
 .card-action .ok{font-size:12px;color:var(--ok);font-weight:600}
 .card-action .manual{font-size:12px;color:var(--muted)}

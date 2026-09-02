@@ -116,6 +116,18 @@ Known limitation: policies are looked up by name, and if an org has several
 policies sharing one name, the first match wins. Prefer uniquely-named policies
 until lookup by id is added.
 
+### Remediation metadata per mitigation
+
+Each entry in `scripts/risk_management_mitigations.yaml` carries, besides what to
+assess, how to close the gap: `steps` (an ordered list the report renders under
+**How**), `docs_url` (the DataRobot documentation page for the feature), and
+`fix.via` / `fix.requires` (`pulumi` on a `deployment` or `custom_model`, `api`,
+`automatic`, or `organizational`). The report's **Path to Compliance** section
+groups the unsatisfied mitigations by what unblocks them: first the architectural
+step when the Pulumi program has no `datarobot.Deployment` or `CustomModel` to
+attach settings to, then Pulumi settings, then compliance tests in the LLM test
+suite, then console or API work.
+
 ## Open question (not resolved by this skill)
 
 What format an org submits its own non-regulatory standards in, and whether those

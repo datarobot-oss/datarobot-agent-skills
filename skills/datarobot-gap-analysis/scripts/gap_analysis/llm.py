@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from typing import Any, Protocol
 
 
@@ -76,11 +75,9 @@ def get_client(injected=None) -> LLMClient | None:
         return None
 
 
-_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
-
-
 def parse_json(text: str) -> dict[str, Any]:
-    """Extract the first JSON object from a model response."""
+    """The first JSON object in a model response, ignoring fences and any
+    commentary the model appended after the closing brace."""
     text = text.strip()
     if text.startswith("```"):
         text = text.strip("`")
@@ -88,7 +85,16 @@ def parse_json(text: str) -> dict[str, Any]:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        m = _JSON_RE.search(text)
-        if m:
-            return json.loads(m.group(0))
-        raise
+        start = text.find("{")
+        if start < 0:
+            raise
+        obj, _end = json.JSONDecoder().raw_decode(text[start:])
+        if not isinstance(obj, dict):
+            raise ValueError("model response is not a JSON object")
+        return obj
+
+
+def brief_error(e: BaseException, limit: int = 300) -> str:
+    """One line of an exception message, capped, for skip reasons and notes."""
+    text = " ".join(str(e).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"

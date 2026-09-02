@@ -62,6 +62,22 @@ _NOISE_PATH = re.compile(
 _NOT_SECRET_CHARS = re.compile(r"[\s(){}\[\]<>;,|`\\]")
 _MINIFIED_LINE_CHARS = 2000
 
+_NON_RUNTIME_SAST_PATHS = [
+    "**/tests/**",
+    "**/test/**",
+    "**/__tests__/**",
+    "**/fixtures/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py",
+    "**/*.spec.*",
+    "**/*.test.*",
+    "**/infra/**",
+    "**/migrations/**",
+    "**/alembic/**",
+    "**/alembic*.py",
+    "**/.github/**",
+]
 _SUPPLY_CHAIN_RULE = re.compile(
     r"github-actions|package_managers\.|supply-chain|dependabot|cooldown|release-age|pinned",
     re.IGNORECASE,
@@ -506,6 +522,13 @@ def run_sast(
                 path = Path(path).resolve().relative_to(root.resolve()).as_posix()
             except ValueError:
                 pass
+            # Injection and credential-logging rules judge runtime code; IaC,
+            # migrations, CI and tests are not where those sinks live.
+            if cid != "SEC-014" and any(
+                glob_match(path, g) for g in _NON_RUNTIME_SAST_PATHS
+            ):
+                dropped += 1
+                continue
             line = (res.get("start") or {}).get("line")
             message = (res.get("extra") or {}).get("message", "semgrep finding")
             if cid == "SEC-014":
@@ -538,7 +561,8 @@ def run_sast(
                 findings.append(f)
         if dropped:
             notes.append(
-                f"SAST: {dropped} non-security semgrep finding(s) (style/correctness) not reported."
+                f"SAST: {dropped} semgrep finding(s) not reported (style/correctness rules, "
+                "or hits in test, IaC, migration and CI files)."
             )
     except Exception as e:  # noqa: BLE001
         notes.append(f"SEC-011: semgrep failed: {e}")

@@ -35,3 +35,7 @@ Decision rules:
   with a `skip_reason`. Never guess.
 - Prefer precision over recall: partial or ambiguous evidence lowers
   `confidence`, it does not flip the verdict.
+- A weaker defense than the one the mitigation names (for example a
+  system-prompt instruction where a runtime guard is required) is still a gap,
+  but report it with `confidence: "medium"`, point `file`/`line` at that
+  partial defense, and say in `explanation` what it covers and what it does not.

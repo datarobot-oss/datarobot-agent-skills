@@ -22,9 +22,11 @@ LLM execution through the DataRobot CLI's opencode runtime, extracted from the
 
 ## Installation and versioning
 
-Published to PyPI as `datarobot-skills-utils` on every GitHub release of this repo
-by `.github/workflows/publish-pypi.yml`; the version tracks the shared plugin
-version. Skills locate it through a small `_bootstrap.py` shim that tries, in order:
+Published to PyPI as `datarobot-skills-utils` by `.github/workflows/publish-pypi.yml`
+on every GitHub release of this repo. The package has its own version (`version` in
+`pyproject.toml`); bump it when the package changes, and the next release uploads it.
+Releases that do not change the version skip the upload. Skills locate the package
+through a small `_bootstrap.py` shim that tries, in order:
 
 1. a sibling `packages/datarobot-skills-utils/src` directory (repo checkout, or a
    plugin install that copies `packages/` next to `skills/`), so local edits win;

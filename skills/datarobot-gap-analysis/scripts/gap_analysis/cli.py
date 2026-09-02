@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import os
+import signal
 import sys
 import time
 import webbrowser
@@ -92,6 +93,10 @@ def _make_llm_client():
         )
         return None
     atexit.register(server.stop)
+    # A SIGTERM (timeout, orchestrator kill) must still run atexit hooks, or the
+    # private server outlives the run.
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda signum, _frame: sys.exit(128 + signum))
     client = OpenCodeWorkerClient(url, cwd=server.workdir)
     _status(f"→ LLM checks run through dr opencode ({client.model}).")
     return client

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .conformance import check_conformance
-from .detect import run_layer2
+from .detect import NO_LLM_NOTE, run_layer2
 from .inventory import build_inventory
 from .llm import get_client
 from .migrate import extract_spec, scaffold_from_spec
@@ -87,9 +87,7 @@ def analyze(
         started = time.monotonic()
         client = get_client(llm_client) if use_llm else None
         if use_llm and client is None:
-            _tick(
-                "No LLM client configured, skipping Layer 2 (set GAP_LLM_MODEL + creds)."
-            )
+            _tick(NO_LLM_NOTE)
         f2, s2, n2 = run_layer2(
             client,
             workspace,
@@ -105,13 +103,14 @@ def analyze(
         f4: list = []
         coverage4: list = []
         n4: list = []
+        iac4: dict = {}
         packs = policy.get("regulatory", {}).get("packs", [])
         if "eu_ai_act" in (packs or []):
             started = time.monotonic()
             policy_name = policy.get("regulatory", {}).get(
                 "policy_name", EU_AI_ACT_POLICY_NAME
             )
-            f4, coverage4, n4 = run_dynamic_layer4(
+            f4, coverage4, n4, iac4 = run_dynamic_layer4(
                 client,
                 workspace,
                 result.inventory,
@@ -121,7 +120,7 @@ def analyze(
                 max_workers=max_workers,
             )
             _phase("Layer 4 (regulatory)", started, f"{len(f4)} finding(s)")
-        return f2, s2, n2, f4, coverage4, n4
+        return f2, s2, n2, f4, coverage4, n4, iac4
 
     with ThreadPoolExecutor(max_workers=3) as lanes:
         fut1 = lanes.submit(_lane_layer1)
@@ -129,7 +128,7 @@ def analyze(
         fut_llm = lanes.submit(_lane_llm)
         f1, n1 = fut1.result()
         f3, n3 = fut3.result()
-        f2, s2, n2, f4, coverage4, n4 = fut_llm.result()
+        f2, s2, n2, f4, coverage4, n4, iac4 = fut_llm.result()
 
     # Aggregate in a fixed order so reports stay deterministic regardless of
     # which lane finished first.
@@ -137,6 +136,7 @@ def analyze(
     result.notes += n1 + n3 + n2 + n4
     result.skipped += s2
     result.regulatory_coverage += coverage4
+    result.iac = iac4
 
     result.findings = _dedup(result.findings)
     _tick("Scoring remediation posture…")

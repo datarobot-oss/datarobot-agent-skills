@@ -59,8 +59,9 @@ from typing import Any
 import yaml
 
 from . import paths
-from .inventory import files_matching
-from .llm import LLMClient, parse_json
+from .docs import resolve_docs
+from .inventory import evidence_files, files_matching
+from .llm import LLMClient, brief_error, parse_json
 from .models import Finding, Severity
 
 EU_AI_ACT_POLICY_NAME = "EU AI Act"
@@ -221,6 +222,13 @@ def _condition_id(mitigation_type: str) -> str:
 
 _PULUMI_FIX_PROMPT = "prompts/fix-pol-pulumi.md"
 _PULUMI_PROGRAM_GLOBS = ["**/__main__.py", "**/infra/**/*.py", "**/*.py"]
+_PULUMI_MARKERS = (
+    "pulumi_datarobot",
+    "pulumi-datarobot",
+    "datarobot_pulumi_utils",
+    "import pulumi",
+)
+_MAX_PULUMI_FILES = 10
 
 
 def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | None:
@@ -237,6 +245,7 @@ def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | 
     info: dict[str, Any] = {
         "file": None,
         "files": [],
+        "variants": {},
         "deployment": False,
         "deployment_file": None,
         "custom_model": False,
@@ -247,17 +256,31 @@ def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | 
     # datarobot-pulumi-utils wrapper, which creates a Deployment under the hood.
     deployment_re = re.compile(r"\bDeployment\(|CustomModelDeployment\(")
     custom_model_re = re.compile(r"\bCustomModel\(")
-    for rel in files_matching(inventory, _PULUMI_PROGRAM_GLOBS)[:200]:
+    # Program entry points and infra/ modules first, then everything else, so a
+    # large application tree cannot push the Pulumi program past the cap.
+    candidates = files_matching(inventory, _PULUMI_PROGRAM_GLOBS[:2])
+    seen = set(candidates)
+    candidates += [
+        f for f in files_matching(inventory, _PULUMI_PROGRAM_GLOBS[2:]) if f not in seen
+    ]
+    for rel in candidates[:400]:
         try:
             text = (workspace / rel).read_text(errors="ignore")
         except OSError:
             continue
-        if "pulumi_datarobot" not in text and "pulumi-datarobot" not in text:
+        if not any(marker in text for marker in _PULUMI_MARKERS):
             continue
         if info["file"] is None:
             info["file"] = rel
-        if len(info["files"]) < 5:
+        if len(info["files"]) < _MAX_PULUMI_FILES:
             info["files"].append(rel)
+        path = workspace / rel
+        if path.is_symlink():
+            try:
+                target = path.resolve().relative_to(workspace.resolve()).as_posix()
+            except ValueError:
+                target = os.readlink(path)
+            info["variants"][rel] = target
         if deployment_re.search(text):
             info["deployment"] = True
             info["deployment_file"] = info["deployment_file"] or rel
@@ -272,7 +295,7 @@ def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | 
 def _gather_files(
     workspace: Path, inventory: dict[str, Any], globs: list[str], max_bytes: int
 ) -> list[tuple[str, str]]:
-    rels = files_matching(inventory, globs)[:_MAX_FILES]
+    rels = evidence_files(inventory, globs, _MAX_FILES)
     out = []
     for rel in rels:
         try:
@@ -313,8 +336,9 @@ def _finding_for_mitigation(
     )
     remediation = f"{meta['remediation']} ({meta['datarobot_feature']})"
     fix_meta = meta.get("fix") or {}
-    if fix_meta.get("hint"):
-        remediation += f" How: {fix_meta['hint']}"
+    steps = [_step_text(s) for s in (meta.get("steps") or [])]
+    if not steps and fix_meta.get("hint"):
+        steps = [fix_meta["hint"]]
 
     requires = fix_meta.get("requires")
     pulumi_file = (iac or {}).get("file")
@@ -330,19 +354,7 @@ def _finding_for_mitigation(
         )
     )
     pulumi_fixable = fix_meta.get("via") == "pulumi" and target_exists
-    if (
-        fix_meta.get("via") in ("pulumi", "automatic")
-        and iac
-        and not pulumi_fixable
-        and iac.get("application")
-        and not iac.get("deployment")
-    ):
-        remediation += (
-            " Note: this repo's Pulumi program deploys a CustomApplication only; "
-            "deployment-level mitigations need the model/LLM path behind a "
-            "datarobot.Deployment. Add one (or re-platform via agent-assist), "
-            "then enable this."
-        )
+    prerequisite = _prerequisite(requires, fix_meta.get("via"), iac)
     return Finding(
         condition_id=_condition_id(mitigation_type),
         pillar="POL",
@@ -364,6 +376,52 @@ def _finding_for_mitigation(
         layer=4,
         detector=f"risk_management:{mitigation_type}",
         structural=False if pulumi_fixable else bool(meta["structural"]),
+        steps=steps,
+        docs_url=resolve_docs(str(meta.get("docs_topic") or ""))
+        if meta.get("docs_topic")
+        else "",
+        docs_topic=str(meta.get("docs_topic") or ""),
+        prerequisite=prerequisite,
+        fix_via=str(fix_meta.get("via") or ""),
+        fix_requires=str(requires or ""),
+    )
+
+
+def _step_text(step: Any) -> str:
+    """A step authored as `Label: text` parses as a one-key mapping in YAML."""
+    if isinstance(step, dict) and len(step) == 1:
+        ((label, text),) = step.items()
+        return f"{label}: {text}"
+    return str(step)
+
+
+_RESOURCE_NAMES = {
+    "deployment": "datarobot.Deployment",
+    "custom_model": "datarobot.CustomModel",
+}
+
+
+def _prerequisite(
+    requires: str | None, via: str | None, iac: dict[str, Any] | None
+) -> str:
+    """What the fix attaches to, and whether this repo's Pulumi program has it."""
+    needed = requires or ("deployment" if via == "automatic" else None)
+    if not needed:
+        return ""
+    name = _RESOURCE_NAMES.get(needed, needed)
+    if not iac:
+        return f"Needs a {name} in a Pulumi program; this repo has no pulumi-datarobot program."
+    if iac.get(needed):
+        where = iac.get(f"{needed}_file") or iac.get("file")
+        return f"Needs a {name}; present in {where}."
+    shape = (
+        "a CustomApplication only"
+        if iac.get("application")
+        else "no Deployment or CustomModel"
+    )
+    return (
+        f"Needs a {name}; not present. This repo's Pulumi program deploys {shape}, "
+        "so the model or LLM path must first be put behind a DataRobot deployment."
     )
 
 
@@ -377,6 +435,7 @@ def _assess_mitigation(
     contract: str,
     max_bytes: int,
     pulumi_files: list[str] | None = None,
+    iac_note: str = "",
 ) -> tuple[str, dict[str, Any] | None, str | None]:
     """LLM-judge one mitigation against the repo.
 
@@ -408,7 +467,7 @@ def _assess_mitigation(
         f"- requirement: {meta['title']}\n"
         f"- satisfied by (at deployment): {meta['datarobot_feature']}\n"
         f"- what counts as evidence: {meta['evidence']}\n"
-        f"{iac_line}"
+        f"{iac_line}{iac_note}"
         f"\n---\n# Output contract\n{contract}\n\n"
         f"You are checking condition {_condition_id(mitigation_type)}. "
         "Return ONLY the JSON object."
@@ -417,7 +476,7 @@ def _assess_mitigation(
     try:
         result = parse_json(llm.complete(system, user))
     except Exception as e:  # noqa: BLE001
-        return "skipped", None, f"LLM/parse error: {e}"
+        return "skipped", None, f"LLM/parse error: {brief_error(e)}"
     status = result.get("status", "found")
     if status == "not_found":
         return "pass", None, None
@@ -436,10 +495,10 @@ def run_dynamic_layer4(
     mitigation_metadata_path: str | Path | None = None,
     progress: Any = None,
     max_workers: int = _DEFAULT_MAX_WORKERS,
-) -> tuple[list[Finding], list[dict[str, str]], list[str]]:
+) -> tuple[list[Finding], list[dict[str, str]], list[str], dict[str, Any]]:
     """Run Layer 4: fetch the org's policy, LLM-assess each required mitigation.
 
-    Returns (findings, coverage, notes). `coverage` lists every mitigation
+    Returns (findings, coverage, notes, iac). `coverage` lists every mitigation
     considered, not just the ones that became findings, {mitigation_type,
     title, status}, status one of "pass" | "gap" | "not_assessed" |
     "unknown_type" (a live mitigation type this skill's metadata doesn't
@@ -459,7 +518,7 @@ def run_dynamic_layer4(
             "credentials found (DATAROBOT_API_TOKEN/DATAROBOT_ENDPOINT env "
             "vars, or the dr CLI config written by `dr auth login`)."
         )
-        return [], [], notes
+        return [], [], notes, {}
 
     policy, name_note = fetch_policy_by_name(client, policy_name)
     if policy is None:
@@ -468,7 +527,7 @@ def run_dynamic_layer4(
             f"'{policy_name}' was reachable (the feature may not be enabled "
             "for this org)."
         )
-        return [], [], notes
+        return [], [], notes, {}
     if name_note:
         notes.append(name_note)
 
@@ -476,13 +535,30 @@ def run_dynamic_layer4(
     metadata = load_mitigation_metadata(mitigation_metadata_path)
     workspace = Path(workspace)
     iac = _detect_iac(workspace, inventory)
+    iac_note = ""
     if iac:
         shapes = [k for k in ("deployment", "custom_model", "application") if iac[k]]
+        variants = iac.get("variants") or {}
+        variant_txt = (
+            " Active configuration variant(s): "
+            + "; ".join(f"{k} -> {v}" for k, v in sorted(variants.items()))
+            + "."
+            if variants
+            else ""
+        )
         notes.append(
             f"Layer 4: pulumi-datarobot program detected ({iac['file']}; "
-            f"declares: {', '.join(shapes) or 'no recognized resources'}). "
+            f"declares: {', '.join(shapes) or 'no recognized resources'}).{variant_txt} "
             "Mitigations whose target resource exists are offered as assisted fixes."
         )
+        if variants:
+            iac_note = (
+                "- active IaC variant(s), selected by symlink: "
+                + "; ".join(f"{k} -> {v}" for k, v in sorted(variants.items()))
+                + ". Other files under a configurations/ directory are alternative "
+                "variants that are not deployed unless selected; judge the active one "
+                "and name the variant you assessed in the evidence.\n"
+            )
     prompt = contract = None
     if llm_client is not None:
         prompt = paths.resolve(_PROMPT_FILE).read_text()
@@ -527,6 +603,7 @@ def run_dynamic_layer4(
                         contract,
                         max_bytes,
                         iac["files"] if iac else None,
+                        iac_note,
                     )
                 ] = mt
             for future in as_completed(futures):
@@ -599,4 +676,4 @@ def run_dynamic_layer4(
             f"{len(findings)} mitigation(s) required by '{policy_name}' are unsatisfied; "
             f"{unassessed} not assessed."
         )
-    return findings, coverage, notes
+    return findings, coverage, notes, iac or {}

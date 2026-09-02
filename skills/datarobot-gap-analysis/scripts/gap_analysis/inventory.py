@@ -11,8 +11,10 @@ absent rather than guessed.
 from __future__ import annotations
 
 import fnmatch
+import os
 import json
 import re
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +66,15 @@ _DEF_EXCLUDE = [
     "**/build/**",
     "**/__pycache__/**",
     "**/*.min.js",
+    "**/htmlcov/**",
+    "**/coverage/**",
+    "**/.pytest_cache/**",
+    "**/.mypy_cache/**",
+    "**/.ruff_cache/**",
+    "**/*.pyc",
+    "**/*.tar",
+    "**/*.lock",
+    "**/package-lock.json",
 ]
 
 _PY_VER_RE = re.compile(
@@ -180,6 +191,7 @@ def build_inventory(
         ):
             key["config"].append(rel)
 
+    deps = extract_dependencies(root)
     return {
         "root": str(root),
         "file_count": len(files),
@@ -187,11 +199,14 @@ def build_inventory(
         "languages": dict(sorted(languages.items(), key=lambda kv: -kv[1])),
         "key_files": key,
         "python_version": detect_python_version(root),
-        "dependencies": extract_dependencies(root),
+        "dependencies": deps,
         "model_ids": extract_model_ids(root, exclude),
         "declared_licenses": extract_declared_licenses(root, exclude),
         "base_images": extract_base_images(root, exclude),
         "base_image_files": base_image_files(root, exclude),
+        "template_sources": detect_template_sources(root),
+        "agent_template_choices": agent_template_choices(),
+        "agent_frameworks": detect_agent_frameworks(deps),
     }
 
 
@@ -243,8 +258,12 @@ def extract_dependencies(root: Path) -> list[str]:
             if name:
                 deps.add(name)
 
-    pp = root / "pyproject.toml"
-    if pp.exists() and tomllib:
+    pyprojects = [
+        pp
+        for pp in root.rglob("pyproject.toml")
+        if not _SKIP_DIRS.intersection(pp.parts)
+    ]
+    for pp in pyprojects if tomllib else []:
         try:
             data = tomllib.loads(pp.read_text(errors="ignore"))
         except Exception:
@@ -388,3 +407,173 @@ def files_matching(inventory: dict[str, Any], globs: list[str]) -> list[str]:
         if any(glob_match(f, g) for g in globs):
             out.append(f)
     return out
+
+
+_EVIDENCE_RANK = {
+    ".py": 0,
+    ".ts": 1,
+    ".tsx": 1,
+    ".js": 1,
+    ".jsx": 1,
+    ".go": 1,
+    ".md": 2,
+    ".txt": 2,
+    ".toml": 3,
+    ".yaml": 4,
+    ".yml": 4,
+    ".json": 5,
+    ".cfg": 5,
+    ".ini": 5,
+}
+_EVIDENCE_SKIP = (
+    "uv.lock",
+    "poetry.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+)
+
+
+def _is_catch_all(glob: str) -> bool:
+    """`**/*.py`-style globs name a file type, not a file or directory; they rank last."""
+    segments = glob.split("/")
+    if any(not any(ch in seg for ch in "*?[") for seg in segments):
+        return False
+    base = segments[-1]
+    return base in ("*", "**") or (base.startswith("*.") and "*" not in base[2:])
+
+
+def evidence_files(
+    inventory: dict[str, Any],
+    globs: list[str],
+    limit: int,
+    first: list[str] | None = None,
+) -> list[str]:
+    """The files an LLM judge should read for a condition, best evidence first.
+
+    Files matched by a named glob (`**/*prompt*`, `**/infra/**`) come before
+    files matched only by a file-type glob (`**/*.py`); within each group source
+    outranks config and config outranks data, and lockfiles never make the cut.
+    `first` pins known-relevant files to the front.
+    """
+    catch_all = [g for g in globs if _is_catch_all(g)]
+    specific = [g for g in globs if not _is_catch_all(g)]
+
+    def _key(f: str) -> tuple[int, int, int, str]:
+        named = 0 if any(glob_match(f, g) for g in specific) else 1
+        return (named, _EVIDENCE_RANK[Path(f).suffix.lower()], f.count("/"), f)
+
+    ranked = sorted(
+        (
+            f
+            for f in files_matching(inventory, specific + catch_all)
+            if Path(f).name not in _EVIDENCE_SKIP
+            and Path(f).suffix.lower() in _EVIDENCE_RANK
+        ),
+        key=_key,
+    )
+    out: list[str] = []
+    for f in [*(first or []), *ranked]:
+        if f not in out:
+            out.append(f)
+        if len(out) >= limit:
+            break
+    return out
+
+
+_SRC_PATH_RE = re.compile(r"^_src_path:\s*(\S+)", re.MULTILINE)
+
+# Agent framework packages a repo may depend on: package -> (display name, the
+# af-component-agent `agent_template_framework` value it corresponds to).
+_AGENT_PACKAGES: dict[str, tuple[str, str]] = {
+    "langgraph": ("LangGraph", "langgraph"),
+    "langchain": ("LangChain", "langchain"),
+    "crewai": ("CrewAI", "crewai"),
+    "llama-index": ("LlamaIndex", "llamaindex"),
+    "llama-index-core": ("LlamaIndex", "llamaindex"),
+    "nvidia-nat": ("NVIDIA NAT", "nat"),
+    "pydantic-ai": ("pydantic-ai", "pydantic-ai"),
+    "pydantic-ai-slim": ("pydantic-ai", "pydantic-ai"),
+    "deepagents": ("deepagents", "deepagents"),
+    "autogen-agentchat": ("AutoGen", "autogen"),
+    "pyautogen": ("AutoGen", "autogen"),
+    "smolagents": ("smolagents", "smolagents"),
+    "openai-agents": ("OpenAI Agents SDK", "openai-agents"),
+    "semantic-kernel": ("Semantic Kernel", "semantic-kernel"),
+    "agno": ("Agno", "agno"),
+}
+
+# The flavors DataRobot's agent application template offers are read from the
+# template itself; this is the snapshot used when the fetch is off or offline.
+_AGENT_TEMPLATE_COPIER_URL = "https://raw.githubusercontent.com/datarobot-community/af-component-agent/main/copier.yml"
+_AGENT_TEMPLATE_CHOICES_FALLBACK: dict[str, str] = {
+    "Base": "base",
+    "CrewAI": "crewai",
+    "LangGraph": "langgraph",
+    "LlamaIndex": "llamaindex",
+    "NeMo Agent Toolkit (NAT)": "nat",
+}
+_agent_template_choices_cache: dict[str, str] | None = None
+
+
+def agent_template_choices() -> dict[str, str]:
+    """{label: value} of `agent_template_framework` in af-component-agent's copier.yml.
+
+    Set GAP_AGENT_TEMPLATE_CATALOG=off to skip the network and use the snapshot.
+    """
+    global _agent_template_choices_cache
+    if _agent_template_choices_cache is not None:
+        return _agent_template_choices_cache
+    choices: dict[str, str] = {}
+    if os.environ.get("GAP_AGENT_TEMPLATE_CATALOG", "").lower() != "off":
+        try:
+            with urllib.request.urlopen(_AGENT_TEMPLATE_COPIER_URL, timeout=8) as resp:
+                text = resp.read().decode("utf-8", "ignore")
+            block = re.search(
+                r"^agent_template_framework:\n(.*?)(?=^\S)", text, re.S | re.M
+            )
+            if block:
+                for m in re.finditer(
+                    r'^\s{4}"?([^":\n]+)"?:\s*([A-Za-z0-9_-]+)\s*$',
+                    block.group(1),
+                    re.M,
+                ):
+                    choices[m.group(1).strip()] = m.group(2).strip()
+        except (OSError, ValueError):
+            choices = {}
+    _agent_template_choices_cache = choices or dict(_AGENT_TEMPLATE_CHOICES_FALLBACK)
+    return _agent_template_choices_cache
+
+
+def detect_template_sources(root: Path) -> list[str]:
+    """Copier templates this repo was generated from (repo names), from
+    `.datarobot/answers/*.yml` and `.copier-answers.yml`."""
+    sources: set[str] = set()
+    files = list((root / ".datarobot" / "answers").glob("*.y*ml")) + [
+        root / ".copier-answers.yml"
+    ]
+    for f in files:
+        if not f.is_file():
+            continue
+        for m in _SRC_PATH_RE.finditer(f.read_text(errors="ignore")):
+            name = m.group(1).rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+            sources.add(name[:-4] if name.endswith(".git") else name)
+    return sorted(sources)
+
+
+def detect_agent_frameworks(
+    deps: list[str], choices: dict[str, str] | None = None
+) -> list[dict[str, Any]]:
+    """[{name, native}] for every agent framework among the declared dependencies.
+
+    `native` means the af-component-agent template offers a flavor for it (per
+    `choices`, the template's `agent_template_framework` values); anything else
+    deploys through the generic Base flavor.
+    """
+    native_values = set((choices or agent_template_choices()).values())
+    seen: dict[str, bool] = {}
+    for dep in deps:
+        hit = _AGENT_PACKAGES.get(dep.lower().replace("_", "-"))
+        if hit:
+            seen.setdefault(hit[0], hit[1] in native_values)
+    return [{"name": n, "native": native} for n, native in sorted(seen.items())]

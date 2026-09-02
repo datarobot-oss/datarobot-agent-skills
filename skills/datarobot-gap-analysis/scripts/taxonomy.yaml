@@ -140,6 +140,7 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts", "**/*.js"]
     relational: false
     detector: prompts/sec-011-injection.md
+    runtime_only: true
     remediation: Validate/parameterize inputs; use safe loaders; isolate untrusted content from instructions.
     fix_type: assisted
     fix_strategy: prompts/fix-sec-011-injection.md
@@ -154,6 +155,7 @@ conditions:
     files_glob: ["**/tools.py", "**/tools/**", "**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/sec-012-input-validation.md
+    runtime_only: true
     remediation: Add schema validation (e.g. pydantic) at trust boundaries.
     fix_type: assisted
     fix_strategy: prompts/fix-sec-012-validation.md
@@ -187,6 +189,8 @@ conditions:
     files_glob: ["**/auth.py", "**/client.py", "**/agent.py", "**/main.py"]
     relational: false
     detector: prompts/idn-001-human-identity.md
+    scope: repo
+    runtime_only: true
     remediation: Provision a dedicated workload identity (e.g. service account / OIDC) for the agent.
     fix_type: advisory
     fix_strategy: null
@@ -201,6 +205,8 @@ conditions:
     files_glob: ["**/auth.py", "**/client.py", "**/config.py"]
     relational: false
     detector: prompts/idn-002-rotation.md
+    scope: repo
+    runtime_only: true
     remediation: Use short-lived tokens with automatic refresh/rotation.
     fix_type: advisory
     fix_strategy: null
@@ -231,6 +237,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/idn-004-rbac.md
+    scope: repo
+    runtime_only: true
     remediation: Add authorization checks before privileged actions; separate roles.
     fix_type: advisory
     fix_strategy: null
@@ -294,6 +302,8 @@ conditions:
     files_glob: ["**/agent.py", "**/*llm*", "**/*model*", "**/prompt*"]
     relational: false
     detector: prompts/aig-001-guardrails.md
+    scope: repo
+    runtime_only: true
     remediation: Add input/output guardrails (moderation, PII filter, jailbreak checks).
     fix_type: assisted
     fix_strategy: prompts/fix-aig-001-guardrails.md
@@ -338,6 +348,8 @@ conditions:
     files_glob: ["**/eval*", "**/test*", "**/*.py"]
     relational: false
     detector: prompts/aig-004-evals.md
+    scope: repo
+    runtime_only: true
     remediation: Add an eval/regression suite for prompts and agent trajectories.
     fix_type: advisory
     fix_strategy: null
@@ -352,6 +364,8 @@ conditions:
     files_glob: ["**/tools.py", "**/tools/**", "**/agent.py", "**/*.py"]
     relational: false
     detector: prompts/aig-005-human-in-loop.md
+    scope: repo
+    runtime_only: true
     remediation: Add an approval/confirmation gate before irreversible actions.
     fix_type: advisory
     fix_strategy: null
@@ -366,6 +380,8 @@ conditions:
     files_glob: ["**/*llm*", "**/*model*", "**/agent.py", "**/*.py"]
     relational: false
     detector: prompts/aig-006-cost-controls.md
+    scope: repo
+    runtime_only: true
     remediation: Set max-token limits, budgets, and rate limiting on model calls.
     fix_type: assisted
     fix_strategy: prompts/fix-aig-006-cost-controls.md
@@ -394,6 +410,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/aig-008-prompt-versioning.md
+    scope: repo
+    runtime_only: true
     remediation: Externalize prompts to versioned files/registry.
     fix_type: advisory
     fix_strategy: null
@@ -411,6 +429,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/ops-001-logging.md
+    scope: repo
+    runtime_only: true
     remediation: Add structured logging with an audit trail of tool calls/decisions.
     fix_type: assisted
     fix_strategy: prompts/fix-ops-001-logging.md
@@ -426,6 +446,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/ops-002-tracing.md
+    scope: repo
+    runtime_only: true
     remediation: Instrument with OpenTelemetry / DataRobot agent monitoring.
     fix_type: assisted
     fix_strategy: prompts/fix-ops-002-tracing.md
@@ -441,6 +463,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts", "**/main.py", "**/app.py"]
     relational: false
     detector: prompts/ops-003-health.md
+    scope: repo
+    runtime_only: true
     remediation: Add health/readiness and metrics endpoints.
     fix_type: advisory
     fix_strategy: null
@@ -483,6 +507,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/rel-003-resilience.md
+    scope: repo
+    runtime_only: true
     remediation: Add timeouts, bounded retries with backoff, and error handling on external calls.
     fix_type: assisted
     fix_strategy: prompts/fix-rel-003-resilience.md
@@ -498,6 +524,8 @@ conditions:
     files_glob: ["**/*.py", "**/*.ts"]
     relational: false
     detector: prompts/rel-004-fallback.md
+    scope: repo
+    runtime_only: true
     remediation: Add fallback/degraded-mode handling for dependency failures.
     fix_type: advisory
     fix_strategy: null

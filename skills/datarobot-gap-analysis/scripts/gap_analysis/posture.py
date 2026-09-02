@@ -106,14 +106,59 @@ def assess_posture(
         rec = HYBRID
 
     drivers = _drivers(structural, int(cfg["max_drivers"]))
+    advice = migration_advice(result.inventory)
     return {
         "recommendation": rec,
         "score": score,
         "structural_count": len(structural),
         "total": total,
         "drivers": drivers,
-        "rationale": _rationale(rec, score, len(structural), total, high_structural),
+        "advice": advice,
+        "rationale": _rationale(
+            rec, score, len(structural), total, high_structural, advice
+        ),
     }
+
+
+def migration_advice(inventory: dict[str, Any] | None) -> str:
+    """What "re-platform" means for this repo.
+
+    A repo already generated from af-components keeps its application; the
+    structural fix is to put the agent or LLM path behind a DataRobot agent
+    deployment so guards and monitoring can attach. The agent framework is
+    never changed unless the user asks: frameworks without a native DataRobot
+    template deploy through the generic Base flavor.
+    """
+    inv = inventory or {}
+    sources = [s for s in inv.get("template_sources", []) if "af-component" in s]
+    frameworks = inv.get("agent_frameworks") or []
+    if sources:
+        text = (
+            f"This repo already builds on af-components ({', '.join(sources)}). Keep the "
+            "application and put the agent or LLM path behind a DataRobot agent deployment "
+            "(a CustomModel behind a datarobot.Deployment) so guards and monitoring attach."
+        )
+    else:
+        text = (
+            "Re-platform onto af-components with the datarobot-agent-assist skill: extract "
+            "the business logic into a fresh af-components base rather than restructuring "
+            "in place."
+        )
+    if frameworks:
+        native = [f["name"] for f in frameworks if f["native"]]
+        other = [f["name"] for f in frameworks if not f["native"]]
+        if other:
+            choices = inv.get("agent_template_choices") or {}
+            natives = [label for label, value in choices.items() if value != "base"]
+            offered = ", ".join(natives) if natives else "a fixed set of frameworks"
+            text += (
+                f" The agent uses {', '.join(other)}; the DataRobot agent template offers "
+                f"{offered} natively, so deploy it through its generic Base flavor, which "
+                "wraps any Python agent, rather than rewriting it onto another framework."
+            )
+        elif native:
+            text += f" The agent uses {', '.join(native)}, which has a native DataRobot agent template."
+    return text
 
 
 def _drivers(structural, limit: int) -> list[dict[str, str]]:
@@ -132,7 +177,12 @@ def _drivers(structural, limit: int) -> list[dict[str, str]]:
 
 
 def _rationale(
-    rec: str, score: float, structural_count: int, total: int, high_structural: list
+    rec: str,
+    score: float,
+    structural_count: int,
+    total: int,
+    high_structural: list,
+    advice: str = "",
 ) -> str:
     pct = int(round(score * 100))
     if rec == PATCH:
@@ -144,12 +194,11 @@ def _rationale(
     if rec == REPLATFORM:
         return (
             f"{len(high_structural)} high/critical structural gaps and {pct}% of "
-            f"weighted risk is architectural. Patching these means restructuring code "
-            f"you don't own — re-platform: extract the business logic into a fresh "
-            f"af-components base (migrate_agent)."
+            f"weighted risk is architectural: these gaps are closed by changing how the "
+            f"system is deployed and governed, not by editing individual files. {advice}"
         )
     return (
         f"Mixed profile — {structural_count} of {total} gaps are structural "
-        f"({pct}% of weighted risk). Patch the plumbing now, and plan a migration for "
-        f"the structural core rather than restructuring it in place."
+        f"({pct}% of weighted risk). Patch the plumbing now, and plan the structural "
+        f"core separately. {advice}"
     )

@@ -48,6 +48,13 @@ class Condition:
     fix_strategy: str | None
     fix_risk: str = "none"
     structural: bool = False
+    # "repo": the question is answered once for the whole codebase (is there
+    # tracing anywhere?), so multiple hits collapse into one finding listing
+    # its locations. "file": every hit is its own finding (an injection sink).
+    scope: str = "file"
+    # Runtime-behaviour checks skip IaC, migrations and CI files: a Pulumi
+    # program never has OTel spans and should not be told it lacks them.
+    runtime_only: bool = False
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Condition":
@@ -77,6 +84,8 @@ class Condition:
             fix_strategy=d.get("fix_strategy"),
             fix_risk=fix_risk,
             structural=structural,
+            scope=str(d.get("scope", "file")),
+            runtime_only=bool(d.get("runtime_only", False)),
         )
 
 
