@@ -14,6 +14,14 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-agent-assist`: Support a LiteLLM proxy as a first-class model source (`DATAROBOT_LITELLM_BASE_URL`/`DATAROBOT_LITELLM_API_KEY`), matching the `dr` CLI and DR Opencode. Adds `AGENT_ASSIST_DISABLE_LLM_GATEWAY`/`AGENT_ASSIST_DISABLE_LLM_DEPLOYED` to hide gateway or deployed models, and a `--llm-source` selector on `setup_template.py`.
+
+### Fixed
+
+- `datarobot-agent-assist`: External and LiteLLM setup now writes the OpenAI-compatible env the agent template actually reads (`USE_DATAROBOT_LLM_GATEWAY=0`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, an `openai/`-prefixed `LLM_DEFAULT_MODEL`, and a generated `SESSION_SECRET_KEY`) instead of the unread `EXTERNAL_LLM_*` keys. That path now stops after writing `.env` for local `task dev`, skipping the DataRobot-only `dr dotenv setup` and Pulumi deploy.
+
 ## [1.8.0] - 2026-09-02
 
 ### Added

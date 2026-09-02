@@ -170,7 +170,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
    Invalidate `<dependency_check_passed>` after this step.
 
-9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use `model` itself when it is a legacy string, or `model.name` when it is an object, as `--llm-model`; pass `gateway` as `--llm-source` for a legacy string, or pass `model.source` for an object. If the model object has `source: deployed`, pass `model.llm_deployment_id` as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it. If the model object has `source: external`, the script reads `model.llm_base_url`'s configured value from the external LLM environment and writes the `EXTERNAL_LLM_*` keys.
+9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use `model` itself when it is a legacy string, or `model.name` when it is an object, as `--llm-model`; pass `gateway` as `--llm-source` for a legacy string, or pass `model.source` for an object. If the model object has `source: deployed`, pass `model.llm_deployment_id` as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it. If the model object has `source: external` or `source: litellm`, the script reads the base URL and API key from the environment (`AGENT_ASSIST_LLM_*` or `DATAROBOT_LITELLM_*`) and writes an OpenAI-compatible `.env`, then stops for a local `task dev` instead of deploying.
 
    Invalidate `<dependency_check_passed>` after this step.
 

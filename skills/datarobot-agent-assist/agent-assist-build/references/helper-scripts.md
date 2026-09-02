@@ -66,7 +66,7 @@ That writes `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, and `USE_DA
 
 On the deployed path the deployment id is the only thing that selects the model. `dr dotenv setup` rebuilds `.env` from the template's `.datarobot/cli/llm.yml`, whose deployed-LLM group does not include `LLM_DEFAULT_MODEL`, so that key is dropped and the template falls back to its own `datarobot/datarobot-deployed-llm` placeholder. Routing is unaffected; a real model name passed as `--llm-model` alongside an id does not survive.
 
-For an external OpenAI-compatible LLM, use the generic command with `--llm-source external`; the script reads the configured base URL from the environment:
+For an external or litellm OpenAI-compatible LLM, use the generic command with `--llm-source external` (or `litellm`); the script reads the base URL and API key from the environment:
 
 ```bash
 python <skill_scripts_dir>/setup_template.py \
@@ -75,7 +75,7 @@ python <skill_scripts_dir>/setup_template.py \
   --target-dir <target_dir>
 ```
 
-The model name and base URL must match `AGENT_ASSIST_LLM_MODEL_NAME` and `AGENT_ASSIST_LLM_BASE_URL` exactly; the script reads the key from `AGENT_ASSIST_LLM_API_KEY` and writes `EXTERNAL_LLM_MODEL`, `EXTERNAL_LLM_API_KEY`, and `EXTERNAL_LLM_BASE_URL` into `.env`.
+For `external`, the model name and base URL must match `AGENT_ASSIST_LLM_MODEL_NAME` and `AGENT_ASSIST_LLM_BASE_URL` exactly and the key comes from `AGENT_ASSIST_LLM_API_KEY`; for `litellm`, the base URL and key come from `DATAROBOT_LITELLM_BASE_URL` and `DATAROBOT_LITELLM_API_KEY`. Either way the script writes an OpenAI-compatible `.env` (`OPENAI_API_BASE`, `OPENAI_API_KEY`, an `openai/`-prefixed `LLM_DEFAULT_MODEL`, `USE_DATAROBOT_LLM_GATEWAY=0`, and a generated `SESSION_SECRET_KEY`), then stops for a local `task dev` instead of running `dr dotenv setup` or deploying.
 
 ### select_framework.py
 

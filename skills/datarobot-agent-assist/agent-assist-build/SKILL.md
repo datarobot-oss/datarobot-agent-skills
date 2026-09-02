@@ -320,7 +320,7 @@ python <skill_scripts_dir>/setup_template.py \
 
 Add `--llm-source deployed` and `--llm-deployment-id <deployment-id>` for a DataRobot-deployed LLM, so the template routes to the deployment instead of the gateway.
 
-For an external model, pass `--llm-source external`; the template reads its configured base URL and API key from the environment and writes the `EXTERNAL_LLM_*` keys.
+For an external or litellm model, pass `--llm-source external` (or `litellm`); the script reads the base URL and API key from the environment (`AGENT_ASSIST_LLM_*` or `DATAROBOT_LITELLM_*`) and writes an OpenAI-compatible `.env` (an `openai/`-prefixed `LLM_DEFAULT_MODEL`, `USE_DATAROBOT_LLM_GATEWAY=0`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, `SESSION_SECRET_KEY`), then stops for a local `task dev` instead of deploying.
 
 ### select_framework.py
 

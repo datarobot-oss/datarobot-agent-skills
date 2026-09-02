@@ -3,11 +3,11 @@
 `list_llm_models.py` returns four kinds of entry, told apart by `source`:
 
 - `gateway` — a model in the DataRobot LLM Gateway catalog. Selected by its `llm_default_model`.
-- `litellm` — a model exposed by LiteLLM through `dr llm-gateway list`. Selected by its `llm_default_model`.
+- `litellm` — an OpenAI-compatible model from a LiteLLM proxy, listed through `dr llm-gateway list` when `DATAROBOT_LITELLM_BASE_URL` and `DATAROBOT_LITELLM_API_KEY` are set. Selected by its `llm_default_model` (the raw model name).
 - `deployed` — an existing DataRobot text-generation deployment. Selected by its `deployment_id`.
 - `external` — an OpenAI-compatible model configured through the `AGENT_ASSIST_LLM_*` environment, for an instance with no LLM Gateway. Selected by its `llm_default_model` (the raw model name) together with its `base_url`.
 
-**Copy `llm_default_model` verbatim.** It is the only field that goes into `agent_spec.md` and `.env`. A `gateway` entry also carries an `id` (the catalog's `llmId`, e.g. `azure-openai-gpt-5`) and an `api_model` (e.g. `azure/gpt-5-2025-08-07`); neither works as a model name. The gateway rejects the `id` outright, and `api_model` is missing the `datarobot/` prefix that routes the request to DataRobot rather than straight to the provider. `setup_template.py` refuses an `id` rather than letting it reach `.env`. On a `deployed` entry, `id` is the deployment id instead, and it is what you want: see below.
+**Copy `llm_default_model` verbatim into `agent_spec.md`.** For a `gateway` model it is also the exact `.env` value; `deployed`, `litellm`, and `external` choices pair it with a second field, and `litellm`/`external` get an `openai/` prefix in `.env` (see below). A `gateway` entry also carries an `id` (the catalog's `llmId`, e.g. `azure-openai-gpt-5`) and an `api_model` (e.g. `azure/gpt-5-2025-08-07`); neither works as a model name. The gateway rejects the `id` outright, and `api_model` is missing the `datarobot/` prefix that routes the request to DataRobot rather than straight to the provider. `setup_template.py` refuses an `id` rather than letting it reach `.env`. On a `deployed` entry, `id` is the deployment id instead, and it is what you want: see below.
 
 ### Recommending
 
@@ -44,12 +44,25 @@ model:
 
 Both are required at setup: `setup_template.py` recognizes the choice as external only when `model.name` **and** `model.llm_base_url` match the environment exactly, otherwise it treats the value as a gateway model and fails. The API key is never written to the spec; it stays in the environment and the script reads it there. An external LLM cannot be combined with `model.llm_deployment_id`, and it is not wired into the dress rehearsal.
 
+### Recording a litellm LLM in `agent_spec.md`
+
+A `litellm` entry appears when `DATAROBOT_LITELLM_BASE_URL` and `DATAROBOT_LITELLM_API_KEY` are set and `dr llm-gateway list` returns the proxy's models. Record `model.name` as the entry's `llm_default_model` and `model.source: litellm`:
+
+```yaml
+model:
+	name: "gpt-4o"
+	source: litellm
+```
+
+The base URL and key come from the `DATAROBOT_LITELLM_*` environment, not the spec, so no `model.llm_base_url` is needed. `setup_template.py` verifies the model against the `dr llm-gateway list` listing, writes the OpenAI-compatible `.env` (see the table below), and, like `external`, stops after `.env` for a local `task dev` rather than deploying.
+
 ### What the choice changes downstream
 
 | Step | Gateway model | LiteLLM model | Deployed LLM | External LLM |
 |---|---|---|---|---|
 | [Template setup](helper-scripts.md#setup_templatepy) | `--llm-model` **and** `--llm-source gateway` | `--llm-model` **and** `--llm-source litellm` | `--llm-model`, `--llm-source deployed`, and `--llm-deployment-id` | `--llm-model` **and** `--llm-source external` |
-| `.env` written | `LLM_DEFAULT_MODEL` | `EXTERNAL_LLM_MODEL`, `EXTERNAL_LLM_API_KEY`, `EXTERNAL_LLM_BASE_URL` | plus `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, `USE_DATAROBOT_LLM_GATEWAY=0` | `EXTERNAL_LLM_MODEL`, `EXTERNAL_LLM_API_KEY`, `EXTERNAL_LLM_BASE_URL` |
+| `.env` written | `LLM_DEFAULT_MODEL` | `openai/`-prefixed `LLM_DEFAULT_MODEL`, `USE_DATAROBOT_LLM_GATEWAY=0`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, `SESSION_SECRET_KEY` (creds from `DATAROBOT_LITELLM_*`) | plus `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, `USE_DATAROBOT_LLM_GATEWAY=0` | same as LiteLLM, creds from `AGENT_ASSIST_LLM_*` |
+| Deploy | template Pulumi deploy | skipped; `.env` prepared for local `task dev` | template Pulumi deploy | skipped; `.env` prepared for local `task dev` |
 | [Dress rehearsal](dress-rehearsal.md) | LLM Gateway chat endpoint | LiteLLM chat endpoint | the deployment's own chat endpoint | not supported yet |
 
 On the deployed path the deployment id is the only thing that selects the model. `dr dotenv setup` rebuilds `.env` from the template's own prompt schema, which does not carry `LLM_DEFAULT_MODEL` for that path, so a real model name passed alongside an id is not persisted. Routing is unaffected.
@@ -59,4 +72,4 @@ On the deployed path the deployment id is the only thing that selects the model.
 - A deployment is offered when it is active and its target type is text generation. Nothing checks that it answers chat requests, and some text-generation deployments (guard models, for instance) do not. If the rehearsal reports the deployment as unavailable, that is the likely cause.
 - Deployed entries carry no provider or context window, so those columns read `-`.
 - The `Deployment ID` column appears in the table only when a deployed entry is present.
-- Deployed entries require `dr` v0.2.79 or newer to appear in the CLI listing. On an older `dr` the script falls back to a direct API call, so they still list.
+- Deployed entries require `dr` v0.2.79 or newer to appear in the `dr llm-gateway list` output. The listing is CLI-only, so an older `dr` will not surface them.
