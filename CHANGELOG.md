@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-02
+
 ### Added
 
 - `datarobot-agent-assist`: Support an OpenAI-completions-compatible external LLM (`AGENT_ASSIST_LLM_MODEL_NAME`, `AGENT_ASSIST_LLM_API_KEY`, `AGENT_ASSIST_LLM_BASE_URL`) as a model source alongside the LLM Gateway and deployed models, so `list_llm_models.py` and `setup_template.py --llm-base-url` can wire up a template without a DataRobot endpoint or token. Also lets `clone_template.py` override the template repo via `AGENT_ASSIST_TEMPLATE_REPO_URL`/`_BRANCH`/`_TAG`, with branch now taking priority over tag when both are set.
