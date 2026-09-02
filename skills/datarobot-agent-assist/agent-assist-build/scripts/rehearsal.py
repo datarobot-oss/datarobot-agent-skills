@@ -949,15 +949,9 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
     spec = json.loads(tool_calls[0]["function"]["arguments"])
     model_spec = spec["model"]
     requested_model = _spec_model_name(model_spec)
-    # A deployed LLM is identified by its deployment id, not by `model`: every
-    # deployment shares one placeholder there. Resolving on the id keeps the
-    # rehearsal on the deployment the spec actually chose. Read from the spec text
-    # rather than the extraction, see _spec_deployment_id.
-    requested_deployment_id = (
-        _spec_deployment_id(content)
-        if isinstance(model_spec, dict) and model_spec.get("source") == "deployed"
-        else ""
-    )
+    # A deployed LLM is picked by its id, not `model` (all share one placeholder).
+    # Read it from the spec text so a `model` the extractor flattened to a string keeps it.
+    requested_deployment_id = _spec_deployment_id(content)
     if requested_deployment_id:
         agent_model, model_substituted = catalog.pick_available(
             requested_deployment_id, prefer_source=SOURCE_DEPLOYED
