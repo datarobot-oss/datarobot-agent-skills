@@ -39,7 +39,10 @@ def get_deployment_features(deployment_id: str) -> dict:
     # Get feature information: a list of plain dicts with keys name, feature_type,
     # importance, date_format, known_in_advance. `importance` is a model-independent
     # measure of the feature/target relationship strength (not Feature Impact).
-    features = deployment.get_features()
+    try:
+        features = deployment.get_features()
+    except dr.errors.ClientError as e:
+        sys.exit(f"Deployment feature metadata unavailable ({e})")
 
     # Build feature list
     feature_list = []
@@ -49,22 +52,48 @@ def get_deployment_features(deployment_id: str) -> dict:
                 "feature_name": feature["name"],
                 "feature_type": feature["feature_type"],
                 "importance": feature["importance"],
+                "date_format": feature["date_format"],
                 "is_target": feature["name"] == target_name,
             }
         )
 
     # Get time series config if applicable. deployment.model has "project_id" only
-    # for deployments of leaderboard models (absent for custom-model deployments).
+    # for deployments of leaderboard models (absent for custom-model deployments),
+    # and the backing project may since have been deleted.
     time_series_config = None
     project_id = deployment.model.get("project_id")
-    if project_id and dr.Project.get(project_id).use_time_series:
+    try:
+        use_time_series = (
+            bool(project_id) and dr.Project.get(project_id).use_time_series
+        )
+    except dr.errors.ClientError as e:
+        use_time_series = False
+        print(f"Note: training project not accessible: {e}", file=sys.stderr)
+    if use_time_series:
         try:
             partitioning = dr.DatetimePartitioning.get(project_id)
+            # Retrained-on-actuals TS projects suffix training column names with
+            # " (actual)"; prediction input uses the unsuffixed names, so map back
+            # when the unsuffixed name is what the deployment's features carry.
+            feature_names = {f["name"] for f in features}
+
+            def to_input_name(name: str | None) -> str | None:
+                if name and name.endswith(" (actual)") and name not in feature_names:
+                    stripped = name[: -len(" (actual)")]
+                    if stripped in feature_names:
+                        return stripped
+                return name
+
             time_series_config = {
-                "datetime_column": partitioning.datetime_partition_column,
+                "datetime_column": to_input_name(
+                    partitioning.datetime_partition_column
+                ),
                 "forecast_window_start": partitioning.forecast_window_start,
                 "forecast_window_end": partitioning.forecast_window_end,
-                "series_id_columns": partitioning.multiseries_id_columns or [],
+                "series_id_columns": [
+                    to_input_name(c)
+                    for c in (partitioning.multiseries_id_columns or [])
+                ],
             }
         except dr.errors.ClientError as e:
             print(

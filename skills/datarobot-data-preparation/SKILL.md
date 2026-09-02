@@ -12,7 +12,7 @@ This skill provides guidance for preparing and managing data in DataRobot, inclu
 **Most common use case**: Upload and validate a dataset
 
 1. **Upload dataset**: `upload_dataset(file_path, dataset_name)` to upload data
-2. **Validate data**: iterate `dataset.get_all_features()` and check each feature's `na_count`, `unique_count`, and `target_leakage` for quality issues
+2. **Validate data**: iterate `dataset.get_all_features()` and check each feature's `na_count` and `unique_count` for quality issues (both can be `None` for some feature types; `target_leakage` is only populated on *project* features after EDA2 — it is never set on catalog datasets, which have no target yet)
 3. **Check schema**: `dr.Dataset.get(dataset_id).get_all_features()` to review each column's `name` and `feature_type`
 
 **Example**: "Upload sales_data.csv and check if it's ready for training"

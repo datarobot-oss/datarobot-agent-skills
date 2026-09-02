@@ -117,7 +117,7 @@ hour's traffic (reports 0 predictions), and the API accepts a future `end_time`:
 
 **Model Performance**:
 - `model.metrics` - Model performance metrics (dict of `{metric: {partition: score}}`)
-- `model.get_roc_curve("validation")` - Get ROC curve for comparison (`source` is required: `"validation"`, `"crossValidation"`, or `"holdout"`)
+- `datarobot.insights.RocCurve.get(model_id, source="validation")` - Get ROC curve for comparison (`source`: `"validation"`, `"crossValidation"`, or `"holdout"`; the older `model.get_roc_curve(source)` is deprecated and warns)
 
 **Note**: Some monitoring features may require DataRobot MLOps API. See the [Common Patterns](#common-patterns) section below for examples.
 

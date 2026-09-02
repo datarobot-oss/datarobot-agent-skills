@@ -53,9 +53,9 @@ The `wait_for_build.py` script enforces this: only `COMPLETED` exits success, `B
 
 ## Replacement status
 
-- `candidate-warming` / `switching` — in progress, keep polling.
+- `submitted` / `initializing` / `staged` / `promoting` / `finalizing` / `canceling` — in progress, keep polling.
 - `completed` — terminal success.
-- `failed` — terminal failure; workload reverted to old artifact. Diagnose the candidate before retrying.
+- `errored` / `cancelled` — terminal failure; workload reverted to old artifact. Diagnose the candidate before retrying. (There is no `failed` replacement status.)
 
 The endpoint also returns **404** when no active replacement exists — that's "no replacement in progress", not an error. See `references/lifecycle-flows.md` for the full semantics.
 

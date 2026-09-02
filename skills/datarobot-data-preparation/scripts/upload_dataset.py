@@ -13,7 +13,8 @@ an existing Use Case so it isn't orphaned in the DataRobot UI.
 
 Note: the upload is a blocking call that returns only after server-side
 ingestion completes (default max_wait=600 seconds) — run it with an adequate
-timeout or in the background, and raise max_wait for large files.
+timeout or in the background; for large files call upload_dataset() with a
+larger max_wait (the CLI uses the 600s default).
 """
 
 import json
@@ -24,7 +25,10 @@ import datarobot as dr
 
 
 def upload_dataset(
-    file_path: str, dataset_name: str, use_case_id: str | None = None
+    file_path: str,
+    dataset_name: str,
+    use_case_id: str | None = None,
+    max_wait: int = 600,
 ) -> dict:
     """
     Upload a dataset file to DataRobot.
@@ -33,6 +37,7 @@ def upload_dataset(
         file_path: Path to the dataset file (CSV, Parquet, etc.)
         dataset_name: Name for the dataset
         use_case_id: Optional existing Use Case ID to link the dataset to
+        max_wait: Seconds to wait for server-side ingestion (raise for large files)
 
     Returns:
         Dataset information including dataset_id
@@ -46,7 +51,9 @@ def upload_dataset(
     use_cases = [dr.UseCase.get(use_case_id)] if use_case_id else None
 
     # Upload dataset (create_from_file has no name parameter; rename after)
-    dataset = dr.Dataset.create_from_file(file_path=file_path, use_cases=use_cases)
+    dataset = dr.Dataset.create_from_file(
+        file_path=file_path, use_cases=use_cases, max_wait=max_wait
+    )
     if dataset_name:
         dataset.modify(name=dataset_name)
 

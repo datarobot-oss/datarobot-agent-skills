@@ -141,7 +141,9 @@ import datarobot as dr
 # Initialize client
 dr.Client()
 
-# Get DataRobot's recommended model from the project
+# Get DataRobot's recommended model from the project. Unsupervised (clustering/
+# anomaly) and not-yet-modeled projects have no recommendation — this raises
+# ClientError 404; fall back to dr.Model.list(project_id) and pick by metric.
 best_model = dr.ModelRecommendation.get("abc123").get_model()
 
 # Register the model (required before deploying)

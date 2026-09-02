@@ -13,6 +13,7 @@ Generates a CSV template with all required columns and sample values.
 
 import csv
 import sys
+from datetime import datetime
 
 import datarobot as dr
 
@@ -37,25 +38,44 @@ def generate_prediction_data_template(
     # Get deployment features (list of plain dicts with keys name, feature_type,
     # importance, date_format, known_in_advance)
     deployment = dr.Deployment.get(deployment_id)
-    features = deployment.get_features()
+    try:
+        features = deployment.get_features()
+    except dr.errors.ClientError as e:
+        sys.exit(f"Deployment feature metadata unavailable ({e})")
     target_name = deployment.model.get(
         "target_name"
     )  # None for unsupervised/anomaly deployments
 
     # Filter out target feature
     prediction_features = [f for f in features if f["name"] != target_name]
+    if not prediction_features:
+        sys.exit(
+            "No feature metadata available for this deployment (custom/unstructured "
+            "models do not publish a feature list); cannot generate a template."
+        )
 
     # Look up real training values: categorical levels and numeric ranges. Only
-    # DataRobot-built models have a backing project; custom-model deployments fall
-    # back to the type placeholders below.
+    # DataRobot-built models have a backing project; custom-model deployments — and
+    # deployments whose training project was since deleted — fall back to the type
+    # placeholders below.
     project_id = deployment.model.get("project_id")
+    stats_note = ""
+    if project_id:
+        try:
+            dr.Project.get(project_id)
+        except dr.errors.ClientError:
+            project_id = None
+            stats_note = (
+                "# Note: training statistics unavailable (project not accessible); "
+                "values below are type placeholders\n"
+            )
     categorical_levels: dict[str, list[str]] = {}
     level_notes: dict[str, str] = {}
     numeric_stats: dict[str, dict[str, float]] = {}
     if project_id:
         for feature in prediction_features:
             try:
-                if feature["feature_type"] == "Categorical":
+                if feature["feature_type"] in ("Categorical", "Boolean"):
                     dr_feature = dr.Feature.get(project_id, feature["name"])
                     # Each bin is {"label": <level>, "count": ..., "target": ...};
                     # high-cardinality features get at most 60 bins by default.
@@ -80,7 +100,7 @@ def generate_prediction_data_template(
                         notes.append("missing allowed - leave blank")
                     if notes:
                         level_notes[feature["name"]] = "; ".join(notes)
-                elif feature["feature_type"] == "Numeric":
+                elif feature["feature_type"] in ("Numeric", "Percentage"):
                     stats = dr.Feature.get(project_id, feature["name"])
                     if isinstance(stats.median, (int, float)):
                         numeric_stats[feature["name"]] = {
@@ -102,18 +122,26 @@ def generate_prediction_data_template(
     for i in range(n_rows):
         row = {}
         for feature in prediction_features:
-            if feature["feature_type"] == "Numeric":
+            ftype = feature["feature_type"]
+            if ftype in ("Numeric", "Percentage"):
                 stats = numeric_stats.get(feature["name"])
                 row[feature["name"]] = stats["median"] if stats else 0.0
-            elif feature["feature_type"] == "Categorical":
+            elif ftype in ("Categorical", "Boolean"):
                 levels = categorical_levels.get(feature["name"])
-                row[feature["name"]] = (
-                    levels[i % len(levels)] if levels else "sample_category"
-                )
-            elif feature["feature_type"] == "Text":
+                if levels:
+                    row[feature["name"]] = levels[i % len(levels)]
+                else:
+                    row[feature["name"]] = (
+                        "sample_category" if ftype == "Categorical" else "0"
+                    )
+            elif ftype == "Text":
                 row[feature["name"]] = "sample text"
-            elif feature["feature_type"] == "Date":
-                row[feature["name"]] = "2024-01-01"
+            elif ftype == "Date":
+                # Render the sample in the format the deployment expects
+                fmt = feature.get("date_format") or "%Y-%m-%d"
+                row[feature["name"]] = datetime(2024, 1, 15, 12, 30, 45).strftime(fmt)
+            elif ftype in ("Image", "Document"):
+                row[feature["name"]] = "path/to/file"
             else:
                 row[feature["name"]] = ""
         writer.writerow(row)
@@ -134,7 +162,7 @@ def generate_prediction_data_template(
 # Model: {deployment.model.get("project_name", "unknown")}
 # Target: {target_name}
 # Generated: {n_rows} template rows
-{level_comments}#
+{stats_note}{level_comments}#
 # Instructions:
 # 1. Fill in the values for each feature
 # 2. Ensure data types match feature types

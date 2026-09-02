@@ -312,7 +312,9 @@ template_df.to_csv("prediction_template.csv", index=False)
 
 # Submit batch prediction. With a localFile output path, score() blocks until
 # scoring finishes and writes predictions_output.csv before returning — no
-# separate monitor/download step is needed.
+# separate monitor/download step is needed. (It waits up to download_timeout=120s
+# for the queue to start returning results, then raises AND cancels the job —
+# pass download_timeout=-1 or a larger value for busy queues / large datasets.)
 job = dr.BatchPredictionJob.score(
     deployment=deployment,
     intake_settings={"type": "localFile", "file": "prediction_template.csv"},
@@ -329,7 +331,7 @@ Common errors and solutions:
 
 - **Missing required features**: Use `get_deployment_features` to get complete list
 - **Wrong data types**: Check feature types and convert accordingly
-- **Invalid categorical values**: Get the real training levels via `dr.Feature.get(deployment.model["project_id"], feature_name).get_histogram().plot` — each bin's `label` is a valid level (max 60 bins by default). Custom-model deployments have no `project_id`; check their training data instead.
+- **Invalid categorical values**: Get the real training levels via `dr.Feature.get(deployment.model["project_id"], feature_name).get_histogram().plot` — each bin's `label` is a valid level, EXCEPT aggregate pseudo-buckets whose label is wrapped in `=` (`=All Other=` when levels were truncated to the bin cap; `==Missing==` when the feature had NAs — represent missing as an empty cell, not that string). Custom-model deployments have no `project_id`; check their training data instead.
 - **Time series format errors**: Ensure datetime format matches training data
 
 ## SDK Setup

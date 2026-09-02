@@ -36,7 +36,13 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
     deployment = dr.Deployment.get(deployment_id)
     # List of plain dicts with keys name, feature_type, importance, date_format,
     # known_in_advance
-    features = deployment.get_features()
+    try:
+        features = deployment.get_features()
+    except dr.errors.ClientError as e:
+        return {
+            "valid": False,
+            "errors": [f"Deployment feature metadata unavailable ({e})"],
+        }
     target_name = deployment.model.get(
         "target_name"
     )  # None for unsupervised/anomaly deployments
@@ -51,7 +57,8 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
         return {"valid": False, "errors": [f"File not found: {file_path}"]}
 
     with open(file_path, "r") as f:
-        reader = csv.DictReader(f)
+        # Skip '#' metadata lines (generate_prediction_data_template.py writes them)
+        reader = csv.DictReader(line for line in f if not line.lstrip().startswith("#"))
         rows = list(reader)
 
     if not rows:
@@ -62,8 +69,9 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
     warnings = []
     info = []
 
-    # Check for missing required features
+    # Check for missing required features (ragged rows park overflow under None)
     csv_columns = set(rows[0].keys())
+    csv_columns.discard(None)
     missing_features = set(required_features.keys()) - csv_columns
 
     if missing_features:
@@ -96,9 +104,12 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
     # Use the importance already returned by deployment.get_features() for warnings
     # (a model-independent measure of feature/target relationship strength; direction
     # is not encoded — negative values mean no detectable relationship, so the signed
-    # comparison below is intentional: don't take abs()).
+    # comparison below is intentional: don't take abs()). None means importance is
+    # unknown for this model class (unsupervised, time-series, custom) — not low.
     low_importance_features = [
-        f["name"] for f in features if (f["importance"] or 0) < 0.05
+        f["name"]
+        for f in features
+        if f["importance"] is not None and f["importance"] < 0.05
     ]
 
     missing_low_importance = missing_features & set(low_importance_features)

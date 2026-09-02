@@ -35,12 +35,19 @@ def get_workload(base: str, headers: Headers, wid: str) -> Json:
 
 
 def get_error_logs(
-    base: str, headers: Headers, wid: str, limit: int = 30
+    base: str,
+    headers: Headers,
+    wid: str,
+    limit: int = 30,
+    start_time: str | None = None,
 ) -> list[Json]:
+    params: dict[str, Any] = {"level": "error", "limit": limit}
+    if start_time:
+        params["startTime"] = start_time
     r = httpx.get(
         f"{base}/otel/workload/{wid}/logs/",
         headers=headers,
-        params={"level": "error", "limit": limit},
+        params=params,
         timeout=30,
     )
     if r.status_code == 404:
@@ -90,6 +97,18 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     findings: list[str] = []
     evidence: str | None = None
 
+    # Fetch protons up front: the target proton's createdAt bounds the log/event
+    # scans below to the current incarnation — otherwise a healthy workload's
+    # arbitrarily old errors surface as "evidence".
+    protons = list_protons(base, headers, wid)
+    target: Json | None = None
+    if protons:
+        target = next(
+            (p for p in protons if p.get("role") == "active"),
+            max(protons, key=lambda p: cast(str, p.get("createdAt", ""))),
+        )
+    since = cast("str | None", (target or {}).get("createdAt"))
+
     # Step 1 — scan recent error-level application logs for obvious signals
     keywords = (
         "error",
@@ -100,7 +119,7 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
         "connection refused",
         "exec format error",
     )
-    for record in get_error_logs(base, headers, wid, limit=30):
+    for record in get_error_logs(base, headers, wid, limit=30, start_time=since):
         message = (record.get("message") or "").strip()
         lower = message.lower()
         for kw in keywords:
@@ -114,6 +133,8 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     # Step 2 — flag noteworthy lifecycle events
     flagged_events: list[str] = []
     for ev in get_events(base, headers, wid, limit=30):
+        if since and (ev.get("timestamp") or "") < since:
+            continue  # predates the current proton — stale
         ev_type = (ev.get("eventType") or "").lower()
         if any(k in ev_type for k in FLAG_EVENT_TYPE_KEYWORDS):
             details = json.dumps(ev.get("details") or {}, default=str)
@@ -127,12 +148,7 @@ def diagnose(base: str, headers: Headers, wid: str) -> Json:
     # Step 3/4 — drill into the active (or most recent) proton
     proton_summary: str | None = None
     proton_detail_summary: str | None = None
-    protons = list_protons(base, headers, wid)
-    if protons:
-        target = next(
-            (p for p in protons if p.get("role") == "active"),
-            max(protons, key=lambda p: cast(str, p.get("createdAt", ""))),
-        )
+    if target is not None:
         proton_summary = (
             f"{len(protons)} proton(s); using {target.get('role', '?')} {target['id']}"
         )

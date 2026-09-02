@@ -259,7 +259,7 @@ r = httpx.get(
 traces = httpx.get(f"{base}/otel/workload/{wid}/traces/", headers=headers).json()[
     "data"
 ]
-# summary: traceId, rootSpanName, rootServiceName, duration (SECONDS), spansCount, errorSpansCount
+# summary: traceId, rootSpanName, rootServiceName, duration (MILLISECONDS), spansCount, errorSpansCount
 trace_id = next(
     (t["traceId"] for t in traces if t.get("errorSpansCount", 0) > 0),
     traces[0]["traceId"],
@@ -269,7 +269,7 @@ trace = httpx.get(
 ).json()
 ```
 
-> **Units differ by level:** trace list/detail `duration` is SECONDS (×1000 for ms); span `duration` is MICROSECONDS (÷1000 for ms); span `startTime` is epoch ms. Empty `data` = app isn't instrumented; direct the user to wire up OTEL.
+> **Units differ by level:** trace `duration` is ms (as-is); span `duration` is ns (÷1,000,000 for ms); span `startTime` is epoch ms. Empty `data` = app isn't instrumented; direct the user to wire up OTEL.
 
 ## Metrics + service stats
 
