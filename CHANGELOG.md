@@ -3,31 +3,22 @@
 All notable changes to DataRobot agent skills are tracked here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
-version numbers track the shared plugin version maintained across
+version numbers track the shared plugin version maintained across `package.json`,
 `.claude-plugin/`, `.cursor-plugin/plugin.json`, and `gemini-extension.json`.
 
 Each entry should be prefixed with the affected skill folder name (for example,
 `` `datarobot-predictions`: ... ``) so it's easy to scan what changed per skill.
 
+Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
+[`CONTRIBUTING.md`](CONTRIBUTING.md#plugin-version-management).
+
 ## [Unreleased]
 
-## [1.6.1] - 2026-09-01
+## [1.7.0] - 2026-09-02
 
 ### Added
 
-- `datarobot-agent-assist`: Dress rehearsal exports a shareable Markdown report to `<target_dir>/rehearsal_report/rehearsal_report.md` (archived under `.datarobot/rehearsal/<session_id>/`). `DONE` always runs `--report` before any summary or menu; post-design next steps add **Review rehearsal report**. `NOTE:` observations persist via `rehearsal.py --note`. Session state lives under `.datarobot/rehearsal/` instead of the system temp dir.
-
-### Changed
-
-- `datarobot-agent-assist`: Bumped application template version to 11.11.6.
-- `datarobot-agent-assist`: Deduplicated `SKILL.md` by pointing dress rehearsal, clone discipline, and spec validation at the reference files instead of restating them.
-- `datarobot-agent-assist`: Welcome menu infers a clear free-text category (and asks when ambiguous). `frontend.type` may be held from the Clarification Phase before the first spec draft exists.
-- `datarobot-agent-assist`: Tool/service secrets stay in `.env` only — coding appends `VAR_NAME=` and asks the user to paste values in their editor, never in chat, `agent_spec.md`, or source.
-- `datarobot-agent-assist`: Spec-only / messy-cwd classification treats dress-rehearsal artifacts (`.datarobot/rehearsal/`, `rehearsal_report/`) as design-phase files so they do not force a subdirectory clone.
-
-### Fixed
-
-- `datarobot-agent-assist`: Rehearsal reports pair parallel tool returns with the matching call (previously every return was labeled with the last tool). `model_substituted` / `simulation_substituted` now compare against the originally requested model so a runtime fallback does not leave a stale flag.
+- `datarobot-agent-assist`: Support an OpenAI-completions-compatible external LLM (`AGENT_ASSIST_LLM_MODEL_NAME`, `AGENT_ASSIST_LLM_API_KEY`, `AGENT_ASSIST_LLM_BASE_URL`) as a model source alongside the LLM Gateway and deployed models, so `list_llm_models.py` and `setup_template.py --llm-base-url` can wire up a template without a DataRobot endpoint or token. Also lets `clone_template.py` override the template repo via `AGENT_ASSIST_TEMPLATE_REPO_URL`/`_BRANCH`/`_TAG`, with branch now taking priority over tag when both are set.
 
 ## [1.6.0] - 2026-08-26
 

@@ -32,8 +32,12 @@ from env_utils import get_datarobot_credentials
 
 SOURCE_GATEWAY = "gateway"
 SOURCE_DEPLOYED = "deployed"
+SOURCE_EXTERNAL = "external"
 DEPLOYED_LLM_MODEL = "datarobot-deployed-llm"
 TARGET_TYPE_TEXT_GENERATION = "TextGeneration"
+EXTERNAL_MODEL_NAME_ENV = "AGENT_ASSIST_LLM_MODEL_NAME"
+EXTERNAL_API_KEY_ENV = "AGENT_ASSIST_LLM_API_KEY"
+EXTERNAL_BASE_URL_ENV = "AGENT_ASSIST_LLM_BASE_URL"
 
 
 class LLMModel(TypedDict):
@@ -44,6 +48,7 @@ class LLMModel(TypedDict):
     api_model: str
     llm_default_model: str
     deployment_id: str
+    base_url: str
     description: str
     context_size: int
 
@@ -132,6 +137,7 @@ def _map_gateway_catalog_entry(entry: dict[str, object]) -> LLMModel | None:
         "api_model": api_model,
         "llm_default_model": ensure_datarobot_prefix(api_model),
         "deployment_id": "",
+        "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("contextSize")),
     }
@@ -158,10 +164,45 @@ def _map_deployed_entry(entry: dict[str, object]) -> LLMModel | None:
         "api_model": DEPLOYED_LLM_MODEL,
         "llm_default_model": ensure_datarobot_prefix(DEPLOYED_LLM_MODEL),
         "deployment_id": deployment_id,
+        "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": 0,
     }
     return mapped
+
+
+def _external_model_from_environment() -> LLMModel | None:
+    """Return the configured external model when its complete configuration exists."""
+    model_name = os.environ.get(EXTERNAL_MODEL_NAME_ENV, "").strip()
+    api_key = os.environ.get(EXTERNAL_API_KEY_ENV, "").strip()
+    base_url = os.environ.get(EXTERNAL_BASE_URL_ENV, "").strip()
+    if not (model_name and api_key and base_url):
+        return None
+
+    return {
+        "id": model_name,
+        "name": model_name,
+        "source": SOURCE_EXTERNAL,
+        "provider": "External",
+        "api_model": model_name,
+        "llm_default_model": model_name,
+        "deployment_id": "",
+        "base_url": base_url,
+        "description": "Configured external LLM",
+        "context_size": 0,
+    }
+
+
+def get_external_model_api_key(model_name: str, base_url: str) -> str | None:
+    """Return the external API key when the requested model and URL match config."""
+    external_model = _external_model_from_environment()
+    if (
+        external_model is None
+        or model_name.strip() != external_model["api_model"]
+        or base_url.strip() != external_model["base_url"]
+    ):
+        return None
+    return os.environ[EXTERNAL_API_KEY_ENV].strip()
 
 
 def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
@@ -194,6 +235,7 @@ def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
         "api_model": api_model,
         "llm_default_model": ensure_datarobot_prefix(api_model),
         "deployment_id": deployment_id,
+        "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("context_size")),
     }
@@ -324,12 +366,18 @@ def _fetch_llm_models_via_cli(
     return models, warnings
 
 
-def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
+def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMModel]:
     """Fetch active LLMs from gateway catalog and deployed TextGeneration models.
 
     Uses ``dr llm-gateway list`` when available; falls back to direct REST calls.
     Each source is best-effort: warnings are logged to stderr when one source fails.
     """
+    external_model = _external_model_from_environment()
+    if not endpoint or not api_token:
+        if external_model:
+            return [external_model]
+        raise RuntimeError("DataRobot endpoint and API token are required")
+
     warnings: list[str] = []
 
     try:
@@ -348,7 +396,7 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
                     warnings.append(f"could not list deployed LLMs: {e}")
             for warning in warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
-            return models
+            return models + ([external_model] if external_model else [])
         warnings.append("dr llm-gateway list returned no models")
     except RuntimeError as e:
         warnings.append(str(e))
@@ -367,6 +415,8 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
         warnings.append(str(e))
 
     models = gateway_models + deployed_models
+    if external_model:
+        models.append(external_model)
     if not models:
         joined = "; ".join(warnings) if warnings else "no models available"
         raise RuntimeError(f"Failed to list LLM models: {joined}")
@@ -462,18 +512,20 @@ def main() -> int:
         return 1
     endpoint, api_token = get_datarobot_credentials(target_dir)
 
-    if not endpoint and not api_token:
+    external_model = _external_model_from_environment()
+
+    if not endpoint and not api_token and not external_model:
         print("Error: DATAROBOT_ENDPOINT environment variable not set", file=sys.stderr)
         print(
             "Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr
         )
         return 1
 
-    if not endpoint:
+    if not endpoint and not external_model:
         print("Error: DATAROBOT_ENDPOINT environment variable not set", file=sys.stderr)
         return 1
 
-    if not api_token:
+    if not api_token and not external_model:
         print(
             "Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr
         )

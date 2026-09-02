@@ -1,6 +1,6 @@
 {
   "name": "datarobot-skills",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "description": "DataRobot Skills for AI/ML workflows including model training, deployment, predictions, feature engineering, monitoring, data preparation, and Workload API management",
   "author": "DataRobot",
   "skills": [
@@ -76,4 +76,3 @@
     }
   ]
 }
-

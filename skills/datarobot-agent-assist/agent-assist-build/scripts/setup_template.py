@@ -12,6 +12,7 @@ This script performs initial setup for a DataRobot agent application template by
 
 Usage:
     python setup_template.py --llm-model <model-name> [--llm-deployment-id <id>]
+                             [--llm-base-url <url>]
                              [--target-dir <directory>]
 
 The script generates cryptographically secure random secrets for session
@@ -34,6 +35,7 @@ from list_llm_models import (
     LLMModel,
     _fetch_gateway_models_rest,
     ensure_datarobot_prefix,
+    get_external_model_api_key,
     is_deployed_llm_model,
     is_deployment_id,
     normalize_gateway_model,
@@ -184,7 +186,11 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
 
 
 def create_env_file(
-    target_dir: Path, llm_default_model: str, llm_deployment_id: str = ""
+    target_dir: Path,
+    llm_default_model: str,
+    llm_deployment_id: str = "",
+    external_api_key: str = "",
+    external_base_url: str = "",
 ) -> tuple[bool, str]:
     """
     Create .env file with the LLM configuration.
@@ -197,6 +203,8 @@ def create_env_file(
         target_dir: Directory where .env file should be created
         llm_default_model: Value for LLM_DEFAULT_MODEL
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
+        external_api_key: API key for an external LLM, if selected
+        external_base_url: Base URL for an external LLM, if selected
 
     Returns:
         Tuple of (success, message)
@@ -232,6 +240,15 @@ def create_env_file(
             ]
         )
 
+    if external_api_key:
+        lines.extend(
+            [
+                f'EXTERNAL_LLM_MODEL="{llm_default_model}"\n',
+                f'EXTERNAL_LLM_API_KEY="{external_api_key}"\n',
+                f'EXTERNAL_LLM_BASE_URL="{external_base_url}"\n',
+            ]
+        )
+
     try:
         print(f"Creating .env file in {target_dir}")
 
@@ -245,6 +262,8 @@ def create_env_file(
                 f"{llm_deployment_id} (INFRA_ENABLE_LLM={DEPLOYED_LLM_CONFIGURATION}, "
                 "USE_DATAROBOT_LLM_GATEWAY=0)"
             )
+        elif external_api_key:
+            print(f'✓ Created .env file for external LLM "{llm_default_model}"')
         else:
             print(f'✓ Created .env file with LLM_DEFAULT_MODEL="{llm_default_model}"')
 
@@ -402,7 +421,10 @@ def run_command(command: str, target_dir: Path, timeout: int = 300) -> tuple[boo
 
 
 def setup_and_run(
-    llm_default_model: str, target_dir: Path, llm_deployment_id: str = ""
+    llm_default_model: str,
+    target_dir: Path,
+    llm_deployment_id: str = "",
+    llm_base_url: str = "",
 ) -> int:
     """
     Create .env file and run required setup commands.
@@ -411,6 +433,7 @@ def setup_and_run(
         llm_default_model: Value for LLM_DEFAULT_MODEL in .env file
         target_dir: Target directory for operations
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
+        llm_base_url: Base URL for an external LLM, if selected
 
     Returns:
         Exit code (0 for success, 1 for failure)
@@ -421,7 +444,23 @@ def setup_and_run(
     print(f"Target directory: {target_dir}")
     print(f"LLM model: {llm_default_model}")
 
+    external_api_key = get_external_model_api_key(llm_default_model, llm_base_url)
+    is_external_model = external_api_key is not None
+
+    if llm_base_url and not is_external_model:
+        print(
+            "Error: --llm-base-url does not match the configured external LLM.",
+            file=sys.stderr,
+        )
+        return 1
+
     if llm_deployment_id:
+        if is_external_model:
+            print(
+                "Error: an external LLM cannot be combined with --llm-deployment-id.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"LLM deployment: {llm_deployment_id}")
 
         # The id is written verbatim into a double-quoted .env line that the template's
@@ -485,14 +524,20 @@ def setup_and_run(
     # Canonicalize before anything writes .env: create_env_file truncates the file,
     # taking with it the credentials the catalog check reads. The deployed path is
     # exempt, since there the model is only a label and 'dr dotenv setup' drops it.
-    if not llm_deployment_id:
+    if not llm_deployment_id and not is_external_model:
         canonical = canonical_gateway_model(llm_default_model, target_dir)
         if canonical is None:
             return 1
         llm_default_model = canonical
 
     # Step 1: Create .env file
-    success, _ = create_env_file(target_dir, llm_default_model, llm_deployment_id)
+    success, _ = create_env_file(
+        target_dir,
+        llm_default_model,
+        llm_deployment_id,
+        external_api_key or "",
+        llm_base_url if is_external_model else "",
+    )
     if not success:
         return 1
 
@@ -543,6 +588,12 @@ def main() -> int:
     )
 
     parser.add_argument(
+        "--llm-base-url",
+        default="",
+        help="Base URL of the configured external LLM (omit for DataRobot models)",
+    )
+
+    parser.add_argument(
         "--target-dir",
         required=True,
         help="Target directory for operations (required — use the session <target_dir>)",
@@ -555,7 +606,12 @@ def main() -> int:
         print(f"Error: target directory does not exist: {target_dir}", file=sys.stderr)
         return 1
 
-    return setup_and_run(args.llm_model, target_dir, args.llm_deployment_id.strip())
+    return setup_and_run(
+        args.llm_model,
+        target_dir,
+        args.llm_deployment_id.strip(),
+        args.llm_base_url.strip(),
+    )
 
 
 if __name__ == "__main__":
