@@ -143,12 +143,14 @@ def test_source_helpers_only_return_external_configuration(
         list_llm_models.get_api_key_for_llm_source(list_llm_models.SOURCE_GATEWAY)
         is None
     )
-    assert list_llm_models.get_base_url_for_llm_source(
-        list_llm_models.SOURCE_LITELLM
-    ) == "http://litellm:4000/v1"
-    assert list_llm_models.get_api_key_for_llm_source(
-        list_llm_models.SOURCE_LITELLM
-    ) == "litellm-key"
+    assert (
+        list_llm_models.get_base_url_for_llm_source(list_llm_models.SOURCE_LITELLM)
+        == "http://litellm:4000/v1"
+    )
+    assert (
+        list_llm_models.get_api_key_for_llm_source(list_llm_models.SOURCE_LITELLM)
+        == "litellm-key"
+    )
 
 
 def test_deployed_entry_uses_the_prefixed_placeholder() -> None:
@@ -327,9 +329,7 @@ def catalog(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 def test_catalog_lookup_wins_on_spelling(tmp_path: Path, catalog: Any) -> None:
     """With credentials, the catalog is the authority on the exact spelling."""
     catalog([_gateway_model()])
-    assert (
-        setup_template.canonical_cli_model(API_MODEL.upper(), tmp_path) == CANONICAL
-    )
+    assert setup_template.canonical_cli_model(API_MODEL.upper(), tmp_path) == CANONICAL
 
 
 def test_catalog_overrules_the_slash_heuristic(tmp_path: Path, catalog: Any) -> None:
@@ -339,16 +339,12 @@ def test_catalog_overrules_the_slash_heuristic(tmp_path: Path, catalog: Any) -> 
     bare_name["api_model"] = "gpt-4o"
     bare_name["llm_default_model"] = "datarobot/gpt-4o"
     catalog([bare_name])
-    assert (
-        setup_template.canonical_cli_model("gpt-4o", tmp_path) == "datarobot/gpt-4o"
-    )
+    assert setup_template.canonical_cli_model("gpt-4o", tmp_path) == "datarobot/gpt-4o"
 
 
 def test_model_absent_from_catalog_is_refused(tmp_path: Path, catalog: Any) -> None:
     catalog([_gateway_model()])
-    assert (
-        setup_template.canonical_cli_model("azure/retired-model", tmp_path) is None
-    )
+    assert setup_template.canonical_cli_model("azure/retired-model", tmp_path) is None
 
 
 def test_catalog_present_still_refuses_a_bare_llm_id(
@@ -387,30 +383,6 @@ def test_empty_gateway_points_at_a_deployed_llm(
     assert "Available:" not in err
 
 
-def obsolete_test_disabled_gateway_is_treated_as_empty(
-    tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A 404 from the catalog endpoint is the instance answering that it has no
-    gateway, not a failure to reach it. Passing it as unverified would hand back a
-    model the instance cannot serve."""
-    http_404 = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 404, "", {}, None)  # type: ignore[arg-type]
-    catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=http_404)
-
-    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) is None
-    assert "--llm-deployment-id" in capsys.readouterr().err
-
-
-def obsolete_test_forbidden_catalog_is_not_a_disabled_gateway(
-    tmp_path: Path, catalog: Any
-) -> None:
-    """A 403 says this token may not read the catalog, not that the gateway is
-    absent. Refusing on it sends a user to a deployed LLM they do not need."""
-    forbidden = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 403, "", {}, None)  # type: ignore[arg-type]
-    catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=forbidden)
-
-    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) == CANONICAL
-
-
 def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
     ok, _ = setup_template.create_env_file(tmp_path, CANONICAL)
     assert ok
@@ -434,8 +406,8 @@ def test_env_file_for_a_deployed_llm_has_only_deployed_configuration(
     assert "EXTERNAL_LLM_" not in contents
 
 
-def test_env_file_for_an_external_llm_has_only_external_configuration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+def test_env_file_for_an_external_llm_uses_the_openai_compatible_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", "key")
     monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", "http://localhost:4000/v1")
@@ -447,29 +419,110 @@ def test_env_file_for_an_external_llm_has_only_external_configuration(
 
     contents = (tmp_path / ".env").read_text()
     assert ok
-    assert 'EXTERNAL_LLM_MODEL="local-ollama"' in contents
-    assert 'EXTERNAL_LLM_API_KEY="key"' in contents
-    assert 'EXTERNAL_LLM_BASE_URL="http://localhost:4000/v1"' in contents
+    # The template reads OPENAI_API_BASE/KEY + an openai/-prefixed model, never the
+    # unread EXTERNAL_LLM_* keys.
+    assert 'LLM_DEFAULT_MODEL="openai/local-ollama"' in contents
+    assert 'USE_DATAROBOT_LLM_GATEWAY="0"' in contents
+    assert 'OPENAI_API_BASE="http://localhost:4000/v1"' in contents
+    assert 'OPENAI_API_KEY="key"' in contents
+    assert "SESSION_SECRET_KEY=" in contents
+    assert "EXTERNAL_LLM_" not in contents
     assert "LLM_DEPLOYMENT_ID=" not in contents
 
 
-def test_env_file_for_a_litellm_model_has_litellm_configuration(
+def test_env_file_for_a_litellm_model_uses_the_openai_compatible_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DATAROBOT_LITELLM_API_KEY", "litellm-key")
     monkeypatch.setenv("DATAROBOT_LITELLM_BASE_URL", "http://litellm:4000/v1")
-
     ok, _ = setup_template.create_env_file(
         tmp_path,
-        "openai/gpt-4o",
+        "gpt-4o",
         source=list_llm_models.SOURCE_LITELLM,
     )
 
     contents = (tmp_path / ".env").read_text()
     assert ok
-    assert 'EXTERNAL_LLM_MODEL="openai/gpt-4o"' in contents
-    assert 'EXTERNAL_LLM_API_KEY="litellm-key"' in contents
-    assert 'EXTERNAL_LLM_BASE_URL="http://litellm:4000/v1"' in contents
+    assert 'LLM_DEFAULT_MODEL="openai/gpt-4o"' in contents
+    assert 'USE_DATAROBOT_LLM_GATEWAY="0"' in contents
+    assert 'OPENAI_API_BASE="http://litellm:4000/v1"' in contents
+    assert 'OPENAI_API_KEY="litellm-key"' in contents
+    assert "SESSION_SECRET_KEY=" in contents
+    assert "EXTERNAL_LLM_" not in contents
+
+
+def test_openai_compatible_prefix_is_added_verbatim() -> None:
+    # Prefix always, never strip or dedup: litellm removes exactly one openai/ on the
+    # wire, so the raw model reaches the proxy unchanged.
+    prefixed = setup_template.as_openai_compatible_model
+    assert prefixed("local-ollama") == "openai/local-ollama"
+    assert prefixed("openai/gpt-4o") == "openai/openai/gpt-4o"
+    assert prefixed("datarobot/foo") == "openai/datarobot/foo"
+
+
+def test_env_file_rejects_dangerous_external_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", 'ke"y')
+    monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", "http://localhost:4000/v1")
+    ok, _ = setup_template.create_env_file(
+        tmp_path, "local-ollama", source=list_llm_models.SOURCE_EXTERNAL
+    )
+    assert not ok
+    assert not (tmp_path / ".env").exists()
+
+
+def test_setup_and_run_skips_deploy_for_an_external_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", "key")
+    monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", "http://localhost:4000/v1")
+    called: list[str] = []
+    monkeypatch.setattr(
+        setup_template,
+        "run_command",
+        lambda *a, **k: (called.append("run_command"), (True, ""))[1],
+    )
+    monkeypatch.setattr(
+        setup_template,
+        "initialize_pulumi",
+        lambda *a, **k: (called.append("pulumi"), (True, ""))[1],
+    )
+
+    rc = setup_template.setup_and_run(
+        "local-ollama", tmp_path, source=list_llm_models.SOURCE_EXTERNAL
+    )
+    assert rc == 0
+    # dr dotenv setup would clobber OPENAI_* and Pulumi has no deployment to target.
+    assert called == []
+    assert (
+        'OPENAI_API_BASE="http://localhost:4000/v1"' in (tmp_path / ".env").read_text()
+    )
+
+
+def test_setup_and_run_skips_deploy_for_a_litellm_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, catalog: Any
+) -> None:
+    monkeypatch.setenv("DATAROBOT_LITELLM_API_KEY", "litellm-key")
+    monkeypatch.setenv("DATAROBOT_LITELLM_BASE_URL", "http://litellm:4000/v1")
+    catalog([dict(list_llm_models._map_cli_entry(LITELLM_CLI_ENTRY))])
+    called: list[str] = []
+    monkeypatch.setattr(
+        setup_template,
+        "run_command",
+        lambda *a, **k: (called.append("run_command"), (True, ""))[1],
+    )
+    monkeypatch.setattr(
+        setup_template,
+        "initialize_pulumi",
+        lambda *a, **k: (called.append("pulumi"), (True, ""))[1],
+    )
+
+    rc = setup_template.setup_and_run(
+        API_MODEL, tmp_path, source=list_llm_models.SOURCE_LITELLM
+    )
+    assert rc == 0
+    assert called == []
 
 
 def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> None:
