@@ -60,6 +60,31 @@ _NOISE_PATH = re.compile(
 )
 # Real credentials are single tokens; structure means code, not a secret.
 _NOT_SECRET_CHARS = re.compile(r"[\s(){}\[\]<>;,|`\\]")
+# Hyphen or underscore separated words ("first-user-api-key") are labels, not keys.
+_WORDS_ONLY = re.compile(r"[a-z]+([-_][a-z]+)*", re.IGNORECASE)
+_HEX = re.compile(r"[A-Fa-f0-9]{20,}")
+_TOKEN_CHARS = re.compile(r"[A-Za-z0-9+/=_.-]{24,}")
+
+
+def _credential_shaped(value: str) -> bool:
+    """Whether a value looks like a generated credential rather than a label.
+
+    Generated secrets mix character classes or are long hex/base64 runs; the
+    generic assignment pattern alone matches every placeholder in a fixture.
+    """
+    if len(value) < 12 or _WORDS_ONLY.fullmatch(value):
+        return False
+    classes = sum(
+        bool(re.search(pat, value))
+        for pat in (r"[a-z]", r"[A-Z]", r"[0-9]", r"[^A-Za-z0-9]")
+    )
+    if classes >= 3:
+        return True
+    if _HEX.fullmatch(value):
+        return True
+    return bool(_TOKEN_CHARS.fullmatch(value) and re.search(r"[0-9]", value))
+
+
 _MINIFIED_LINE_CHARS = 2000
 
 _NON_RUNTIME_SAST_PATHS = [
@@ -98,6 +123,10 @@ def _scan_text_for_secrets(text: str) -> list[tuple[int, str, str, str]]:
             for m in pat.finditer(line):
                 value = m.group(1) if m.groups() else m.group(0)
                 if _PLACEHOLDER.search(value) or _NOT_SECRET_CHARS.search(value):
+                    continue
+                if label == "Generic credential assignment" and not _credential_shaped(
+                    value
+                ):
                     continue
                 out.append((i, label, _redact(label, value), value))
     return out
