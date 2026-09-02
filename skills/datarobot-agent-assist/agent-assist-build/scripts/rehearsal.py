@@ -321,9 +321,10 @@ class ModelCatalog:
         if lowered in self._by_api_model_lower:
             return self._by_api_model_lower[lowered]
         for entry in self._gateway:
-            if normalize_gateway_model(requested).lower() == normalize_gateway_model(
-                entry["api_model"]
-            ).lower():
+            if (
+                normalize_gateway_model(requested).lower()
+                == normalize_gateway_model(entry["api_model"]).lower()
+            ):
                 return entry
         return None
 
