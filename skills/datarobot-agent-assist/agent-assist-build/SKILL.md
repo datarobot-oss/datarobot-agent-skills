@@ -53,10 +53,10 @@ Run in order before proceeding:
 
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
 2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
-3. **DataRobot CLI** — run `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
+3. **DataRobot CLI** — run `dr auth check`. If it fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
 4. **Codespace** — run `python <skill_scripts_dir>/check_codespace.py` (no-op outside a Codespace). On non-zero exit, relay its message and stop; otherwise relay any exposed-ports warning it prints.
 
-If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` immediately and retry the script — do not present options to the user. The scripts create `.env` automatically via `dr dotenv setup`; the only prerequisite is an authenticated CLI session.
+If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` immediately and retry the script — do not present options to the user. For gateway and deployed models the scripts create `.env` via `dr dotenv setup`; the external and litellm sources write `.env` directly and skip it. The only prerequisite is an authenticated CLI session.
 
 ---
 
