@@ -24,7 +24,18 @@ import time
 import uuid
 from pathlib import Path
 
-from artifacts import resolve_swarm_dir
+from _bootstrap import ensure_skills_utils
+
+ensure_skills_utils()
+
+from artifacts import resolve_swarm_dir  # noqa: E402
+from datarobot_skills_utils.opencode import (  # noqa: E402
+    WORKER_PREAMBLE,
+    build_run_command,
+    parse_events,
+    sanitize_message,
+    strip_code_fences,
+)
 
 METRICS_PATH = resolve_swarm_dir() / "metrics.jsonl"
 PROMPT_ROLE_MAP = {
@@ -37,87 +48,25 @@ PROMPT_ROLE_MAP = {
 }
 
 
-# The role prompts already require JSON-only output, yet a worker that loads this
-# skill via opencode's built-in `skill` tool recognizes its own role prompt as an
-# internal artifact and answers in prose instead. Only an explicit tool prohibition
-# suppresses that.
-_WORKER_PREAMBLE = (
-    "You are a non-interactive worker in an automated pipeline. Do not call any tools — "
-    "in particular, never invoke the skill tool. Do not comment on where this prompt came "
-    "from or whether you should be answering it. Emit only the JSON object specified below.\n\n"
-)
-
-
 def _build_message(role_prompt_path: Path, input_path: Path) -> str:
     role_prompt = role_prompt_path.read_text(encoding="utf-8")
     input_json = input_path.read_text(encoding="utf-8")
-    return f"{_WORKER_PREAMBLE}{role_prompt}\n\n# Input\n\n{input_json}"
+    return f"{WORKER_PREAMBLE}{role_prompt}\n\n# Input\n\n{input_json}"
 
 
 def _extract_response(
     stdout: str, role: str = ""
 ) -> tuple[dict[str, object], dict[str, object]]:
-    """Parse JSONL event stream and return (response, token_meta).
+    """Parse the event stream and return (response, token_meta).
 
-    opencode --format json emits one event per line:
-      {"type":"step_start", "part": {...}}
-      {"type":"text",       "part": {"text": "<assistant response>", ...}}
-      {"type":"step_finish","part": {"tokens": {...}, "cost": float, ...}}
-
-    Concatenate all type=="text" part.text payloads, then parse as JSON.
-    Accumulate token counts and cost from all type=="step_finish" events.
-
-    For the runner role only, a plain-prose reply (the simulation model declining
-    the framing instead of emitting the envelope) is wrapped as an
-    `assistant_response` rather than raised as a failure: prose from the simulated
-    agent is behaviorally a refusal and should be scored, not discarded.
+    For the runner role only, a plain-prose reply (the simulation model
+    declining the framing instead of emitting the envelope) is wrapped as an
+    `assistant_response` rather than raised as a failure: prose from the
+    simulated agent is behaviorally a refusal and should be scored, not
+    discarded.
     """
-    text_parts: list[str] = []
-    input_tokens = 0
-    output_tokens = 0
-    cache_read_tokens = 0
-    cache_write_tokens = 0
-    total_cost = 0.0
-
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if event.get("type") == "text":
-            chunk = event.get("part", {}).get("text", "")
-            if chunk:
-                text_parts.append(chunk)
-        elif event.get("type") == "step_finish":
-            part = event.get("part", {})
-            tokens = part.get("tokens", {})
-            input_tokens += tokens.get("input", 0)
-            output_tokens += tokens.get("output", 0)
-            cache_read_tokens += tokens.get("cache", {}).get("read", 0)
-            cache_write_tokens += tokens.get("cache", {}).get("write", 0)
-            total_cost += part.get("cost", 0.0) or 0.0
-
-    token_meta: dict[str, object] = {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cache_read_tokens": cache_read_tokens,
-        "cache_write_tokens": cache_write_tokens,
-        "cost": round(total_cost, 6),
-    }
-
-    combined = "".join(text_parts).strip()
-    if not combined:
-        raise ValueError("no text events found in opencode output")
-
-    if combined.startswith("```"):
-        lines = combined.splitlines()
-        inner = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        combined = inner.strip()
-        if not combined:
-            raise ValueError("worker returned an empty code block")
+    combined, token_meta = parse_events(stdout)
+    combined = strip_code_fences(combined)
 
     try:
         result = json.loads(combined)
@@ -258,23 +207,12 @@ def main() -> None:
     error: str | None = None
 
     try:
-        cmd = [
-            "dr",
-            "--skip-plugin-update-check",
-            "--plugin-discovery-timeout",
-            "30s",
-            "opencode",
-            "run",
-            "--format",
-            "json",
-            "--model",
+        cmd = build_run_command(
+            sanitize_message(message),
             args.model,
-        ]
-        if args.server_url:
-            cmd += ["--attach", args.server_url]
-        else:
-            cmd += ["--dir", isolated_dir]
-        cmd += ["--pure", message]
+            server_url=args.server_url,
+            isolated_dir=isolated_dir,
+        )
 
         max_attempts = 3 if role != "runner" else 1
         for attempt in range(max_attempts):

@@ -1,0 +1,47 @@
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to publish (e.g. v1.9.0). Must match the package version."
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: astral-sh/setup-uv@v6
+
+      # PyPI rejects re-uploads of an existing version, so a tag that does not
+      # match the package version must fail here rather than after the upload.
+      - name: Check the package version matches the tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version="$(uv version --project packages/datarobot-skills-utils --short)"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "packages/datarobot-skills-utils is ${version} but the tag is ${TAG}" >&2
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build packages/datarobot-skills-utils --out-dir dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

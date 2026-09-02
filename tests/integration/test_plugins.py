@@ -9,6 +9,7 @@ Validate plugin/marketplace definitions for Gemini, Claude, and Cursor:
 """
 
 import json
+import tomllib
 import subprocess
 from pathlib import Path
 
@@ -68,6 +69,10 @@ def test_gemini_all_skills_included() -> None:
     skill_folders = {p.name for p in skills_root.iterdir() if p.is_dir()}
 
     gemini_file = REPO_ROOT / "gemini-extension.json"
+    npm_file = REPO_ROOT / "package.json"
+    utils_pyproject = (
+        REPO_ROOT / "packages" / "datarobot-skills-utils" / "pyproject.toml"
+    )
     with open(gemini_file, encoding="utf-8") as f:
         config = json.load(f)
     listed_names = {e.get("name") for e in config.get("skills", [])}
@@ -142,11 +147,15 @@ def test_cursor_plugin_skills_directory_exists(cursor_plugin: dict) -> None:
 
 
 def test_all_plugin_versions_match() -> None:
-    """Assert that all plugin manifests (Claude, Cursor, Gemini) declare the same version."""
+    """Assert that every plugin manifest and the utils package declare the same version."""
     claude_plugin_file = REPO_ROOT / ".claude-plugin" / "plugin.json"
     claude_marketplace_file = REPO_ROOT / ".claude-plugin" / "marketplace.json"
     cursor_plugin_file = REPO_ROOT / ".cursor-plugin" / "plugin.json"
     gemini_file = REPO_ROOT / "gemini-extension.json"
+    npm_file = REPO_ROOT / "package.json"
+    utils_pyproject = (
+        REPO_ROOT / "packages" / "datarobot-skills-utils" / "pyproject.toml"
+    )
 
     with open(claude_plugin_file, encoding="utf-8") as f:
         claude_plugin_version = json.load(f)["version"]
@@ -156,12 +165,18 @@ def test_all_plugin_versions_match() -> None:
         cursor_version = json.load(f)["version"]
     with open(gemini_file, encoding="utf-8") as f:
         gemini_version = json.load(f)["version"]
+    with open(npm_file, encoding="utf-8") as f:
+        npm_version = json.load(f)["version"]
+    with open(utils_pyproject, "rb") as f:
+        utils_version = tomllib.load(f)["project"]["version"]
 
     versions = {
         ".claude-plugin/plugin.json": claude_plugin_version,
         ".claude-plugin/marketplace.json (plugins[0])": claude_marketplace_version,
         ".cursor-plugin/plugin.json": cursor_version,
         "gemini-extension.json": gemini_version,
+        "package.json": npm_version,
+        "packages/datarobot-skills-utils/pyproject.toml": utils_version,
     }
     unique_versions = set(versions.values())
     assert len(unique_versions) == 1, "Plugin versions are out of sync:\n" + "\n".join(

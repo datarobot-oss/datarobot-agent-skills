@@ -73,6 +73,11 @@
       "name": "datarobot-agent-llm-selection",
       "description": "Configure LLM integration for a DataRobot agent application — switch between LLM Gateway, deployed LLM, external provider, or blueprint gateway modes and safely sync provider credentials into .env",
       "path": "skills/datarobot-agent-llm-selection/SKILL.md"
+    },
+    {
+      "name": "datarobot-gap-analysis",
+      "description": "Score any agent repository (DataRobot-built or not) against a 40-factor enterprise-readiness framework across seven risk pillars and four evaluation layers, then patch or guide the fixing of every gap found",
+      "path": "skills/datarobot-gap-analysis/SKILL.md"
     }
   ]
 }

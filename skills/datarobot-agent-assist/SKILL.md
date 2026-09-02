@@ -255,6 +255,8 @@ Read `agent-assist-simulate/SKILL.md` and jump directly to **Pre-flight Check** 
 
 Swarm requires an implemented agent; if none exists, explain and offer option 2. If code exists and no option is chosen, proactively offer: "I can also battle-test your agent before deploying — want to run swarm simulation?"
 
+After deploy, offer `datarobot-gap-analysis` to score enterprise readiness.
+
 ---
 
 ## 4. Deploying an AI Agent
