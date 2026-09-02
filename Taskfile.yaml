@@ -47,7 +47,7 @@ tasks:
   mypy:
     desc: Run mypy type checker on Python scripts (override dir with DIR=<path>)
     vars:
-      DIR: '{{.DIR | default "skills/"}}'
+      DIR: '{{.DIR | default "skills/ scripts/"}}'
     cmds:
       - uv run --group dev mypy {{.DIR}}
 
@@ -60,6 +60,11 @@ tasks:
     desc: Add missing copyright headers to code files
     cmds:
       - license-eye header fix
+
+  version:bump:
+    desc: Bump the shared plugin version, rename CHANGELOG.md's Unreleased section, and commit
+    cmds:
+      - uv run scripts/version_bump.py {{.CLI_ARGS}}
 
   lint:
     desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + yamlfmt + license)
