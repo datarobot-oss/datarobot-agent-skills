@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-skills-utils"
-version = "1.8.0"
+version = "0.1.0"
 description = "Shared runtime utilities for DataRobot agent skills: opencode server lifecycle, worker invocation, and event-stream parsing."
 readme = "README.md"
 license = "Apache-2.0"

@@ -16,12 +16,18 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
-from .inventory import files_matching
-from .llm import LLMClient, parse_json
+from .inventory import evidence_files, glob_match
+from .llm import LLMClient, brief_error, parse_json
 from .models import ConditionSkip, Finding
 from .taxonomy import Condition, Taxonomy
 
 _MAX_FILES = 12  # cap files fed per condition
+NO_LLM_NOTE = (
+    "Layers 2 and 4 (LLM) skipped: no model client. Install the DataRobot CLI "
+    "(run the datarobot-setup skill) so checks run through `dr opencode`, or add "
+    "`--with litellm` and set DATAROBOT_API_TOKEN / DATAROBOT_ENDPOINT (or GAP_LLM_MODEL "
+    "with provider credentials). Half of the framework is not assessed until then."
+)
 _DEFAULT_MAX_BYTES = 200_000
 _DEFAULT_MAX_WORKERS = 4
 _SUBMIT_STAGGER_SECONDS = 0.25  # avoid a thundering herd on the LLM backend
@@ -41,10 +47,55 @@ def _load_prompt(detector: str) -> str:
     return text
 
 
+# Test and fixture code is never evidence for a production-readiness check.
+_TEST_PATHS = [
+    "**/tests/**",
+    "**/test/**",
+    "**/__tests__/**",
+    "**/fixtures/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py",
+    "**/*.spec.*",
+    "**/*.test.*",
+]
+# Build-time and infrastructure files, skipped for runtime-behaviour checks.
+_NON_RUNTIME_PATHS = [
+    "**/infra/**",
+    "**/migrations/**",
+    "**/alembic/**",
+    "**/alembic*.py",
+    "**/.github/**",
+    "**/Taskfile*",
+    "**/Pulumi*.yaml",
+    "**/Dockerfile*",
+]
+
+
+def layer2_files(
+    inventory: dict[str, Any], cond: Condition, limit: int = _MAX_FILES
+) -> list[str]:
+    """Evidence files for a Layer 2 condition, minus tests and, for runtime
+    checks, minus IaC/migration/CI files; a condition whose own globs name test
+    or infra paths keeps them."""
+    wants_tests = any("test" in g for g in cond.files_glob)
+    wants_infra = any("infra" in g for g in cond.files_glob)
+    excluded: list[str] = []
+    if not wants_tests:
+        excluded += _TEST_PATHS
+    if cond.runtime_only and not wants_infra:
+        excluded += _NON_RUNTIME_PATHS
+    return [
+        f
+        for f in evidence_files(inventory, cond.files_glob, limit * 3)
+        if not any(glob_match(f, g) for g in excluded)
+    ][:limit]
+
+
 def _gather_files(
     workspace: Path, inventory: dict[str, Any], cond: Condition, max_bytes: int
 ) -> list[tuple[str, str]]:
-    rels = files_matching(inventory, cond.files_glob)[:_MAX_FILES]
+    rels = layer2_files(inventory, cond, _MAX_FILES)
     out = []
     for rel in rels:
         p = workspace / rel
@@ -68,8 +119,11 @@ def _build_user_message(files: list[tuple[str, str]]) -> str:
 
 
 def _result_to_findings(cond: Condition, result: dict[str, Any]) -> list[Finding]:
+    items = list(result.get("findings", []) or [])
+    if cond.scope == "repo" and len(items) > 1:
+        items = [_merge_locations(items)]
     findings = []
-    for item in result.get("findings", []) or []:
+    for item in items:
         conf = item.get("confidence", "high")
         findings.append(
             Finding(
@@ -114,7 +168,7 @@ def run_condition(
         raw = client.complete(system, user)
         result = parse_json(raw)
     except Exception as e:  # noqa: BLE001
-        return [], ConditionSkip(cond.id, f"LLM/parse error: {e}")
+        return [], ConditionSkip(cond.id, f"LLM/parse error: {brief_error(e)}")
     status = result.get("status", "found")
     if status == "skipped":
         return [], ConditionSkip(
@@ -123,6 +177,26 @@ def run_condition(
     if status == "not_found":
         return [], None
     return _result_to_findings(cond, result), None
+
+
+def _merge_locations(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """One finding for a repo-wide question, with every location listed."""
+    first = dict(items[0])
+    locs = []
+    for it in items:
+        if it.get("file"):
+            locs.append(
+                f"{it['file']}:{it['line']}" if it.get("line") else str(it["file"])
+            )
+    shown = ", ".join(locs[:6]) + (f", +{len(locs) - 6} more" if len(locs) > 6 else "")
+    first["evidence"] = f"{len(items)} location(s): {shown}. " + str(
+        first.get("evidence", "")
+    )
+    ranks = {"high": 3, "medium": 2, "low": 1}
+    first["confidence"] = max(
+        (it.get("confidence", "high") for it in items), key=lambda c: ranks.get(c, 0)
+    )
+    return first
 
 
 def run_layer2(
@@ -137,10 +211,10 @@ def run_layer2(
     notes: list[str] = []
     if client is None:
         skips = [
-            ConditionSkip(c.id, "Layer 2 (LLM) not run — no model client configured")
+            ConditionSkip(c.id, "Layer 2 (LLM) not run: no model client configured")
             for c in taxonomy.by_layer(2)
         ]
-        notes.append("Layer 2 (LLM) skipped — no model client configured.")
+        notes.append(NO_LLM_NOTE)
         return [], skips, notes
     contract = (paths.prompts_dir() / "_contract.md").read_text()
     workspace = Path(workspace)

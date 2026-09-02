@@ -61,7 +61,7 @@ Install and test the skills after prompting the user for the expected trigger ph
 
 ### Plugin version management
 
-Versions are automatic and also cover `packages/datarobot-skills-utils/pyproject.toml`. Add a human-written `[Unreleased]` item describing the change in this pull request. For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Versions are automatic. Add a human-written `[Unreleased]` item describing the change in this pull request. For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## SDK usage
 

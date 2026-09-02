@@ -90,3 +90,22 @@ def test_build_run_command_attach_vs_isolated():
 
 def test_preamble_forbids_tools():
     assert "never invoke the skill tool" in WORKER_PREAMBLE
+
+
+def test_terminate_process_tree_kills_grandchildren() -> None:
+    import os
+    import subprocess
+    import time
+
+    from datarobot_skills_utils.opencode.server import terminate_process_tree
+
+    proc = subprocess.Popen(
+        ["sh", "-c", "sleep 300 & sleep 300 & wait"], start_new_session=True
+    )
+    time.sleep(0.3)
+    pgid = os.getpgid(proc.pid)
+
+    terminate_process_tree(proc, timeout=2)
+
+    with pytest.raises(ProcessLookupError):
+        os.killpg(pgid, 0)

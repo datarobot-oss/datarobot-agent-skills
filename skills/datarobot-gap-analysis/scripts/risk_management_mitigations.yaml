@@ -33,6 +33,7 @@
 version: 1
 
 mitigations:
+
   - mitigation_type: compliance_doc
     title: Technical documentation
     default_severity: medium
@@ -48,6 +49,13 @@ mitigations:
       via: api
       hint: "Generate automated compliance documentation for the registered model version (Model Registry API/console); no
         Pulumi resource."
+    docs_topic: Generate compliance documentation
+    steps:
+      - "Register the model or LLM blueprint in the Model Registry (datarobot.RegisteredModel in Pulumi, or Registry, Register
+        model in the console)."
+      - "Open the registered model version, Compliance tab, and generate the automated compliance documentation; add the narrative
+        sections the template asks for."
+      - "Store the generated document with the Use Case risk assessment."
 
   - mitigation_type: deployment_logs
     title: Record-keeping and event logging
@@ -64,6 +72,11 @@ mitigations:
       via: automatic
       hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
         no extra configuration."
+    docs_topic: Configure data exploration
+    steps:
+      - "Deploy the model or LLM path through DataRobot: a datarobot.Deployment (backed by a RegisteredModel or CustomModel)
+        in the Pulumi program."
+      - "Nothing else to configure; review it under the deployment's Data exploration tab in Console."
 
   - mitigation_type: deployment_tracing
     title: Lifecycle tracing
@@ -80,6 +93,12 @@ mitigations:
       via: automatic
       hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
         no extra configuration."
+    docs_topic: Review tracing
+    steps:
+      - "Deploy through DataRobot; traces for LLM and agent deployments are collected through OpenTelemetry automatically."
+      - "Export in-app spans to the deployment's OTel endpoint (OTEL_EXPORTER_OTLP_ENDPOINT, set by the Pulumi program) so
+        tool calls appear in the same trace."
+      - "Review under the deployment's Data exploration, Tracing view."
 
   - mitigation_type: deployment_notification
     title: Human oversight notification
@@ -98,6 +117,12 @@ mitigations:
       hint: "datarobot.NotificationChannel + datarobot.NotificationPolicy attached to the deployment (at least one active
         policy)."
       fix_risk: plumbing
+    docs_topic: Configure deployment notifications
+    steps:
+      - "Make sure the model or LLM path is a datarobot.Deployment."
+      - "Pulumi: create a datarobot.NotificationChannel (email or webhook) and a datarobot.NotificationPolicy bound to the
+        deployment for service-health, drift and accuracy events."
+      - "Console alternative: deployment, Notifications tab, add a policy and channel."
 
   - mitigation_type: risk_description_filled
     title: Risk classification documented
@@ -111,6 +136,11 @@ mitigations:
     fix:
       via: api
       hint: "Fill the risk description on the system's RiskAssessment in DataRobot risk-management (console/API)."
+    docs_topic: Assess risk
+    steps:
+      - "In Workbench open the Use Case, Risk tab, and create a risk assessment for this system."
+      - "Fill the risk description and classification (probability and impact) and link the mitigations in this report."
+      - "Revisit it after material changes; risk assessments are expected to be updated periodically."
 
   - mitigation_type: rbac
     title: Access control
@@ -126,6 +156,10 @@ mitigations:
       via: automatic
       hint: "DataRobot RBAC governs every deployment and registered model by construction; deploying through DataRobot satisfies
         this."
+    docs_topic: Roles and permissions
+    steps:
+      - "Deploy through DataRobot; access to the deployment and application is then governed by DataRobot roles and sharing."
+      - "Share the deployment and application only with the groups that need them, at the least-privileged role."
 
   - mitigation_type: prompt_injection_guard
     title: Prompt-injection defense
@@ -134,15 +168,24 @@ mitigations:
     datarobot_feature: DataRobot's GenAI Guard framework (prompt-injection guard)
     remediation: Attach DataRobot's prompt-injection guard to the deployment instead of relying on a custom defense in the
       agent's own code.
-    evidence: A prompt-injection defense on model-bound input (a guard configuration, input sanitization/screening before
-      the LLM call), in code or DataRobot guard configuration.
-    files_glob: ["**/guard*", "**/moderation*", "**/*prompt*", "**/*.py", "**/*.yaml", "**/__main__.py"]
+    evidence: A prompt-injection defense on model-bound input, in code or DataRobot guard configuration. A guard configuration
+      or input screening before the LLM call satisfies it. System-prompt instructions that tell the model to treat retrieved
+      or user content as data and ignore embedded instructions count as evidence too, at reduced confidence, since they are
+      the weakest form of the defense.
+    files_glob: ["**/guard*", "**/moderation*", "**/*prompt*", "**/system_prompt*", "**/*.py", "**/*.yaml", "**/__main__.py"]
     iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the standard prompt-injection template
     fix:
       via: pulumi
       requires: custom_model
       hint: "datarobot.CustomModel: guard_configurations using the standard prompt-injection guard template (stages + intervention)."
       fix_risk: business_logic
+    docs_topic: Configure evaluation and moderation
+    steps:
+      - "Put the LLM path behind a datarobot.CustomModel (target type Text Generation) with a datarobot.Deployment; a CustomApplication
+        alone has no guard attachment point."
+      - "Pulumi: add a guard_configurations entry on the CustomModel using the prompt-injection guard template, applied at
+        the prompt stage with the intervention (block or report) the policy requires."
+      - "Console alternative: Registry, model workshop, Evaluation and moderation, add the prompt-injection guard, then redeploy."
 
   - mitigation_type: jailbreak_compliance_test
     title: Jailbreak-resistance testing
@@ -157,6 +200,12 @@ mitigations:
       via: api
       hint: "Build the model from an LLM blueprint and run the jailbreak test in its LLM test suite (Use Case playground /
         GenAI API); no Pulumi resource."
+    docs_topic: Use LLM evaluation tools
+    steps:
+      - "Build the LLM as a blueprint in a Use Case playground, or register the deployed model there."
+      - "Open the playground evaluation tools, run the jailbreak-resistance test against an evaluation dataset, and record
+        the result."
+      - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: ai_literacy
     title: Staff AI literacy
@@ -170,6 +219,10 @@ mitigations:
     fix:
       via: organizational
       hint: "Confirmed by a policy admin in DataRobot risk-management; a staff-training program, not a repo change."
+    docs_topic: Assess risk
+    steps:
+      - "Confirm with the policy admin that a staff AI-literacy program exists and record it on the Use Case risk assessment;
+        there is no repo change for this mitigation."
 
   - mitigation_type: bias_benchmark_compliance_test
     title: Bias benchmark testing
@@ -182,6 +235,11 @@ mitigations:
     fix:
       via: api
       hint: "Run the bias benchmark test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+    docs_topic: Use LLM evaluation tools
+    steps:
+      - "Build the LLM as a blueprint in a Use Case playground, or register the deployed model there."
+      - "Open the playground evaluation tools, run the bias benchmark test against an evaluation dataset, and record the result."
+      - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: completeness_compliance_test
     title: Response completeness testing
@@ -194,6 +252,11 @@ mitigations:
     fix:
       via: api
       hint: "Run the completeness test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+    docs_topic: Use LLM evaluation tools
+    steps:
+      - "Build the LLM as a blueprint in a Use Case playground, or register the deployed model there."
+      - "Open the playground evaluation tools, run the completeness test against an evaluation dataset, and record the result."
+      - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: pii_compliance_test
     title: PII leakage testing
@@ -206,6 +269,11 @@ mitigations:
     fix:
       via: api
       hint: "Run the PII test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+    docs_topic: Use LLM evaluation tools
+    steps:
+      - "Build the LLM as a blueprint in a Use Case playground, or register the deployed model there."
+      - "Open the playground evaluation tools, run the PII test against an evaluation dataset, and record the result."
+      - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: toxicity_compliance_test
     title: Toxicity testing
@@ -218,6 +286,11 @@ mitigations:
     fix:
       via: api
       hint: "Run the toxicity test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+    docs_topic: Use LLM evaluation tools
+    steps:
+      - "Build the LLM as a blueprint in a Use Case playground, or register the deployed model there."
+      - "Open the playground evaluation tools, run the toxicity test against an evaluation dataset, and record the result."
+      - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: agent_goal_accuracy_guard
     title: Agent goal-accuracy guard
@@ -235,6 +308,14 @@ mitigations:
       requires: custom_model
       hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box agent goal-accuracy guard."
       fix_risk: business_logic
+    docs_topic: Configure evaluation and moderation
+    steps:
+      - "Put the LLM path behind a datarobot.CustomModel (target type Text Generation) with a datarobot.Deployment; a CustomApplication
+        alone has no guard attachment point."
+      - "Pulumi: add a guard_configurations entry on the CustomModel using the agent goal-accuracy guard template, applied
+        at the response stage with the intervention (block or report) the policy requires."
+      - "Console alternative: Registry, model workshop, Evaluation and moderation, add the agent goal-accuracy guard, then
+        redeploy."
 
   - mitigation_type: task_adherence_guard
     title: Task-adherence guard
@@ -251,6 +332,13 @@ mitigations:
       requires: custom_model
       hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box task-adherence guard."
       fix_risk: business_logic
+    docs_topic: Configure evaluation and moderation
+    steps:
+      - "Put the LLM path behind a datarobot.CustomModel (target type Text Generation) with a datarobot.Deployment; a CustomApplication
+        alone has no guard attachment point."
+      - "Pulumi: add a guard_configurations entry on the CustomModel using the task-adherence guard template, applied at the
+        response stage with the intervention (block or report) the policy requires."
+      - "Console alternative: Registry, model workshop, Evaluation and moderation, add the task-adherence guard, then redeploy."
 
   - mitigation_type: pii_detection_guard
     title: Runtime PII-detection guard
@@ -268,6 +356,13 @@ mitigations:
       requires: custom_model
       hint: "datarobot.CustomModel: guard_configurations using the standard PII-detection guard template."
       fix_risk: business_logic
+    docs_topic: Configure evaluation and moderation
+    steps:
+      - "Put the LLM path behind a datarobot.CustomModel (target type Text Generation) with a datarobot.Deployment; a CustomApplication
+        alone has no guard attachment point."
+      - "Pulumi: add a guard_configurations entry on the CustomModel using the PII-detection guard template, applied at the
+        prompt and response stage with the intervention (block or report) the policy requires."
+      - "Console alternative: Registry, model workshop, Evaluation and moderation, add the PII-detection guard, then redeploy."
 
   - mitigation_type: rouge_1_guard
     title: Output-quality guard (ROUGE-1)
@@ -283,6 +378,13 @@ mitigations:
       requires: custom_model
       hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box ROUGE-1 guard."
       fix_risk: business_logic
+    docs_topic: Configure evaluation and moderation
+    steps:
+      - "Put the LLM path behind a datarobot.CustomModel (target type Text Generation) with a datarobot.Deployment; a CustomApplication
+        alone has no guard attachment point."
+      - "Pulumi: add a guard_configurations entry on the CustomModel using the ROUGE-1 guard template, applied at the response
+        stage with the intervention (block or report) the policy requires."
+      - "Console alternative: Registry, model workshop, Evaluation and moderation, add the ROUGE-1 guard, then redeploy."
 
   - mitigation_type: faithfulness_guard
     title: Faithfulness / groundedness guard
@@ -298,6 +400,13 @@ mitigations:
       requires: custom_model
       hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box faithfulness guard."
       fix_risk: business_logic
+    docs_topic: Configure evaluation and moderation
+    steps:
+      - "Put the LLM path behind a datarobot.CustomModel (target type Text Generation) with a datarobot.Deployment; a CustomApplication
+        alone has no guard attachment point."
+      - "Pulumi: add a guard_configurations entry on the CustomModel using the faithfulness guard template, applied at the
+        response stage with the intervention (block or report) the policy requires."
+      - "Console alternative: Registry, model workshop, Evaluation and moderation, add the faithfulness guard, then redeploy."
 
   - mitigation_type: resource_utilization_monitoring
     title: Resource-utilization monitoring
@@ -313,6 +422,11 @@ mitigations:
       via: automatic
       hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
         no extra configuration."
+    docs_topic: Resource monitoring
+    steps:
+      - "Deploy the model or LLM path through DataRobot: a datarobot.Deployment (backed by a RegisteredModel or CustomModel)
+        in the Pulumi program."
+      - "Nothing else to configure; review it under the deployment's Resource monitoring tab in Console."
 
   - mitigation_type: service_health
     title: Service-health monitoring
@@ -328,6 +442,12 @@ mitigations:
       via: automatic
       hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
         no extra configuration."
+    docs_topic: Set up service health monitoring
+    steps:
+      - "Deploy the model or LLM path through DataRobot: a datarobot.Deployment (backed by a RegisteredModel or CustomModel)
+        in the Pulumi program."
+      - "Nothing else to configure; review it under the deployment's Service health tab in Console."
+      - "Add a notification policy for service-health events so a human is alerted (see deployment_notification)."
 
   - mitigation_type: drift_tracking
     title: Data-drift monitoring
@@ -345,6 +465,11 @@ mitigations:
       requires: deployment
       hint: "datarobot.Deployment: drift_tracking_settings { target_drift_enabled, feature_drift_enabled }."
       fix_risk: plumbing
+    docs_topic: Set up data drift monitoring
+    steps:
+      - "Make sure the model or LLM path is a datarobot.Deployment."
+      - "Pulumi: set drift_tracking_settings on the Deployment with target_drift_enabled and feature_drift_enabled true."
+      - "Console alternative: deployment, Data drift, Settings."
 
   - mitigation_type: accuracy_tracking
     title: Live accuracy monitoring
@@ -362,6 +487,12 @@ mitigations:
       hint: "datarobot.Deployment: association_id_settings { column_names, required_in_prediction_requests }, plus an actuals
         feed at runtime."
       fix_risk: plumbing
+    docs_topic: Set up accuracy monitoring
+    steps:
+      - "Make sure the model or LLM path is a datarobot.Deployment and that drift tracking (target monitoring) is enabled."
+      - "Pulumi: set association_id_settings on the Deployment (column_names, required_in_prediction_requests) so each prediction
+        can be matched to an outcome."
+      - "Upload actuals on a schedule (Deployment actuals API or a batch job) so accuracy is computed against ground truth."
 
   - mitigation_type: bias_and_fairness_tracking
     title: Live bias and fairness monitoring
@@ -380,3 +511,9 @@ mitigations:
       hint: "datarobot.Deployment: bias_and_fairness_settings { protected_features, preferable_target_value, fairness_metric_set,
         fairness_threshold }."
       fix_risk: plumbing
+    docs_topic: Set up fairness monitoring
+    steps:
+      - "Make sure the model or LLM path is a datarobot.Deployment."
+      - "Pulumi: set bias_and_fairness_settings on the Deployment (protected_features, preferable_target_value, fairness_metric_set,
+        fairness_threshold)."
+      - "Console alternative: deployment, Fairness, Settings."

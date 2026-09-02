@@ -88,9 +88,16 @@ def run_worker(
     )
     last_error: Exception | None = None
     for _ in range(max(1, attempts)):
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd
-        )
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd
+            )
+        except subprocess.TimeoutExpired as e:
+            # TimeoutExpired's message repeats argv, which carries the prompt.
+            raise TimeoutError(
+                f"dr opencode run timed out after {timeout}s "
+                f"({len(message)} chars of prompt)"
+            ) from e
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip()[-500:]
             raise RuntimeError(f"dr opencode run exited {result.returncode}: {detail}")

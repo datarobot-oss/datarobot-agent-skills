@@ -158,6 +158,11 @@ fired, what a specific fix changes, what a risk-management mitigation requires);
 skill running as a normal chat turn already grounds those answers in the same report
 and codebase, no separate Q&A surface needed.
 
+Regulatory (`POL-DR-*`) findings carry numbered fix steps and a docs link resolved at
+run time from `docs.datarobot.com/llms.txt`, so links are never pinned in this skill.
+When a finding shows "search docs.datarobot.com for ..." instead of a link, look the
+topic up there yourself before advising; do not quote a page from memory.
+
 ### 4. Offer remediation
 
 State the posture and let it drive the offer — the unit of decision is the *gap*, not
@@ -167,8 +172,9 @@ the whole agent:
   pins, CI/logging scaffolding) are surgical and safe.
 - **HYBRID** → offer `--fix` for the plumbing now; flag which findings are structural
   and will need a targeted human review or a Re-platform pass later.
-- **RE-PLATFORM** → too many structural gaps to patch safely in place. Recommend the
-  guided extraction path (below) instead of leading with `--fix`.
+- **RE-PLATFORM** → too many structural gaps to patch safely in place. Read the
+  posture text before recommending anything: it says whether the repo already builds
+  on af-components and which agent framework it uses (also in the report header).
 
 Ask **which** findings to fix: all auto-fixable, a selected subset (`--select
 SEC-002,ITA-003`), or none. A blanket "fix everything" only ever applies
@@ -186,12 +192,26 @@ plumbing-classified fixes; business-logic fixes must be named explicitly.
 ### 5. Re-platform hand-off (structural gaps)
 
 When the posture is Re-platform (or a post-fix rescore still shows structural gaps),
-do not lead with `--fix`. Hand off to the `datarobot-agent-assist` skill (design/code
-flow): it extracts the agent's business logic (prompts, tools, decision flow) into a
-reviewable `agent_spec.md` and scaffolds a governed replacement from it. **Show the
-spec and get explicit approval before anything is scaffolded.** Install
-`datarobot-agent-assist` if it isn't already, rather than scaffolding from inside
-this skill.
+do not lead with `--fix`. Check two things the report already states, then choose:
+
+- **Already on af-components** (the header lists `af-component-*` template sources):
+  keep the application. The structural gap is that the agent or LLM path is not behind
+  a DataRobot deployment, so propose adding a DataRobot agent deployment (a CustomModel
+  behind a `datarobot.Deployment` in the Pulumi program) that guards and monitoring can
+  attach to. Do not propose re-generating the repo.
+- **Not on af-components**: hand off to the `datarobot-agent-assist` skill (design/code
+  flow): it extracts the agent's business logic (prompts, tools, decision flow) into a
+  reviewable `agent_spec.md` and scaffolds a governed replacement from it. **Show the
+  spec and get explicit approval before anything is scaffolded.** Install
+  `datarobot-agent-assist` if it isn't already, rather than scaffolding from inside
+  this skill.
+
+**Never change the agent framework unless the user asks.** The flavors the DataRobot
+agent template offers are read at run time from the `af-component-agent` Copier
+template (`agent_template_framework` choices), so the list is never hardcoded here.
+A framework without a native flavor deploys through the template's generic Base
+flavor, which wraps an arbitrary Python agent. The report header names the repo's
+framework and which case applies.
 
 Regulatory (`POL-DR-*`) findings feed this same path: a DataRobot-scaffolded
 replacement gets the platform features those mitigations require (logging, tracing,

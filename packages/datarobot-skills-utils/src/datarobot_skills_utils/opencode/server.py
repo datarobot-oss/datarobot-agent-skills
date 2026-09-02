@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -23,7 +25,46 @@ def dr_available() -> bool:
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        return int(s.getsockname()[1])
+
+
+def terminate_process_tree(proc: subprocess.Popen[str], timeout: float = 5.0) -> None:
+    """Stop `proc` and every descendant started with `start_new_session=True`.
+
+    Terminating only the direct child leaves re-exec'd grandchildren running,
+    which is how orphaned servers accumulate across runs.
+    """
+    try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, PermissionError):
+        pgid = None
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        if pgid is not None and pgid != os.getpgid(0):
+            try:
+                os.killpg(pgid, sig)
+            except (ProcessLookupError, PermissionError):
+                pass
+        else:
+            proc.send_signal(sig)
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            continue
+        break
+    if pgid is not None and pgid != os.getpgid(0):
+        # Grandchildren can outlive the wrapper by a moment; give the group a
+        # few polls to drain before SIGKILL is left as the last word above.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except (ProcessLookupError, PermissionError):
+                return
+            time.sleep(0.1)
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
 
 class OpenCodeServer:
@@ -36,7 +77,7 @@ class OpenCodeServer:
     """
 
     def __init__(self) -> None:
-        self._proc: subprocess.Popen | None = None
+        self._proc: subprocess.Popen[str] | None = None
         self.workdir: str | None = None
         self.url: str | None = None
 
@@ -46,12 +87,15 @@ class OpenCodeServer:
         subprocess.run(
             ["git", "init", "-q", self.workdir], check=False, capture_output=True
         )
+        # `dr opencode serve` re-execs the real server twice; a fresh session puts
+        # the whole chain in one process group so stop() can take it all down.
         self._proc = subprocess.Popen(
             ["dr", "opencode", "serve", "--port", str(port)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             cwd=self.workdir,
+            start_new_session=True,
         )
         url = f"http://127.0.0.1:{port}"
         deadline = time.monotonic() + _SERVE_STARTUP_SECONDS
@@ -75,11 +119,7 @@ class OpenCodeServer:
 
     def stop(self) -> None:
         if self._proc is not None:
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
+            terminate_process_tree(self._proc)
             self._proc = None
         if self.workdir is not None:
             shutil.rmtree(self.workdir, ignore_errors=True)

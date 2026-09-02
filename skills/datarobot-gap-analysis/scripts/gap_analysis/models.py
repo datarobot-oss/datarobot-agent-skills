@@ -55,6 +55,16 @@ class Finding:
     structural: bool = False  # only meaningful for findings with no taxonomy.yaml
     # entry (dynamically-generated Layer 4 findings); posture.py falls back to
     # this when a taxonomy lookup by condition_id finds nothing.
+    # Structured remediation (Layer 4): ordered steps, the docs page for the
+    # DataRobot feature, what the fix attaches to and whether the repo has it,
+    # and the fix path (pulumi | api | automatic | organizational) with the
+    # resource it requires (deployment | custom_model | "").
+    steps: list[str] = field(default_factory=list)
+    docs_url: str = ""
+    docs_topic: str = ""
+    prerequisite: str = ""
+    fix_via: str = ""
+    fix_requires: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -85,6 +95,9 @@ class AnalysisResult:
     # report render regulatory coverage without a fixed checklist to compare
     # against (Layer 4 has no static condition list, see taxonomy.yaml).
     regulatory_coverage: list[dict[str, str]] = field(default_factory=list)
+    # The repo's pulumi-datarobot footprint as seen by Layer 4 (see
+    # risk_management._detect_iac); empty when no Pulumi program was found.
+    iac: dict[str, Any] = field(default_factory=dict)
 
     def by_severity(self) -> list[Finding]:
         return sorted(

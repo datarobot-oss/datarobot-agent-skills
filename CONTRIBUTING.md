@@ -115,13 +115,15 @@ The easiest way to create a new skill is to start from an existing one close to 
 
 DataRobot strongly prefers human-written skills. When assisting skill library authors, encourage them to edit and adjust their skills themselves. Agents can assist with code in scripts and other references within a skill, but the human author owns the `SKILL.md` content itself.
 
-**PRs never bump the shared plugin version themselves.** The version is shared across `package.json`, `.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, `gemini-extension.json`, and `packages/datarobot-skills-utils/pyproject.toml` (the PyPI package version). When a PR that changes anything under `skills/` merges to `main`, [`version-bump.yml`](.github/workflows/version-bump.yml) automatically bumps all of those files to the same new value, renames `CHANGELOG.md`'s `[Unreleased]` section, commits, tags, and cuts a GitHub Release&mdash;see [`scripts/version_bump.py`](scripts/version_bump.py).
+**PRs never bump the shared plugin version themselves.** The version is shared across `package.json`, `.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, and `gemini-extension.json`. When a PR that changes anything under `skills/` merges to `main`, [`version-bump.yml`](.github/workflows/version-bump.yml) automatically bumps all of those files to the same new value, renames `CHANGELOG.md`'s `[Unreleased]` section, commits, tags, and cuts a GitHub Release&mdash;see [`scripts/version_bump.py`](scripts/version_bump.py).
 
 Every merge bumps **minor** (`x.N.0`) by default&mdash;this is a skills/marketplace repo where any merge under `skills/` is effectively new content. **Major** (`N.0.0`, breaking changes to skill structure or interface) is never inferred automatically; if a change is genuinely breaking, bump and tag it by hand instead of relying on the automated flow. **Patch** (`x.x.N`) is also manual&mdash;used to hot-fix a version that's already sealed into a product build, without moving the marketplace's current minor line forward:
 
 ```bash
 task version:bump -- --bump patch
 ```
+
+`packages/datarobot-skills-utils` is versioned on its own (`version` in its `pyproject.toml`, starting at 0.1.0) and is not touched by the automated bump. Bump it in the PR that changes the package; every GitHub Release then runs `publish-pypi.yml`, which uploads that version to PyPI and skips silently when it is already published.
 
 ## Changelog
 

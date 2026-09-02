@@ -8,9 +8,9 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Git tag to publish (e.g. v1.9.0). Must match the package version."
-        required: true
+      ref:
+        description: "Git ref to build from (default: the current branch)."
+        required: false
 
 jobs:
   publish:
@@ -22,26 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.ref || github.ref }}
 
       - uses: astral-sh/setup-uv@v6
 
-      # PyPI rejects re-uploads of an existing version, so a tag that does not
-      # match the package version must fail here rather than after the upload.
-      - name: Check the package version matches the tag
-        env:
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          version="$(uv version --project packages/datarobot-skills-utils --short)"
-          if [ "v${version}" != "${TAG}" ]; then
-            echo "packages/datarobot-skills-utils is ${version} but the tag is ${TAG}" >&2
-            exit 1
-          fi
-
       - name: Build
-        run: uv build packages/datarobot-skills-utils --out-dir dist
+        run: |
+          uv build packages/datarobot-skills-utils --out-dir dist
+          echo "Built datarobot-skills-utils $(uv version --project packages/datarobot-skills-utils --short)"
 
+      # The package is versioned independently of the plugin, so most releases
+      # re-build a version that is already on PyPI; skip-existing makes that a no-op.
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
+          skip-existing: true
