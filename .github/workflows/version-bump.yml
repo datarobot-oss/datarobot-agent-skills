@@ -81,15 +81,13 @@ jobs:
         id: bump
         run: task version:bump
 
-      - name: Push release commit
-        if: steps.check.outputs.should_release == 'true'
-        run: git push origin main
-
       - name: Tag the release
         if: steps.check.outputs.should_release == 'true'
-        run: |
-          git tag "v${{ steps.bump.outputs.version }}"
-          git push origin "v${{ steps.bump.outputs.version }}"
+        run: git tag "v${{ steps.bump.outputs.version }}"
+
+      - name: Push release commit and tag
+        if: steps.check.outputs.should_release == 'true'
+        run: git push --atomic origin main "v${{ steps.bump.outputs.version }}"
 
       - name: Create GitHub Release
         if: steps.check.outputs.should_release == 'true'
