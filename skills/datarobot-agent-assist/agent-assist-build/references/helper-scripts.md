@@ -27,7 +27,7 @@ python <skill_scripts_dir>/clone_template.py \
 
 ### list_llm_models.py
 
-Lists the LLMs available on the instance the project's `.env` points at, from two sources: the LLM Gateway catalog (`source: gateway`) and existing DataRobot text-generation deployments (`source: deployed`). Sourced from `dr llm-gateway list`, with a direct REST call as fallback.
+Lists the LLMs available to the project, from three sources: the LLM Gateway catalog (`source: gateway`), existing DataRobot text-generation deployments (`source: deployed`), and an external OpenAI-compatible model configured through the `AGENT_ASSIST_LLM_*` environment (`source: external`). Gateway and deployed come from `dr llm-gateway list`, with a direct REST call as fallback; the external entry is added from the environment.
 
 ```bash
 python <skill_scripts_dir>/list_llm_models.py \
@@ -63,6 +63,17 @@ python <skill_scripts_dir>/setup_template.py \
 That writes `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, and `USE_DATAROBOT_LLM_GATEWAY=0` into `.env`, which is what makes the template route to the deployment. Passing the `datarobot-deployed-llm` placeholder as `--llm-model` **without** an id is refused: the template would stay on its gateway configuration and fail much later at `pulumi up` with `Model 'datarobot-deployed-llm' not found in catalog`.
 
 On the deployed path the deployment id is the only thing that selects the model. `dr dotenv setup` rebuilds `.env` from the template's `.datarobot/cli/llm.yml`, whose deployed-LLM group does not include `LLM_DEFAULT_MODEL`, so that key is dropped and the template falls back to its own `datarobot/datarobot-deployed-llm` placeholder. Routing is unaffected; a real model name passed as `--llm-model` alongside an id does not survive.
+
+For an external OpenAI-compatible LLM (the `external` source), pass the spec's `llm_base_url`:
+
+```bash
+python <skill_scripts_dir>/setup_template.py \
+  --llm-model <model-name> \
+  --llm-base-url <base-url> \
+  --target-dir <target_dir>
+```
+
+The model name and base URL must match `AGENT_ASSIST_LLM_MODEL_NAME` and `AGENT_ASSIST_LLM_BASE_URL` exactly; the script reads the key from `AGENT_ASSIST_LLM_API_KEY` and writes `EXTERNAL_LLM_MODEL`, `EXTERNAL_LLM_API_KEY`, and `EXTERNAL_LLM_BASE_URL` into `.env`. If `--llm-base-url` is omitted or does not match, the value is treated as a gateway model and setup fails. Cannot be combined with `--llm-deployment-id`.
 
 ### select_framework.py
 

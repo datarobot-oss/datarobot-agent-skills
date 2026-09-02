@@ -238,6 +238,14 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
      --target-dir .
    ```
 
+   If the spec has `llm_base_url` instead, the choice is an external LLM — pass it, or the `EXTERNAL_LLM_*` keys are not written and setup fails:
+   ```
+   python <skill_scripts_dir>/setup_template.py \
+     --llm-model <model-name> \
+     --llm-base-url <base-url> \
+     --target-dir .
+   ```
+
    **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
 
    g. **Re-read `AGENTS.md`** now that the template is ready.
@@ -317,6 +325,8 @@ python <skill_scripts_dir>/setup_template.py \
 ```
 
 Add `--llm-deployment-id <deployment-id>` for a DataRobot-deployed LLM, so the template routes to the deployment instead of the gateway.
+
+Add `--llm-base-url <base-url>` for an external OpenAI-compatible LLM (the `external` source), so the template writes the `EXTERNAL_LLM_*` keys and reads the key from `AGENT_ASSIST_LLM_API_KEY`.
 
 ### select_framework.py
 

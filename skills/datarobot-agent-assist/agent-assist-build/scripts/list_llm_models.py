@@ -13,6 +13,8 @@ Usage:
 Environment Variables:
     DATAROBOT_ENDPOINT: DataRobot API endpoint URL
     DATAROBOT_API_TOKEN: DataRobot API authentication token
+    AGENT_ASSIST_DISABLE_LLM_GATEWAY: Exclude gateway models when true or 1
+    AGENT_ASSIST_DISABLE_LLM_DEPLOYED: Exclude deployed models when true or 1
 """
 
 from __future__ import annotations
@@ -38,6 +40,8 @@ TARGET_TYPE_TEXT_GENERATION = "TextGeneration"
 EXTERNAL_MODEL_NAME_ENV = "AGENT_ASSIST_LLM_MODEL_NAME"
 EXTERNAL_API_KEY_ENV = "AGENT_ASSIST_LLM_API_KEY"
 EXTERNAL_BASE_URL_ENV = "AGENT_ASSIST_LLM_BASE_URL"
+DISABLE_LLM_GATEWAY_ENV = "AGENT_ASSIST_DISABLE_LLM_GATEWAY"
+DISABLE_LLM_DEPLOYED_ENV = "AGENT_ASSIST_DISABLE_LLM_DEPLOYED"
 
 
 class LLMModel(TypedDict):
@@ -118,6 +122,21 @@ def _as_int(value: object, default: int = 0) -> int:
         except ValueError:
             return default
     return default
+
+
+def _is_enabled_environment_flag(name: str) -> bool:
+    """Whether a boolean environment flag is explicitly enabled as true or 1."""
+    return os.environ.get(name, "").strip().lower() in {"true", "1"}
+
+
+def _filter_disabled_sources(models: list[LLMModel]) -> list[LLMModel]:
+    """Remove LLM sources disabled through the agent-assist environment."""
+    disabled_sources: set[str] = set()
+    if _is_enabled_environment_flag(DISABLE_LLM_GATEWAY_ENV):
+        disabled_sources.add(SOURCE_GATEWAY)
+    if _is_enabled_environment_flag(DISABLE_LLM_DEPLOYED_ENV):
+        disabled_sources.add(SOURCE_DEPLOYED)
+    return [model for model in models if model["source"] not in disabled_sources]
 
 
 def _map_gateway_catalog_entry(entry: dict[str, object]) -> LLMModel | None:
@@ -371,6 +390,7 @@ def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMMod
 
     Uses ``dr llm-gateway list`` when available; falls back to direct REST calls.
     Each source is best-effort: warnings are logged to stderr when one source fails.
+    Sources can be excluded with the boolean AGENT_ASSIST_DISABLE_LLM_* flags.
     """
     external_model = _external_model_from_environment()
     if not endpoint or not api_token:
@@ -383,8 +403,11 @@ def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMMod
     try:
         models, cli_warnings = _fetch_llm_models_via_cli(endpoint, api_token)
         warnings.extend(cli_warnings)
+        models = _filter_disabled_sources(models)
         if models:
-            if not any(m["source"] == SOURCE_DEPLOYED for m in models):
+            if not _is_enabled_environment_flag(DISABLE_LLM_DEPLOYED_ENV) and not any(
+                m["source"] == SOURCE_DEPLOYED for m in models
+            ):
                 # `dr llm-gateway list` only reports deployments from v0.2.79, while
                 # the agent template still accepts 0.2.77. A non-empty gateway alone
                 # satisfies the branch above, so without this top-up a deployed LLM is
@@ -396,7 +419,9 @@ def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMMod
                     warnings.append(f"could not list deployed LLMs: {e}")
             for warning in warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
-            return models + ([external_model] if external_model else [])
+            return _filter_disabled_sources(
+                models + ([external_model] if external_model else [])
+            )
         warnings.append("dr llm-gateway list returned no models")
     except RuntimeError as e:
         warnings.append(str(e))
@@ -414,7 +439,7 @@ def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMMod
     except RuntimeError as e:
         warnings.append(str(e))
 
-    models = gateway_models + deployed_models
+    models = _filter_disabled_sources(gateway_models + deployed_models)
     if external_model:
         models.append(external_model)
     if not models:

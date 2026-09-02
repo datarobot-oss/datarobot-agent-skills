@@ -170,7 +170,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
    Invalidate `<dependency_check_passed>` after this step.
 
-9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design). If the spec also carries `llm_deployment_id`, pass it as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it.
+9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design). If the spec also carries `llm_deployment_id`, pass it as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it. If the spec carries `llm_base_url` instead, pass it as `--llm-base-url`; it selects an external OpenAI-compatible LLM, and the `EXTERNAL_LLM_*` keys are written only when it is given.
 
    Invalidate `<dependency_check_passed>` after this step.
 

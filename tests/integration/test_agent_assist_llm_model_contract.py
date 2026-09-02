@@ -118,6 +118,66 @@ def test_deployed_entry_uses_the_prefixed_placeholder() -> None:
     assert mapped["api_model"] == "datarobot-deployed-llm"
 
 
+@pytest.mark.parametrize(
+    ("environment_variable", "excluded_source"),
+    [
+        ("AGENT_ASSIST_DISABLE_LLM_GATEWAY", "gateway"),
+        ("AGENT_ASSIST_DISABLE_LLM_DEPLOYED", "deployed"),
+    ],
+)
+def test_disabled_llm_source_is_excluded_from_results(
+    monkeypatch: pytest.MonkeyPatch,
+    environment_variable: str,
+    excluded_source: str,
+) -> None:
+    gateway = _gateway_model()
+    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    assert deployed is not None
+    monkeypatch.setenv(environment_variable, "1")
+
+    filtered = list_llm_models._filter_disabled_sources([gateway, deployed])
+
+    assert all(model["source"] != excluded_source for model in filtered)
+    assert len(filtered) == 1
+
+
+@pytest.mark.parametrize("value", ["", "false", "FALSE", "0"])
+def test_disabled_llm_source_requires_enabled_boolean(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("AGENT_ASSIST_DISABLE_LLM_GATEWAY", value)
+
+    assert list_llm_models._filter_disabled_sources([_gateway_model()])
+
+
+@pytest.mark.parametrize(
+    ("environment_variable", "excluded_source"),
+    [
+        ("AGENT_ASSIST_DISABLE_LLM_GATEWAY", "gateway"),
+        ("AGENT_ASSIST_DISABLE_LLM_DEPLOYED", "deployed"),
+    ],
+)
+def test_fetch_llm_models_excludes_disabled_source(
+    monkeypatch: pytest.MonkeyPatch,
+    environment_variable: str,
+    excluded_source: str,
+) -> None:
+    gateway = _gateway_model()
+    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    assert deployed is not None
+    monkeypatch.setenv(environment_variable, "1")
+    monkeypatch.setattr(
+        list_llm_models,
+        "_fetch_llm_models_via_cli",
+        lambda *_: ([gateway, deployed], []),
+    )
+
+    models = list_llm_models.fetch_llm_models("https://example.invalid", "token")
+
+    assert all(model["source"] != excluded_source for model in models)
+    assert len(models) == 1
+
+
 def test_prefixing_is_idempotent() -> None:
     once = list_llm_models.ensure_datarobot_prefix(API_MODEL)
     assert list_llm_models.ensure_datarobot_prefix(once) == once
