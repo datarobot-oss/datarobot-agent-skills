@@ -88,7 +88,7 @@ fall back to per-agent only if you cannot call `instrument_all()` at startup.
   ```
 
 - **`InstrumentationSettings(version=…)`** controls the telemetry data format
-  (`Literal[2, 3, 4, 5]`, default `5`, following OTel GenAI semantic conventions
+  (`Literal[2, 3, 4, 5, 6]`, default `5`, following OTel GenAI semantic conventions
   1.37.0). Versions 2–4 are deprecated and emit `PydanticAIDeprecationWarning`. Only
   pin a version if you must match a specific downstream schema (see Verify below).
 
@@ -114,7 +114,7 @@ Use Case Tracing view (or the `dr xp` panel — see SKILL.md Step 5).
 - **Spans present but Prompt/Completion columns empty** → attribute-name mismatch.
   PydanticAI's default `version=5` emits `gen_ai.input.messages` /
   `gen_ai.output.messages` (OTel GenAI semconv), while DataRobot's tracing table reads
-  `gen_ai.prompt` / `gen_ai.completion`. To fix, add the `gen_ai.prompt` / `gen_ai.completion` span attributes yourself — note that **no** `InstrumentationSettings(version=…)` value produces them (every selectable format, 2–5, emits `gen_ai.input.messages` / `gen_ai.output.messages`), so pinning a version does not help. Also confirm `include_content` is not `False`, and check whether your DataRobot instance already normalizes the newer semconv attributes.
+  `gen_ai.prompt` / `gen_ai.completion`. To fix, add the `gen_ai.prompt` / `gen_ai.completion` span attributes yourself — note that **no** `InstrumentationSettings(version=…)` value produces them (every selectable format, 2–6, emits `gen_ai.input.messages` / `gen_ai.output.messages`), so pinning a version does not help. Also confirm `include_content` is not `False`, and check whether your DataRobot instance already normalizes the newer semconv attributes.
 
 ## Optional: Logfire instrumentation
 
@@ -138,7 +138,7 @@ None beyond the generic OTel packages.
 
 Optional (if using Logfire):
 ```
-logfire[pydantic-ai]
+logfire
 ```
 
 ## Custom Metrics (Optional)

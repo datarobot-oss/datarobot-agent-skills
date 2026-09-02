@@ -9,13 +9,12 @@ Enum values are documented in the OpenAPI spec — confirm exact values with `sp
 | `submitted` | Wait. If stuck > 1 min, check `GET /workloads/{id}/events/` for scheduling issues |
 | `provisioning` / `launching` | Wait. If stuck > 5 min, drill into `GET /workloads/{id}/protons/{pid}/statusDetails/` |
 | `running` | Healthy — check telemetry if asked |
-| `updating` | A rolling redeploy is in progress (settings change or artifact replacement); transitions back to `running` once new replica passes readiness |
-| `suspended` / `interrupted` | Platform-paused — check events for the cause |
+| `suspended` | Platform-paused — check events for the cause |
 | `stopping` / `stopped` | If unintended, `POST /workloads/{id}/start/` |
 | `errored` | Recoverable startup failure — run `scripts/diagnose_workload.py` and fix via section 1 (settings) or section 4 (artifact) |
-| `failed` / `terminated` | Unrecoverable — delete and recreate after fixing root cause |
+| `terminated` | Unrecoverable — delete and recreate after fixing root cause |
 
-Happy path: `submitted` → `provisioning` → `launching` → `running`. Only `running` and `stopped` are stable.
+Happy path: `submitted` → `provisioning` → `launching` → `running`. Only `running` and `stopped` are stable. There is no workload-level `updating` or `failed` status — a rolling redeploy is observed via the `candidate` proton's status, and terminal-failure matching should use `errored`/`terminated` only. `interrupted` is a proton-only status.
 
 ## Proton roles
 
@@ -42,20 +41,21 @@ For symptom → fix mapping (CrashLoopBackOff, OOMKilled, etc.), see `references
 
 ## Build status
 
-Sequence: `PENDING` → `IN_PROGRESS` → `BUILT` → `COMPLETED` (or → `FAILED`). Lowercase variants (`pending` / `in-progress` / `completed` / `failed`) are also returned by some flows — normalize to uppercase before comparing.
+Sequence: `PENDING` → `IN_PROGRESS` → `BUILT` → `COMPLETED` (or → `FAILED` / `CANCELLED`). Lowercase variants (`pending` / `in-progress` / `completed` / `failed`) are also returned by some flows — normalize to uppercase before comparing.
 
 - `PENDING` / `IN_PROGRESS` — keep polling.
 - **`BUILT` — image built locally but NOT yet pushed to the registry. NOT deployable.** A workload scheduled on an artifact at `BUILT` returns `422 runtime_image_uri ... None`. Keep polling. The gap from `BUILT` to `COMPLETED` can be seconds to minutes for large images.
 - `COMPLETED` — built AND pushed; only now is the image deployable.
 - `FAILED` — terminal failure. Pull `/artifacts/{id}/builds/{bid}/logs/` for the cause.
+- `CANCELLED` — terminal; the build was cancelled and will never complete. Treat like `FAILED`, not as still-in-progress.
 
 The `wait_for_build.py` script enforces this: only `COMPLETED` exits success, `BUILT` keeps polling.
 
 ## Replacement status
 
-- `candidate-warming` / `switching` — in progress, keep polling.
+- `submitted` / `initializing` / `staged` / `promoting` / `finalizing` / `canceling` — in progress, keep polling.
 - `completed` — terminal success.
-- `failed` — terminal failure; workload reverted to old artifact. Diagnose the candidate before retrying.
+- `errored` / `cancelled` — terminal failure; workload reverted to old artifact. Diagnose the candidate before retrying. (There is no `failed` replacement status.)
 
 The endpoint also returns **404** when no active replacement exists — that's "no replacement in progress", not an error. See `references/lifecycle-flows.md` for the full semantics.
 

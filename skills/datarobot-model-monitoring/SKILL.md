@@ -13,7 +13,9 @@ This skill provides comprehensive guidance for monitoring deployed models, track
 
 1. **Check service stats**: `deployment.get_service_stats(...)` to review prediction volume/latency
 2. **Check drift**: `deployment.get_feature_drift(...)` / `deployment.get_target_drift(...)`
-3. **Compare over time**: Use `get_service_stats_over_time(...)` and drift periods to assess trends
+3. **Compare over time**: Use `get_service_stats_over_time(...)` and drift periods to assess trends.
+   Each element of `.buckets` is a dict with keys `period`, `model_id`, `value` — the metric value is under `"value"`,
+   e.g. `total = sum(b["value"] or 0 for b in sot.buckets)`
 
 **Example**: "Check the health of deployment abc123 and report any data drift issues"
 
@@ -89,7 +91,7 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Key SDK Operations
@@ -100,11 +102,18 @@ Use these DataRobot SDK and MLOps API methods for monitoring:
 - `deployment.get_service_stats(...)` - Get service statistics (latency, volume, etc.)
 - `deployment.get_feature_drift(...)` - Get feature drift metrics (returns `FeatureDrift` objects)
 - `deployment.get_target_drift(...)` - Get target drift metrics (returns `TargetDrift`)
+  - **SDK bug (still present in 3.19.0)**: on unsegmented deployments this raises `DataError: {'segment_value': 'is required'}`. Workaround — call the REST endpoint directly:
+    `data = dr.Client().get(f"deployments/{deployment_id}/targetDrift/", params={"start": start_iso, "end": end_iso}).json()` — `start`/`end` are optional (default: last 7 days) and take hour-aligned ISO-8601 timestamps (`startTime`/`endTime` are rejected with 400); then read camelCase keys `data["driftScore"]`, `data["targetName"]`, `data["sampleSize"]`
 - `deployment.get_prediction_results(...)` - Retrieve recorded prediction results (if enabled)
+
+**Note**: Monitoring endpoints reject `start_time`/`end_time` not aligned to the top of an hour (HTTP 400).
+Truncate `end_time` *forward* to the top of the next hour — truncating back silently drops the in-progress
+hour's traffic (reports 0 predictions), and the API accepts a future `end_time`:
+`end_time = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)`.
 
 **Model Performance**:
 - `model.metrics` - Model performance metrics (dict of `{metric: {partition: score}}`)
-- `model.get_roc_curve()` - Get ROC curve for comparison
+- `datarobot.insights.RocCurve.get(model_id, source="validation")` - Get ROC curve for comparison (`source`: `"validation"`, `"crossValidation"`, or `"holdout"`; the older `model.get_roc_curve(source)` is deprecated and warns)
 
 **Note**: Some monitoring features may require DataRobot MLOps API. See the [Common Patterns](#common-patterns) section below for examples.
 
@@ -133,7 +142,7 @@ deployment = dr.Deployment.get("abc123")
 # ServiceStats exposes values via the .metrics dict, not as attributes.
 stats = deployment.get_service_stats()
 print(f"Prediction count: {stats.metrics['totalPredictions']}")
-print(f"Mean response time (ms): {stats.metrics['responseTime']}")
+print(f"Median response time (ms): {stats.metrics['responseTime']}")  # p50 by default; adjust via response_time_quantile
 
 # Get recorded prediction results (if available / enabled)
 try:
@@ -153,8 +162,9 @@ deployment = dr.Deployment.get("abc123")
 # Get feature drift (requires MLOps monitoring)
 try:
     drifts = deployment.get_feature_drift()
-    high = [d for d in drifts if (d.drift_score or 0) > 0.2]
-    print(f"Features with drift_score > 0.2: {len(high)}")
+    # 0.15/0.3 are the documented medium/high thresholds (see Alert thresholds below)
+    high = [d for d in drifts if (d.drift_score or 0) > 0.15]
+    print(f"Features with drift_score > 0.15: {len(high)}")
     for d in high[:10]:
         print(f"{d.name}: {d.drift_score}")
 except Exception as e:
@@ -205,7 +215,7 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Initialize Client

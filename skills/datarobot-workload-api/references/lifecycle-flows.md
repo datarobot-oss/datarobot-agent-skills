@@ -26,7 +26,7 @@ Neither rule is in the spec's path docs. There is no `dr workload replacement` C
 
 ### Applying a change to the SAME draft a workload runs
 
-`code sync` + `build create` (or a spec PATCH) keep the same artifact ID; a running workload does **not** auto-adopt the change — trigger a redeploy. Options, all rolling (zero-downtime at `replicaCount`/`minCount` ≥ 2; a single replica has a brief gap):
+`code sync` + `build create` (or a spec PATCH) keep the same artifact ID; a running workload does **not** auto-adopt the change — trigger a redeploy. Options, all rolling (zero-downtime at `replicaCount`/`minReplicaCount` ≥ 2; a single replica has a brief gap):
 
 | Goal | Do this |
 |---|---|
@@ -58,7 +58,7 @@ If the artifact was created with `imageBuildConfig` referencing source code in D
 
 - On success, the platform **populates the artifact's `imageUri` automatically**. Re-`GET` the artifact to see it. Do **not** set `imageUri` by hand — a manual `PATCH` of it returns `422 {"detail": "Image URI '...' is not permitted on this cluster."}` (only build-produced images are allowed). If both `imageBuildConfig` and `imageUri` are supplied at create time, the build overwrites `imageUri` on completion.
 - **Do not PATCH the artifact spec while a build is in progress.** A spec PATCH is a whole-spec read-modify-write, so it sends back the *pre-build* `imageUri` and clobbers the completion's auto-populate — the artifact keeps pointing at the **old** image and the next deploy silently runs stale code. Sequence spec edits (env/probes) *before* `build create`, or *after* `COMPLETED` with a fresh `GET` so the PATCH carries the new `imageUri`. After `COMPLETED`, confirm `imageUri` advanced before redeploying.
-- Status sequence: `PENDING` → `IN_PROGRESS` → `BUILT` → `COMPLETED` (or → `FAILED`). **`BUILT` is intermediate** — image built locally but not yet pushed to the registry. Only `COMPLETED` is deployable; scheduling a workload on a `BUILT` artifact returns `422 runtime_image_uri ... None`. `wait_for_build.py` waits for `COMPLETED` specifically.
+- Status sequence: `PENDING` → `IN_PROGRESS` → `BUILT` → `COMPLETED` (or → `FAILED` / `CANCELLED`). **`BUILT` is intermediate** — image built locally but not yet pushed to the registry. Only `COMPLETED` is deployable; scheduling a workload on a `BUILT` artifact returns `422 runtime_image_uri ... None`. `wait_for_build.py` waits for `COMPLETED` specifically.
 - Only drafts can build. Builds for locked artifacts can't be triggered or deleted.
 
 ## Rolling replacement — non-idempotent, 404-after-completion

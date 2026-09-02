@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -46,7 +47,13 @@ def wait_for_replacement(
             f"{base}/workloads/{wid}/replacement/", headers=headers, timeout=30
         )
         if r.status_code == 404:
-            return ("gone" if last is None else "completed"), last
+            # The platform clears the record after it finishes; judge by the last
+            # status seen, not by the disappearance itself.
+            if last is None:
+                return "gone", last
+            if last.get("status") in ("errored", "cancelled"):
+                return "failed", last
+            return "completed", last
         r.raise_for_status()
         last = cast(Json, r.json())
         status = last.get("status")
@@ -56,7 +63,9 @@ def wait_for_replacement(
         )
         if status == "completed":
             return "completed", last
-        if status == "failed":
+        # ReplacementStatus has no "failed"; terminal failures are errored/cancelled
+        # ("canceling" is still in progress).
+        if status in ("errored", "cancelled"):
             return "failed", last
         time.sleep(interval)
     return "timeout", last
@@ -108,7 +117,7 @@ def main() -> int:
     if outcome == "failed":
         print(
             f"Replacement FAILED — workload reverted to the old artifact. "
-            f"Diagnose with: python ../../datarobot-workload-debug/scripts/diagnose_workload.py {args.workload_id}",
+            f"Diagnose with: python {Path(__file__).parent / 'diagnose_workload.py'} {args.workload_id}",
             file=sys.stderr,
         )
         if last:

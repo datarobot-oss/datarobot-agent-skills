@@ -34,12 +34,22 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
     dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
-    model = dr.Model.get(deployment.model["id"])
-    features = model.get_features()
+    # List of plain dicts with keys name, feature_type, importance, date_format,
+    # known_in_advance
+    try:
+        features = deployment.get_features()
+    except dr.errors.ClientError as e:
+        return {
+            "valid": False,
+            "errors": [f"Deployment feature metadata unavailable ({e})"],
+        }
+    target_name = deployment.model.get(
+        "target_name"
+    )  # None for unsupervised/anomaly deployments
 
     # Get required features (exclude target)
     required_features = {
-        f.name: f.feature_type for f in features if f.name != model.target_name
+        f["name"]: f["feature_type"] for f in features if f["name"] != target_name
     }
 
     # Read CSV data
@@ -47,7 +57,8 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
         return {"valid": False, "errors": [f"File not found: {file_path}"]}
 
     with open(file_path, "r") as f:
-        reader = csv.DictReader(f)
+        # Skip '#' metadata lines (generate_prediction_data_template.py writes them)
+        reader = csv.DictReader(line for line in f if not line.lstrip().startswith("#"))
         rows = list(reader)
 
     if not rows:
@@ -58,8 +69,9 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
     warnings = []
     info = []
 
-    # Check for missing required features
+    # Check for missing required features (ragged rows park overflow under None)
     csv_columns = set(rows[0].keys())
+    csv_columns.discard(None)
     missing_features = set(required_features.keys()) - csv_columns
 
     if missing_features:
@@ -89,24 +101,21 @@ def validate_prediction_data(deployment_id: str, file_path: str) -> dict:
                             f"Row {row_num}, {feature_name}: Expected numeric, got '{value}'"
                         )
 
-    # Get feature importance for warnings
-    try:
-        feature_importance = model.get_feature_impact()
-        low_importance_features = [
-            fi["featureName"]
-            for fi in feature_importance
-            if fi.get("impactNormalized", 0) < 0.05
-        ]
+    # Use the importance already returned by deployment.get_features() for warnings
+    # (a model-independent measure of feature/target relationship strength; direction
+    # is not encoded — negative values mean no detectable relationship, so the signed
+    # comparison below is intentional: don't take abs()). None means importance is
+    # unknown for this model class (unsupervised, time-series, custom) — not low.
+    low_importance_features = [
+        f["name"]
+        for f in features
+        if f["importance"] is not None and f["importance"] < 0.05
+    ]
 
-        missing_low_importance = missing_features & set(low_importance_features)
-        if missing_low_importance:
-            warnings.append(
-                f"Missing low-importance features: {', '.join(sorted(missing_low_importance))}"
-            )
-    except dr.errors.ClientError as e:
-        print(
-            f"Note: feature impact unavailable, skipping importance warnings: {e}",
-            file=sys.stderr,
+    missing_low_importance = missing_features & set(low_importance_features)
+    if missing_low_importance:
+        warnings.append(
+            f"Missing low-importance features: {', '.join(sorted(missing_low_importance))}"
         )
 
     return {

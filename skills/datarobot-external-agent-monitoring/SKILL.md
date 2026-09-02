@@ -66,7 +66,7 @@ Follow these steps in order. Present the plan to the user and wait for approval 
    - Ask the user for their **Use Case ID**. DataRobot users typically already organize work in a Use Case.
    - If they don't have one (a brand-new or externally-built project), **offer to create one**. Ask only for a name; the description is auto-generated.
    - Record the choice (existing Use Case ID, or the name for a new one) to use in Step 4. The `create_use_case.py` helper will resolve it to an entity ID of the form `experiment_container-<use_case_id>` at execution time.
-5. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
+5. Check if the `datarobot` Python SDK is available. If not, install it together with the OTel packages the Step 5 verify script imports: `uv pip install datarobot opentelemetry-sdk opentelemetry-api opentelemetry-exporter-otlp-proto-http || python -m pip install datarobot opentelemetry-sdk opentelemetry-api opentelemetry-exporter-otlp-proto-http`
 6. Check if OTel packages are already in the project's dependencies.
 
 **Security note:** Never ask the user to paste an API token into chat, and never echo tokens or `.env` contents into transcripts or logs. Collect the token only via the project `.env` file (the user edits the file directly) and read it from there; keep `.env` gitignored. If credentials are accidentally exposed, rotate them immediately.
@@ -90,6 +90,10 @@ Tell the user what you detected and present the changes you will make:
    - `opentelemetry-api`
    - `opentelemetry-exporter-otlp-proto-http`
    - Framework-specific packages (see framework reference file)
+   - Then **install the project's full dependency set** — its own declared dependencies plus the
+     additions — before running it (`uv pip install -r requirements.txt || python -m pip install -r requirements.txt`,
+     or the project's own tool: `uv sync`, `poetry install`). The OTel packages alone are not
+     enough to run a project you did not set up.
 
 2. **Generate `dr_otel_config.py`** using the generic pattern below, adapted per the framework reference file.
 
@@ -265,9 +269,12 @@ opentelemetry-api
 opentelemetry-exporter-otlp-proto-http
 ```
 
-Required for shell deployment creation (available in the skill's script environment):
+Required for the skill's scripts (available in the skill's script environment; `datarobot` for shell deployment creation, the OTel packages for `verify_otel_connection.py`):
 ```
 datarobot
+opentelemetry-sdk
+opentelemetry-api
+opentelemetry-exporter-otlp-proto-http
 ```
 
 ## Best practices
