@@ -173,6 +173,12 @@ def test_rehearsal_accepts_legacy_and_nested_model_specs(
     assert rehearsal._spec_model_name(model_spec) == expected
 
 
+def test_rehearsal_model_object_without_name_raises_valueerror() -> None:
+    # A model object missing name gets a clean ValueError, not a raw KeyError.
+    with pytest.raises(ValueError):
+        rehearsal._spec_model_name({"source": "gateway"})
+
+
 def test_rehearsal_reads_nested_deployment_id() -> None:
     spec = """model:
   name: datarobot/datarobot-deployed-llm
@@ -345,6 +351,34 @@ def test_catalog_overrules_the_slash_heuristic(tmp_path: Path, catalog: Any) -> 
 def test_model_absent_from_catalog_is_refused(tmp_path: Path, catalog: Any) -> None:
     catalog([_gateway_model()])
     assert setup_template.canonical_cli_model("azure/retired-model", tmp_path) is None
+
+
+def test_litellm_bare_name_is_accepted_without_credentials(
+    tmp_path: Path, no_credentials: None
+) -> None:
+    # A slashless name is normal for litellm, not a gateway llmId, so with no
+    # catalog to verify against it is accepted rather than refused.
+    assert (
+        setup_template.canonical_cli_model(
+            "gpt-4o", tmp_path, list_llm_models.SOURCE_LITELLM
+        )
+        == "gpt-4o"
+    )
+
+
+def test_litellm_absent_from_catalog_names_the_litellm_listing(
+    tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    catalog([_gateway_model()])
+    assert (
+        setup_template.canonical_cli_model(
+            "gpt-4o", tmp_path, list_llm_models.SOURCE_LITELLM
+        )
+        is None
+    )
+    err = capsys.readouterr().err
+    assert "litellm listing" in err
+    assert "LLM Gateway" not in err
 
 
 def test_catalog_present_still_refuses_a_bare_llm_id(
