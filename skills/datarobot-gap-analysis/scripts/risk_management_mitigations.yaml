@@ -1,0 +1,382 @@
+---
+# Assessment and remediation metadata for DataRobot risk-management's
+# MitigationMethodType values (a stable, platform-defined enum). This is what
+# drives Layer 4: whichever mitigations an org's live DataRobot risk-management
+# policy requires are each assessed against the repo by an LLM (see
+# prompts/risk-management-mitigation.md), and the unsatisfied ones become
+# findings. Per type, this file supplies: what it means (title), how severe an
+# unsatisfied requirement is (default_severity), whether the gap is structural
+# (feeds the Patch/Hybrid/Re-platform posture), which DataRobot platform
+# feature satisfies it, the remediation text shown in the report, what counts
+# as evidence in a repo (evidence), and which files to show the LLM
+# (files_glob; an empty list marks an organizational requirement that cannot
+# be assessed from code at all).
+#
+# The remediation for nearly every mitigation type here is "adopt the DataRobot
+# platform feature that provides this," not a code patch; a repo can still show
+# pre-deployment evidence (its own implementation, or DataRobot deployment
+# configuration that will provide the capability once deployed).
+#
+# `datarobot_feature` names are based on general knowledge of DataRobot's product
+# surface (Model Registry documentation, deployment monitoring, GenAI Guards,
+# RBAC), not verified against current product documentation or UI paths. Confirm
+# the specific feature name/location before presenting this to a user as exact
+# product guidance, DataRobot's own naming may have moved on.
+#
+# Grounded against DataRobot's built-in "EU AI Act" risk policy as of
+# 2026-07-31. The risk-management API is not yet public, so DataRobot may add,
+# rename, or retire mitigation types with no compatibility guarantee. Run
+# validate_risk_management_mapping.py against a live GET /mitigationMethods/
+# catalog before relying on this in production, it flags drift rather than
+# letting this file silently go stale.
+
+version: 1
+
+mitigations:
+  - mitigation_type: compliance_doc
+    title: Technical documentation
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot's Model Registry compliance documentation (automated documentation attached to a registered
+      model)
+    remediation: Register this system in DataRobot's Model Registry and generate its compliance documentation there, instead
+      of maintaining a bespoke doc file.
+    evidence: A substantive technical document or model card covering intended purpose, design, data, and capabilities/limits;
+      or DataRobot Model Registry / automated-documentation configuration.
+    files_glob: ["**/*.md", "**/docs/**", "**/MODEL_CARD*", "**/model_card*"]
+    fix:
+      via: api
+      hint: "Generate automated compliance documentation for the registered model version (Model Registry API/console); no
+        Pulumi resource."
+
+  - mitigation_type: deployment_logs
+    title: Record-keeping and event logging
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot deployment prediction logging (automatic request/response logging on a registered deployment)
+    remediation: Deploy this system through DataRobot so prediction logging is enabled by default, instead of building and
+      maintaining custom logging.
+    evidence: Structured application/event logging wired through the code paths that matter, or DataRobot deployment configuration
+      that enables prediction logging.
+    files_glob: ["**/*.py", "**/logging*", "**/infra/**", "**/metadata*.yaml", "**/__main__.py"]
+    iac_evidence: a datarobot.Deployment (Pulumi) of a custom or external model provides prediction logging by construction
+    fix:
+      via: automatic
+      hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
+        no extra configuration."
+
+  - mitigation_type: deployment_tracing
+    title: Lifecycle tracing
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot deployment tracing/observability
+    remediation: Deploy through DataRobot (or instrument it with the datarobot-external-agent-monitoring skill) so traces
+      are captured automatically.
+    evidence: OpenTelemetry (or equivalent) tracing instrumentation, or DataRobot deployment/observability configuration that
+      provides tracing.
+    files_glob: ["**/*.py", "**/otel*", "**/tracing*", "**/telemetry*", "**/infra/**", "**/__main__.py"]
+    iac_evidence: a datarobot.Deployment (Pulumi) of a custom or external model provides tracing by construction
+    fix:
+      via: automatic
+      hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
+        no extra configuration."
+
+  - mitigation_type: deployment_notification
+    title: Human oversight notification
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot deployment notification policies
+    remediation: Configure a DataRobot notification policy on the deployment so a human is alerted when this system needs
+      attention.
+    evidence: Alerting/notification wiring (a notification policy, alert hooks, paging integration) tied to the system's health
+      or decisions, in code or DataRobot deployment configuration.
+    files_glob: ["**/infra/**", "**/*.yaml", "**/notif*", "**/alert*", "**/__main__.py"]
+    iac_evidence: a datarobot.NotificationPolicy resource (Pulumi) whose related entity is the deployment
+    fix:
+      via: pulumi
+      requires: deployment
+      hint: "datarobot.NotificationChannel + datarobot.NotificationPolicy attached to the deployment (at least one active
+        policy)."
+      fix_risk: plumbing
+
+  - mitigation_type: risk_description_filled
+    title: Risk classification documented
+    default_severity: high
+    structural: true
+    datarobot_feature: The risk-management RiskAssessment record itself
+    remediation: Create and complete a RiskAssessment for this system in DataRobot risk-management, documenting its risk description
+      and classification.
+    evidence: A documented risk description/classification for this system (risk tier, rationale) in the repo's documentation.
+    files_glob: ["**/*.md", "**/docs/**"]
+    fix:
+      via: api
+      hint: "Fill the risk description on the system's RiskAssessment in DataRobot risk-management (console/API)."
+
+  - mitigation_type: rbac
+    title: Access control
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's RBAC/permissions system (org roles, permission scoping on deployments and registered models)
+    remediation: Manage access to this system through DataRobot's RBAC instead of custom, bespoke authorization code.
+    evidence: Real authorization enforcement (role checks, permission scoping) on the system's entry points, or reliance on
+      DataRobot's RBAC via platform deployment.
+    files_glob: ["**/auth*", "**/*auth*", "**/permission*", "**/*.py", "**/__main__.py"]
+    iac_evidence: a datarobot.Deployment resource (Pulumi) places the system under platform RBAC
+    fix:
+      via: automatic
+      hint: "DataRobot RBAC governs every deployment and registered model by construction; deploying through DataRobot satisfies
+        this."
+
+  - mitigation_type: prompt_injection_guard
+    title: Prompt-injection defense
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's GenAI Guard framework (prompt-injection guard)
+    remediation: Attach DataRobot's prompt-injection guard to the deployment instead of relying on a custom defense in the
+      agent's own code.
+    evidence: A prompt-injection defense on model-bound input (a guard configuration, input sanitization/screening before
+      the LLM call), in code or DataRobot guard configuration.
+    files_glob: ["**/guard*", "**/moderation*", "**/*prompt*", "**/*.py", "**/*.yaml", "**/__main__.py"]
+    iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the standard prompt-injection template
+    fix:
+      via: pulumi
+      requires: custom_model
+      hint: "datarobot.CustomModel: guard_configurations using the standard prompt-injection guard template (stages + intervention)."
+      fix_risk: business_logic
+
+  - mitigation_type: jailbreak_compliance_test
+    title: Jailbreak-resistance testing
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's LLM evaluation/compliance test suite (jailbreak-resistance test)
+    remediation: Run this system through DataRobot's jailbreak compliance test suite before relying on ad hoc, self-run red-teaming.
+    evidence: A jailbreak/red-team evaluation suite that actually runs (eval configs, adversarial test cases), or DataRobot
+      compliance-test configuration.
+    files_glob: ["**/eval*", "**/test*", "**/*.yaml", "**/docs/**"]
+    fix:
+      via: api
+      hint: "Build the model from an LLM blueprint and run the jailbreak test in its LLM test suite (Use Case playground /
+        GenAI API); no Pulumi resource."
+
+  - mitigation_type: ai_literacy
+    title: Staff AI literacy
+    default_severity: medium
+    structural: false
+    datarobot_feature: None, this is an organizational requirement DataRobot does not automate.
+    remediation: Establish an AI literacy training program for the staff operating this system. Not something a code or platform
+      migration satisfies.
+    evidence: Not assessable from a repository; this is an organizational/staff-training requirement.
+    files_glob: []
+    fix:
+      via: organizational
+      hint: "Confirmed by a policy admin in DataRobot risk-management; a staff-training program, not a repo change."
+
+  - mitigation_type: bias_benchmark_compliance_test
+    title: Bias benchmark testing
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's built-in bias and fairness benchmark testing
+    remediation: Run this model through DataRobot's bias benchmark test suite instead of an ad hoc or absent fairness check.
+    evidence: A bias/fairness evaluation that actually runs against the model, or DataRobot bias-benchmark test configuration.
+    files_glob: ["**/eval*", "**/test*", "**/fairness*", "**/bias*", "**/*.yaml"]
+    fix:
+      via: api
+      hint: "Run the bias benchmark test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+
+  - mitigation_type: completeness_compliance_test
+    title: Response completeness testing
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot's LLM evaluation completeness metric/test
+    remediation: Run this system through DataRobot's completeness compliance test as part of its evaluation suite.
+    evidence: An output-completeness evaluation in the test/eval suite, or DataRobot compliance-test configuration.
+    files_glob: ["**/eval*", "**/test*", "**/*.yaml"]
+    fix:
+      via: api
+      hint: "Run the completeness test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+
+  - mitigation_type: pii_compliance_test
+    title: PII leakage testing
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's PII compliance test (evaluation-dataset-based)
+    remediation: Run PII compliance testing through DataRobot's evaluation framework rather than a custom or absent check.
+    evidence: A PII-leakage evaluation in the test/eval suite, or DataRobot PII compliance-test configuration.
+    files_glob: ["**/eval*", "**/test*", "**/pii*", "**/*.yaml"]
+    fix:
+      via: api
+      hint: "Run the PII test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+
+  - mitigation_type: toxicity_compliance_test
+    title: Toxicity testing
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's toxicity compliance test
+    remediation: Run toxicity compliance testing through DataRobot's evaluation framework.
+    evidence: A toxicity evaluation in the test/eval suite, or DataRobot toxicity compliance-test configuration.
+    files_glob: ["**/eval*", "**/test*", "**/toxic*", "**/*.yaml"]
+    fix:
+      via: api
+      hint: "Run the toxicity test in the model's LLM test suite (Use Case playground / GenAI API); no Pulumi resource."
+
+  - mitigation_type: agent_goal_accuracy_guard
+    title: Agent goal-accuracy guard
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot's GenAI Guard framework (agent goal-accuracy guard)
+    remediation: Attach DataRobot's agent goal-accuracy guard instead of relying on unmonitored agent behavior.
+    evidence: Runtime monitoring of whether the agent achieves its stated goal (a guard/eval wired into the serving path),
+      or DataRobot guard configuration.
+    files_glob: ["**/guard*", "**/moderation*", "**/*.yaml", "**/infra/**", "**/__main__.py"]
+    iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the out-of-the-box agent goal-accuracy
+      guard
+    fix:
+      via: pulumi
+      requires: custom_model
+      hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box agent goal-accuracy guard."
+      fix_risk: business_logic
+
+  - mitigation_type: task_adherence_guard
+    title: Task-adherence guard
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot's GenAI Guard framework (task-adherence guard)
+    remediation: Attach DataRobot's task-adherence guard to monitor whether the agent stays on task.
+    evidence: Runtime monitoring of whether the agent stays on task (a guard wired into the serving path), or DataRobot guard
+      configuration.
+    files_glob: ["**/guard*", "**/moderation*", "**/*.yaml", "**/infra/**", "**/__main__.py"]
+    iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the out-of-the-box task-adherence guard
+    fix:
+      via: pulumi
+      requires: custom_model
+      hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box task-adherence guard."
+      fix_risk: business_logic
+
+  - mitigation_type: pii_detection_guard
+    title: Runtime PII-detection guard
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's GenAI Guard framework (runtime PII-detection guard)
+    remediation: Attach DataRobot's PII-detection guard to the live deployment, distinct from the one-time PII compliance
+      test above.
+    evidence: Runtime PII detection/redaction on live inputs or outputs (not just a one-time eval), in code or DataRobot guard
+      configuration.
+    files_glob: ["**/guard*", "**/pii*", "**/redact*", "**/*.py", "**/*.yaml", "**/__main__.py"]
+    iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the standard PII-detection template
+    fix:
+      via: pulumi
+      requires: custom_model
+      hint: "datarobot.CustomModel: guard_configurations using the standard PII-detection guard template."
+      fix_risk: business_logic
+
+  - mitigation_type: rouge_1_guard
+    title: Output-quality guard (ROUGE-1)
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot's GenAI Guard framework (ROUGE-1 output-quality guard)
+    remediation: Attach DataRobot's ROUGE-1 guard for ongoing output-quality monitoring.
+    evidence: Ongoing output-quality scoring in the serving path (ROUGE or equivalent), or DataRobot guard configuration.
+    files_glob: ["**/guard*", "**/eval*", "**/*.yaml", "**/infra/**", "**/__main__.py"]
+    iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the out-of-the-box ROUGE-1 guard
+    fix:
+      via: pulumi
+      requires: custom_model
+      hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box ROUGE-1 guard."
+      fix_risk: business_logic
+
+  - mitigation_type: faithfulness_guard
+    title: Faithfulness / groundedness guard
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot's GenAI Guard framework (faithfulness/groundedness guard)
+    remediation: Attach DataRobot's faithfulness guard so ungrounded or hallucinated responses are caught at runtime.
+    evidence: Runtime groundedness/faithfulness checking of responses against sources, or DataRobot guard configuration.
+    files_glob: ["**/guard*", "**/*.py", "**/*.yaml", "**/infra/**", "**/__main__.py"]
+    iac_evidence: a guard_configurations entry on datarobot.CustomModel (Pulumi) using the out-of-the-box faithfulness guard
+    fix:
+      via: pulumi
+      requires: custom_model
+      hint: "datarobot.CustomModel: guard_configurations using the out-of-the-box faithfulness guard."
+      fix_risk: business_logic
+
+  - mitigation_type: resource_utilization_monitoring
+    title: Resource-utilization monitoring
+    default_severity: medium
+    structural: true
+    datarobot_feature: DataRobot deployment resource-utilization monitoring
+    remediation: Deploy through DataRobot so resource utilization is monitored automatically rather than left unobserved.
+    evidence: Resource monitoring/limits wired into the deployment (metrics export, container limits plus scrape config),
+      or DataRobot deployment configuration that provides it.
+    files_glob: ["**/infra/**", "**/*.yaml", "**/Dockerfile", "**/metadata*", "**/__main__.py"]
+    iac_evidence: a datarobot.Deployment (Pulumi) of a custom model provides resource monitoring by construction
+    fix:
+      via: automatic
+      hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
+        no extra configuration."
+
+  - mitigation_type: service_health
+    title: Service-health monitoring
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot deployment service-health monitoring
+    remediation: Deploy through DataRobot for automatic service-health monitoring and alerting.
+    evidence: Health endpoints plus something that watches them (probes, alerting), or DataRobot deployment configuration
+      that provides service-health monitoring.
+    files_glob: ["**/health*", "**/infra/**", "**/*.yaml", "**/*.py", "**/__main__.py"]
+    iac_evidence: a datarobot.Deployment resource (Pulumi) provides service-health monitoring by construction
+    fix:
+      via: automatic
+      hint: "Enabled by construction once the system is deployed through DataRobot (a datarobot.Deployment resource in Pulumi);
+        no extra configuration."
+
+  - mitigation_type: drift_tracking
+    title: Data-drift monitoring
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's data-drift monitoring
+    remediation: Deploy through DataRobot to get automatic data-drift tracking, a capability that is impractical to replicate
+      outside the platform.
+    evidence: DataRobot deployment configuration enabling drift tracking; a bespoke drift-monitoring implementation counts
+      only if it actually runs against production data.
+    files_glob: ["**/infra/**", "**/*.yaml", "**/drift*", "**/metadata*", "**/__main__.py"]
+    iac_evidence: drift_tracking_settings on the datarobot.Deployment resource (Pulumi)
+    fix:
+      via: pulumi
+      requires: deployment
+      hint: "datarobot.Deployment: drift_tracking_settings { target_drift_enabled, feature_drift_enabled }."
+      fix_risk: plumbing
+
+  - mitigation_type: accuracy_tracking
+    title: Live accuracy monitoring
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's accuracy monitoring (tracks live prediction accuracy against ground truth)
+    remediation: Deploy through DataRobot and wire up accuracy tracking (requires an association ID and a ground-truth feed).
+    evidence: DataRobot deployment configuration enabling accuracy tracking (association IDs, ground-truth feed), or an equivalent
+      live-accuracy pipeline.
+    files_glob: ["**/infra/**", "**/*.yaml", "**/accuracy*", "**/metadata*", "**/__main__.py"]
+    iac_evidence: association_id_settings on the datarobot.Deployment resource (Pulumi)
+    fix:
+      via: pulumi
+      requires: deployment
+      hint: "datarobot.Deployment: association_id_settings { column_names, required_in_prediction_requests }, plus an actuals
+        feed at runtime."
+      fix_risk: plumbing
+
+  - mitigation_type: bias_and_fairness_tracking
+    title: Live bias and fairness monitoring
+    default_severity: high
+    structural: true
+    datarobot_feature: DataRobot's bias and fairness monitoring (tracks protected-feature fairness metrics over time on a
+      live deployment)
+    remediation: Deploy through DataRobot and configure bias/fairness tracking with the relevant protected features.
+    evidence: DataRobot deployment configuration enabling bias/fairness tracking with protected features, or an equivalent
+      live fairness-monitoring pipeline.
+    files_glob: ["**/infra/**", "**/*.yaml", "**/fairness*", "**/bias*", "**/metadata*", "**/__main__.py"]
+    iac_evidence: bias_and_fairness_settings with protected_features on the datarobot.Deployment resource (Pulumi)
+    fix:
+      via: pulumi
+      requires: deployment
+      hint: "datarobot.Deployment: bias_and_fairness_settings { protected_features, preferable_target_value, fairness_metric_set,
+        fairness_threshold }."
+      fix_risk: plumbing

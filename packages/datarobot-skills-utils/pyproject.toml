@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "datarobot-skills-utils"
+version = "1.8.0"
+description = "Shared runtime utilities for DataRobot agent skills: opencode server lifecycle, worker invocation, and event-stream parsing."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [{ name = "DataRobot" }]
+keywords = ["datarobot", "skills", "opencode"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+Repository = "https://github.com/datarobot-oss/datarobot-agent-skills"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datarobot_skills_utils"]
