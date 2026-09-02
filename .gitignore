@@ -54,3 +54,6 @@ eval_report.md
 evaluation_criteria.md
 .datarobot/swarm/
 
+# Dress rehearsal session cache (reports under rehearsal_report/ are shareable)
+.datarobot/rehearsal/
+

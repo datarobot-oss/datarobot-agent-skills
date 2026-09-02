@@ -87,3 +87,29 @@ python <skill_scripts_dir>/check_codespace.py
 ### rehearsal.py
 
 Dress rehearsal engine — see [dress-rehearsal.md](dress-rehearsal.md).
+
+```bash
+# Initialize (creates session under <target_dir>/.datarobot/rehearsal/<session_id>/)
+python <skill_scripts_dir>/rehearsal.py --init \
+  --spec <target_dir>/agent_spec.md \
+  --target-dir <target_dir>
+
+# Turn
+python <skill_scripts_dir>/rehearsal.py --session <session_dir> "user message"
+
+# Record a design note (also triggered by NOTE: during rehearsal)
+python <skill_scripts_dir>/rehearsal.py --session <session_dir> --note "observation"
+
+# Generate shareable report (default: <target_dir>/rehearsal_report/rehearsal_report.md)
+python <skill_scripts_dir>/rehearsal.py --report --session <session_dir>
+python <skill_scripts_dir>/rehearsal.py --done --session <session_dir>
+python <skill_scripts_dir>/rehearsal.py --session <session_dir> "DONE"
+python <skill_scripts_dir>/rehearsal.py --report --session <session_dir> --transcript full
+```
+
+Report output:
+
+- Latest: `<target_dir>/rehearsal_report/rehearsal_report.md`
+- Archive: `<target_dir>/.datarobot/rehearsal/<session_id>/rehearsal_report.md`
+
+The orchestrating agent appends `## Suggested Changes` (and optionally `## Spec Updates Applied`) after the script writes the base report.

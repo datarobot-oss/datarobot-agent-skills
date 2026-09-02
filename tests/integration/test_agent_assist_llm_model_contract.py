@@ -390,3 +390,56 @@ def test_rehearsal_keeps_the_provider_guard_on_a_prefixed_spec(
 
     assert substituted is True
     assert resolved.api_model == "anthropic/claude-sonnet-4-5-20250929"
+
+
+def test_model_was_substituted_false_for_exact_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_catalog = _model_catalog(monkeypatch, [_gateway_model()])
+
+    expected, _ = model_catalog.pick_available(CANONICAL)
+
+    assert rehearsal._model_was_substituted(model_catalog, CANONICAL, expected) is False
+
+
+def test_model_was_substituted_true_after_runtime_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anthropic = list_llm_models._map_gateway_catalog_entry(
+        {
+            "llmId": "anthropic-1p-claude-sonnet-4-5",
+            "model": "anthropic/claude-sonnet-4-5-20250929",
+            "name": "Claude Sonnet 4.5",
+            "provider": "Anthropic",
+            "isActive": True,
+        }
+    )
+    model_catalog = _model_catalog(monkeypatch, [_gateway_model(), anthropic])
+
+    expected, _ = model_catalog.pick_available(CANONICAL)
+    fallback, _ = model_catalog.pick_available(CANONICAL, exclude_id=expected.id)
+
+    assert rehearsal._model_was_substituted(model_catalog, CANONICAL, expected) is False
+    assert rehearsal._model_was_substituted(model_catalog, CANONICAL, fallback) is True
+
+
+def test_agent_model_was_substituted_uses_deployment_id_from_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    assert deployed is not None
+    model_catalog = _model_catalog(monkeypatch, [_gateway_model(), deployed])
+
+    config = {
+        "requested_model": "datarobot/datarobot-deployed-llm",
+        "requested_deployment_id": deployed["id"],
+    }
+    fallback, _ = model_catalog.pick_available(
+        deployed["id"],
+        prefer_source="deployed",
+        exclude_id=deployed["id"],
+    )
+
+    assert (
+        rehearsal._agent_model_was_substituted(model_catalog, config, fallback) is True
+    )

@@ -26,7 +26,7 @@ from pathlib import Path
 
 REPO_URL = "https://github.com/datarobot-community/datarobot-agent-application.git"
 BRANCH: str | None = None
-TAG: str | None = "11.10.7"
+TAG: str | None = "11.11.6"
 TEMPLATE_REPO_URL_ENV = "AGENT_ASSIST_TEMPLATE_REPO_URL"
 TEMPLATE_REPO_BRANCH_ENV = "AGENT_ASSIST_TEMPLATE_REPO_BRANCH"
 TEMPLATE_REPO_TAG_ENV = "AGENT_ASSIST_TEMPLATE_REPO_TAG"

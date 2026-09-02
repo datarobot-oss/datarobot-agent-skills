@@ -73,7 +73,8 @@ Ask:
 **Current directory chosen:**
 
 - Set `<target_dir>` = cwd.
-- If files other than `agent_spec.md` / `.env` are present, set `<design_messy_cwd>` = true and warn:
+- If paths other than design-phase artifacts are present, set `<design_messy_cwd>` = true and warn. **Allowed without triggering messy cwd:** `agent_spec.md`, `.env`, `.datarobot/rehearsal/` (dress-rehearsal session cache), and `rehearsal_report/rehearsal_report.md`. Any other file or directory (including `.datarobot/answers/`, source code, or unrelated folders) counts as messy.
+- If `<design_messy_cwd>` applies:
 
   > Other files are present. Design can continue here, but coding will require a clean workspace — likely a subdirectory. Files in this directory may be ignored for implementation.
 
