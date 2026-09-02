@@ -509,3 +509,23 @@ def test_repo_scope_findings_collapse_to_one(taxonomy: Taxonomy) -> None:
         "3 location(s): app/a.py:3, app/b.py:9, app/c.py."
     )
     assert findings[0].confidence == "high"
+
+
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ('DRAppCtx(api_key="first-user-api-key")', False),
+        ('token = "my-super-secret-token"', False),
+        ('password = "hunter2hunter2"', False),
+        ('API_KEY = "sk-live-9f8e7d6c5b4a39281706f5e4d3c2b1a0"', True),
+        ('api_key = "NDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkw"', True),
+        ('secret = "3f9a8c7b6d5e4f3a2b1c0d9e8f7a6b5c"', True),
+        ('token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef1234"', True),
+    ],
+)
+def test_generic_credential_rule_needs_a_credential_shaped_value(
+    line: str, flagged: bool
+) -> None:
+    hits = scanners._scan_text_for_secrets(line)
+
+    assert bool(hits) is flagged, hits
