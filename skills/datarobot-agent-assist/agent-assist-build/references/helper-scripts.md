@@ -75,7 +75,7 @@ python <skill_scripts_dir>/setup_template.py \
   --target-dir <target_dir>
 ```
 
-For `external`, the model name and base URL must match `AGENT_ASSIST_LLM_MODEL_NAME` and `AGENT_ASSIST_LLM_BASE_URL` exactly and the key comes from `AGENT_ASSIST_LLM_API_KEY`; for `litellm`, the base URL and key come from `DATAROBOT_LITELLM_BASE_URL` and `DATAROBOT_LITELLM_API_KEY`. Either way the script writes an OpenAI-compatible `.env` (`OPENAI_API_BASE`, `OPENAI_API_KEY`, an `openai/`-prefixed `LLM_DEFAULT_MODEL`, `USE_DATAROBOT_LLM_GATEWAY=0`, and a generated `SESSION_SECRET_KEY`), then stops for a local `task dev` instead of running `dr dotenv setup` or deploying.
+For `external`, the base URL and key come from `AGENT_ASSIST_LLM_BASE_URL` and `AGENT_ASSIST_LLM_API_KEY`; for `litellm`, from `DATAROBOT_LITELLM_BASE_URL` and `DATAROBOT_LITELLM_API_KEY`. The `--llm-model` value is written as the model name, so pass the `model.name` the listing recorded. Either way the script writes an OpenAI-compatible `.env` (`OPENAI_API_BASE`, `OPENAI_API_KEY`, an `openai/`-prefixed `LLM_DEFAULT_MODEL`, `USE_DATAROBOT_LLM_GATEWAY=0`, and a generated `SESSION_SECRET_KEY`), then stops for a local `task dev` instead of running `dr dotenv setup` or deploying.
 
 ### select_framework.py
 

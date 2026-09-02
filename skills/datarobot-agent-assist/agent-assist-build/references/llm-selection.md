@@ -22,9 +22,9 @@ Every deployment reports the same `llm_default_model`, the placeholder `datarobo
 
 ```yaml
 model:
-	name: "datarobot/datarobot-deployed-llm"
-	source: deployed
-	llm_deployment_id: "6a43eb5f10dbecadbebc5b2b"
+  name: "datarobot/datarobot-deployed-llm"
+  source: deployed
+  llm_deployment_id: "6a43eb5f10dbecadbebc5b2b"
 ```
 
 Take `model.llm_deployment_id` from the entry's `deployment_id`. Without it nothing downstream can tell which deployment was chosen: `setup_template.py` refuses the pair outright, and the dress rehearsal would have to guess.
@@ -37,12 +37,12 @@ An `external` entry appears only when `AGENT_ASSIST_LLM_MODEL_NAME`, `AGENT_ASSI
 
 ```yaml
 model:
-	name: "local-ollama"
-	source: external
-	llm_base_url: "http://localhost:4000/v1"
+  name: "local-ollama"
+  source: external
+  llm_base_url: "http://localhost:4000/v1"
 ```
 
-Both are required at setup: `setup_template.py` recognizes the choice as external only when `model.name` **and** `model.llm_base_url` match the environment exactly, otherwise it treats the value as a gateway model and fails. The API key is never written to the spec; it stays in the environment and the script reads it there. An external LLM cannot be combined with `model.llm_deployment_id`, and it is not wired into the dress rehearsal.
+The choice is external because `model.source` is `external`, which pre-coding passes as `--llm-source external`. The base URL and API key come from `AGENT_ASSIST_LLM_BASE_URL` and `AGENT_ASSIST_LLM_API_KEY`, not the spec, and `model.name` is written to `.env` with an `openai/` prefix. `model.llm_base_url` records which endpoint was chosen but is not read at setup. An external LLM cannot be combined with `model.llm_deployment_id`, and it is not wired into the dress rehearsal.
 
 ### Recording a litellm LLM in `agent_spec.md`
 
@@ -50,8 +50,8 @@ A `litellm` entry appears when `DATAROBOT_LITELLM_BASE_URL` and `DATAROBOT_LITEL
 
 ```yaml
 model:
-	name: "gpt-4o"
-	source: litellm
+  name: "gpt-4o"
+  source: litellm
 ```
 
 The base URL and key come from the `DATAROBOT_LITELLM_*` environment, not the spec, so no `model.llm_base_url` is needed. `setup_template.py` verifies the model against the `dr llm-gateway list` listing, writes the OpenAI-compatible `.env` (see the table below), and, like `external`, stops after `.env` for a local `task dev` rather than deploying.
