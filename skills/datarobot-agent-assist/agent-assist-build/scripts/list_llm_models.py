@@ -2,7 +2,7 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""List available LLM models from DataRobot (gateway catalog and deployed LLMs).
+"""List available LLM models from DataRobot (gateway, LiteLLM, and deployed LLMs).
 
 This script lists active models from the LLM Gateway catalog and DataRobot-deployed
 TextGeneration deployments. Designed for AI agents to discover available LLM models.
@@ -27,21 +27,21 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import TypedDict
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from env_utils import get_datarobot_credentials
 
 SOURCE_GATEWAY = "gateway"
+SOURCE_LITELLM = "litellm"
 SOURCE_DEPLOYED = "deployed"
 SOURCE_EXTERNAL = "external"
 DEPLOYED_LLM_MODEL = "datarobot-deployed-llm"
-TARGET_TYPE_TEXT_GENERATION = "TextGeneration"
 EXTERNAL_MODEL_NAME_ENV = "AGENT_ASSIST_LLM_MODEL_NAME"
 EXTERNAL_API_KEY_ENV = "AGENT_ASSIST_LLM_API_KEY"
 EXTERNAL_BASE_URL_ENV = "AGENT_ASSIST_LLM_BASE_URL"
 DISABLE_LLM_GATEWAY_ENV = "AGENT_ASSIST_DISABLE_LLM_GATEWAY"
 DISABLE_LLM_DEPLOYED_ENV = "AGENT_ASSIST_DISABLE_LLM_DEPLOYED"
+LITELLM_API_KEY_ENV = "DATAROBOT_LITELLM_API_KEY"
+LITELLM_BASE_URL_ENV = "DATAROBOT_LITELLM_BASE_URL"
 
 
 class LLMModel(TypedDict):
@@ -65,12 +65,12 @@ def normalize_gateway_model(model: str) -> str:
 
 
 def ensure_datarobot_prefix(model: str) -> str:
-    """Return the model in the ``datarobot/`` form ``LLM_DEFAULT_MODEL`` takes.
+    """Return a Gateway model in the ``datarobot/`` form ``.env`` takes.
 
     Inverse of normalize_gateway_model, kept beside it deliberately: the two forms
-    are not interchangeable. The prefix is litellm routing metadata and belongs only
-    in ``.env``; the gateway's own REST endpoint answers 404 for a prefixed model,
-    which is why rehearsal.py puts the bare ``api_model`` on the wire.
+    are not interchangeable. LiteLLM model values bypass both transformations.
+    The prefix belongs only in ``.env``; the Gateway endpoint expects the bare
+    ``api_model``, which is why rehearsal.py puts that form on the wire.
     """
     return model if model.startswith("datarobot/") else f"datarobot/{model}"
 
@@ -88,7 +88,8 @@ def is_deployed_llm_model(model: str) -> bool:
     spelling is a normal input rather than a malformed one. Matching exactly would
     let it past the guard in setup_template.py and into a late 'pulumi up' failure.
     """
-    return normalize_gateway_model(model.strip().lower()) == DEPLOYED_LLM_MODEL
+    value = model.strip().lower()
+    return value in {DEPLOYED_LLM_MODEL, f"datarobot/{DEPLOYED_LLM_MODEL}"}
 
 
 # A DataRobot deployment id is a 24-character lowercase hex object id. Asserting
@@ -139,57 +140,6 @@ def _filter_disabled_sources(models: list[LLMModel]) -> list[LLMModel]:
     return [model for model in models if model["source"] not in disabled_sources]
 
 
-def _map_gateway_catalog_entry(entry: dict[str, object]) -> LLMModel | None:
-    if not entry.get("isActive", False):
-        return None
-    model_field = str(entry.get("model") or "")
-    if not model_field:
-        return None
-    llm_id = str(entry.get("llmId") or model_field)
-    api_model = normalize_gateway_model(model_field)
-    name = str(entry.get("name") or api_model)
-    mapped: LLMModel = {
-        "id": llm_id,
-        "name": name,
-        "source": SOURCE_GATEWAY,
-        "provider": str(entry.get("provider") or "Unknown"),
-        "api_model": api_model,
-        "llm_default_model": ensure_datarobot_prefix(api_model),
-        "deployment_id": "",
-        "base_url": "",
-        "description": str(entry.get("description") or ""),
-        "context_size": _as_int(entry.get("contextSize")),
-    }
-    return mapped
-
-
-def _map_deployed_entry(entry: dict[str, object]) -> LLMModel | None:
-    model_info = entry.get("model")
-    if not isinstance(model_info, dict):
-        return None
-    if model_info.get("targetType") != TARGET_TYPE_TEXT_GENERATION:
-        return None
-    if str(entry.get("status") or "").lower() != "active":
-        return None
-    deployment_id = str(entry.get("id") or "")
-    if not deployment_id:
-        return None
-    label = str(entry.get("label") or deployment_id)
-    mapped: LLMModel = {
-        "id": deployment_id,
-        "name": label,
-        "source": SOURCE_DEPLOYED,
-        "provider": "",
-        "api_model": DEPLOYED_LLM_MODEL,
-        "llm_default_model": ensure_datarobot_prefix(DEPLOYED_LLM_MODEL),
-        "deployment_id": deployment_id,
-        "base_url": "",
-        "description": str(entry.get("description") or ""),
-        "context_size": 0,
-    }
-    return mapped
-
-
 def _external_model_from_environment() -> LLMModel | None:
     """Return the configured external model when its complete configuration exists."""
     model_name = os.environ.get(EXTERNAL_MODEL_NAME_ENV, "").strip()
@@ -212,20 +162,34 @@ def _external_model_from_environment() -> LLMModel | None:
     }
 
 
-def get_external_model_api_key(model_name: str, base_url: str) -> str | None:
-    """Return the external API key when the requested model and URL match config."""
-    external_model = _external_model_from_environment()
-    if (
-        external_model is None
-        or model_name.strip() != external_model["api_model"]
-        or base_url.strip() != external_model["base_url"]
-    ):
+def get_base_url_for_llm_source(source: str) -> str | None:
+    """Return the configured base URL for the selected source."""
+    environment_variable = {
+        SOURCE_EXTERNAL: EXTERNAL_BASE_URL_ENV,
+        SOURCE_LITELLM: LITELLM_BASE_URL_ENV,
+    }.get(source)
+    if environment_variable is None:
         return None
-    return os.environ[EXTERNAL_API_KEY_ENV].strip()
+    value = os.environ.get(environment_variable, "").strip()
+    return value or None
+
+
+def get_api_key_for_llm_source(source: str) -> str | None:
+    """Return the configured API key for the selected source."""
+    environment_variable = {
+        SOURCE_EXTERNAL: EXTERNAL_API_KEY_ENV,
+        SOURCE_LITELLM: LITELLM_API_KEY_ENV,
+    }.get(source)
+    if environment_variable is None or get_base_url_for_llm_source(source) is None:
+        return None
+    value = os.environ.get(environment_variable, "").strip()
+    return value or None
 
 
 def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
     source = str(entry.get("source") or SOURCE_GATEWAY)
+    if source not in {SOURCE_GATEWAY, SOURCE_LITELLM, SOURCE_DEPLOYED}:
+        return None
     deployment_id = str(entry.get("deployment_id") or "")
     model_id = str(entry.get("id") or "")
     name = str(entry.get("name") or model_id)
@@ -241,85 +205,32 @@ def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
         name = name or model_id
         api_model = DEPLOYED_LLM_MODEL
         provider = ""
-    else:
+        llm_default_model = ensure_datarobot_prefix(api_model)
+    elif source == SOURCE_GATEWAY:
         api_model = normalize_gateway_model(str(entry.get("model") or model_id))
         if not api_model:
             return None
         provider = str(entry.get("provider") or "Unknown")
+        llm_default_model = ensure_datarobot_prefix(api_model)
+    else:
+        api_model = str(entry.get("model") or model_id)
+        if not api_model:
+            return None
+        provider = str(entry.get("provider") or "Unknown")
+        llm_default_model = api_model
     mapped: LLMModel = {
         "id": model_id,
         "name": name,
         "source": source,
         "provider": provider,
         "api_model": api_model,
-        "llm_default_model": ensure_datarobot_prefix(api_model),
+        "llm_default_model": llm_default_model,
         "deployment_id": deployment_id,
         "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("context_size")),
     }
     return mapped
-
-
-def _fetch_json_paginated(
-    start_url: str, api_token: str, label: str
-) -> list[dict[str, object]]:
-    results: list[dict[str, object]] = []
-    url: str | None = start_url
-    while url:
-        request = Request(
-            url,
-            headers={"Authorization": f"Bearer {api_token}"},
-        )
-        try:
-            with urlopen(request, timeout=30) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError) as e:
-            raise RuntimeError(f"Failed to fetch {label}: {e}") from e
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse {label} response: {e}") from e
-
-        if isinstance(data, dict) and "data" in data:
-            page = data["data"]
-            next_url = data.get("next")
-        elif isinstance(data, list):
-            page = data
-            next_url = None
-        else:
-            raise RuntimeError(f"Unexpected {label} response format: {type(data)}")
-
-        if not isinstance(page, list):
-            raise RuntimeError(f"Unexpected {label} page format: {type(page)}")
-
-        results.extend(page)
-        url = str(next_url) if next_url else None
-    return results
-
-
-def _fetch_gateway_models_rest(endpoint: str, api_token: str) -> list[LLMModel]:
-    url = f"{endpoint.rstrip('/')}/genai/llmgw/catalog/?limit=100"
-    raw = _fetch_json_paginated(url, api_token, "LLM Gateway catalog")
-    models: list[LLMModel] = []
-    for entry in raw:
-        mapped = _map_gateway_catalog_entry(entry)
-        if mapped:
-            models.append(mapped)
-    return models
-
-
-def _fetch_deployed_models_rest(endpoint: str, api_token: str) -> list[LLMModel]:
-    base = endpoint.rstrip("/")
-    url = (
-        f"{base}/deployments/?championModelTargetType={TARGET_TYPE_TEXT_GENERATION}"
-        "&limit=100"
-    )
-    raw = _fetch_json_paginated(url, api_token, "deployed LLMs")
-    models: list[LLMModel] = []
-    for entry in raw:
-        mapped = _map_deployed_entry(entry)
-        if mapped:
-            models.append(mapped)
-    return models
 
 
 def _fetch_llm_models_via_cli(
@@ -386,12 +297,7 @@ def _fetch_llm_models_via_cli(
 
 
 def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMModel]:
-    """Fetch active LLMs from gateway catalog and deployed TextGeneration models.
-
-    Uses ``dr llm-gateway list`` when available; falls back to direct REST calls.
-    Each source is best-effort: warnings are logged to stderr when one source fails.
-    Sources can be excluded with the boolean AGENT_ASSIST_DISABLE_LLM_* flags.
-    """
+    """Fetch active LLMs using the ``dr llm-gateway list`` command."""
     external_model = _external_model_from_environment()
     if not endpoint or not api_token:
         if external_model:
@@ -404,52 +310,17 @@ def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMMod
         models, cli_warnings = _fetch_llm_models_via_cli(endpoint, api_token)
         warnings.extend(cli_warnings)
         models = _filter_disabled_sources(models)
-        if models:
-            if not _is_enabled_environment_flag(DISABLE_LLM_DEPLOYED_ENV) and not any(
-                m["source"] == SOURCE_DEPLOYED for m in models
-            ):
-                # `dr llm-gateway list` only reports deployments from v0.2.79, while
-                # the agent template still accepts 0.2.77. A non-empty gateway alone
-                # satisfies the branch above, so without this top-up a deployed LLM is
-                # invisible on a supported older CLI: the listing looks healthy and
-                # the deployed source silently does not exist.
-                try:
-                    models = models + _fetch_deployed_models_rest(endpoint, api_token)
-                except RuntimeError as e:
-                    warnings.append(f"could not list deployed LLMs: {e}")
-            for warning in warnings:
-                print(f"Warning: {warning}", file=sys.stderr)
-            return _filter_disabled_sources(
-                models + ([external_model] if external_model else [])
-            )
-        warnings.append("dr llm-gateway list returned no models")
+        for warning in warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
+        result = models + ([external_model] if external_model else [])
+        if result:
+            return result
+        raise RuntimeError("dr llm-gateway list returned no models")
     except RuntimeError as e:
-        warnings.append(str(e))
-
-    gateway_models: list[LLMModel] = []
-    deployed_models: list[LLMModel] = []
-
-    try:
-        gateway_models = _fetch_gateway_models_rest(endpoint, api_token)
-    except RuntimeError as e:
-        warnings.append(str(e))
-
-    try:
-        deployed_models = _fetch_deployed_models_rest(endpoint, api_token)
-    except RuntimeError as e:
-        warnings.append(str(e))
-
-    models = _filter_disabled_sources(gateway_models + deployed_models)
-    if external_model:
-        models.append(external_model)
-    if not models:
-        joined = "; ".join(warnings) if warnings else "no models available"
-        raise RuntimeError(f"Failed to list LLM models: {joined}")
-
-    for warning in warnings:
-        print(f"Warning: {warning}", file=sys.stderr)
-
-    return models
+        if external_model:
+            print(f"Warning: {e}", file=sys.stderr)
+            return [external_model]
+        raise RuntimeError(f"Failed to list LLM models: {e}") from e
 
 
 def _cell(value: str) -> str:

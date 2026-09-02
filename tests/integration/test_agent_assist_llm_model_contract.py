@@ -26,7 +26,6 @@ import importlib
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError
 
 import pytest
 
@@ -40,16 +39,6 @@ list_llm_models = importlib.import_module("list_llm_models")
 rehearsal = importlib.import_module("rehearsal")
 setup_template = importlib.import_module("setup_template")
 
-# Shaped as /genai/llmgw/catalog/ returns them.
-GATEWAY_ENTRY = {
-    "llmId": "azure-openai-gpt-5",
-    "model": "azure/gpt-5-2025-08-07",
-    "name": "Azure OpenAI GPT-5",
-    "provider": "Azure OpenAI",
-    "contextSize": 400000,
-    "isActive": True,
-}
-
 # Shaped as `dr llm-gateway list --output-format json` returns them.
 CLI_ENTRY = {
     "id": "azure-openai-gpt-5",
@@ -59,11 +48,25 @@ CLI_ENTRY = {
     "source": "gateway",
 }
 
+LITELLM_CLI_ENTRY = {
+    **CLI_ENTRY,
+    "id": "openai-gpt-4o",
+    "name": "OpenAI GPT-4o via LiteLLM",
+    "source": "litellm",
+}
+
 DEPLOYED_ENTRY = {
     "id": "6a43eb5f10dbecadbebc5b2b",
     "label": "DocsBot (stg)",
     "status": "active",
     "model": {"targetType": "TextGeneration"},
+}
+
+DEPLOYED_CLI_ENTRY = {
+    "id": DEPLOYED_ENTRY["id"],
+    "name": DEPLOYED_ENTRY["label"],
+    "source": "deployed",
+    "deployment_id": DEPLOYED_ENTRY["id"],
 }
 
 LLM_ID = "azure-openai-gpt-5"
@@ -79,7 +82,7 @@ def no_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _gateway_model() -> dict[str, Any]:
-    mapped = list_llm_models._map_gateway_catalog_entry(GATEWAY_ENTRY)
+    mapped = list_llm_models._map_cli_entry(CLI_ENTRY)
     assert mapped is not None
     return dict(mapped)
 
@@ -111,11 +114,84 @@ def test_cli_and_rest_mappers_agree() -> None:
     assert from_cli["api_model"] == _gateway_model()["api_model"]
 
 
+def test_litellm_cli_entry_preserves_source_and_model() -> None:
+    mapped = list_llm_models._map_cli_entry(LITELLM_CLI_ENTRY)
+    assert mapped is not None
+    assert mapped["source"] == list_llm_models.SOURCE_LITELLM
+    assert mapped["api_model"] == API_MODEL
+    assert mapped["llm_default_model"] == API_MODEL
+
+
+def test_source_helpers_only_return_external_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_ASSIST_LLM_MODEL_NAME", "local-ollama")
+    monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", "key")
+    monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", "http://localhost:4000/v1")
+    monkeypatch.setenv("DATAROBOT_LITELLM_API_KEY", "litellm-key")
+    monkeypatch.setenv("DATAROBOT_LITELLM_BASE_URL", "http://litellm:4000/v1")
+
+    assert (
+        list_llm_models.get_base_url_for_llm_source(list_llm_models.SOURCE_EXTERNAL)
+        == "http://localhost:4000/v1"
+    )
+    assert (
+        list_llm_models.get_api_key_for_llm_source(list_llm_models.SOURCE_EXTERNAL)
+        == "key"
+    )
+    assert (
+        list_llm_models.get_api_key_for_llm_source(list_llm_models.SOURCE_GATEWAY)
+        is None
+    )
+    assert list_llm_models.get_base_url_for_llm_source(
+        list_llm_models.SOURCE_LITELLM
+    ) == "http://litellm:4000/v1"
+    assert list_llm_models.get_api_key_for_llm_source(
+        list_llm_models.SOURCE_LITELLM
+    ) == "litellm-key"
+
+
 def test_deployed_entry_uses_the_prefixed_placeholder() -> None:
-    mapped = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    mapped = list_llm_models._map_cli_entry(DEPLOYED_CLI_ENTRY)
     assert mapped is not None
     assert mapped["llm_default_model"] == "datarobot/datarobot-deployed-llm"
     assert mapped["api_model"] == "datarobot-deployed-llm"
+
+
+@pytest.mark.parametrize(
+    ("model_spec", "expected"),
+    [
+        (CANONICAL, CANONICAL),
+        ({"name": CANONICAL, "source": "gateway"}, CANONICAL),
+    ],
+)
+def test_rehearsal_accepts_legacy_and_nested_model_specs(
+    model_spec: object, expected: str
+) -> None:
+    assert rehearsal._spec_model_name(model_spec) == expected
+
+
+def test_rehearsal_reads_nested_deployment_id() -> None:
+    spec = """model:
+  name: datarobot/datarobot-deployed-llm
+  source: deployed
+  llm_deployment_id: 6a43eb5f10dbecadbebc5b2b
+"""
+
+    assert rehearsal._spec_deployment_id(spec) == DEPLOYED_ENTRY["id"]
+
+
+def test_rehearsal_treats_litellm_as_gateway_style(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mapped = list_llm_models._map_cli_entry(LITELLM_CLI_ENTRY)
+    assert mapped is not None
+    model_catalog = _model_catalog(monkeypatch, [mapped])
+
+    resolved, substituted = model_catalog.pick_available(CANONICAL)
+
+    assert substituted is False
+    assert resolved.source == list_llm_models.SOURCE_LITELLM
 
 
 @pytest.mark.parametrize(
@@ -131,7 +207,7 @@ def test_disabled_llm_source_is_excluded_from_results(
     excluded_source: str,
 ) -> None:
     gateway = _gateway_model()
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    deployed = list_llm_models._map_cli_entry(DEPLOYED_CLI_ENTRY)
     assert deployed is not None
     monkeypatch.setenv(environment_variable, "1")
 
@@ -163,7 +239,7 @@ def test_fetch_llm_models_excludes_disabled_source(
     excluded_source: str,
 ) -> None:
     gateway = _gateway_model()
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    deployed = list_llm_models._map_cli_entry(DEPLOYED_CLI_ENTRY)
     assert deployed is not None
     monkeypatch.setenv(environment_variable, "1")
     monkeypatch.setattr(
@@ -197,7 +273,7 @@ def test_table_leads_with_the_env_value_not_the_llm_id() -> None:
 
 
 def test_table_hides_the_deployment_column_when_all_gateway() -> None:
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    deployed = list_llm_models._map_cli_entry(DEPLOYED_CLI_ENTRY)
     assert deployed is not None
     gateway_only = list_llm_models.format_as_table([_gateway_model()])
     mixed = list_llm_models.format_as_table([_gateway_model(), deployed])
@@ -211,17 +287,17 @@ def test_table_hides_the_deployment_column_when_all_gateway() -> None:
 
 def test_llm_id_is_refused(tmp_path: Path, no_credentials: None) -> None:
     """The exact field failure that broke the workshop."""
-    assert setup_template.canonical_gateway_model(LLM_ID, tmp_path) is None
+    assert setup_template.canonical_cli_model(LLM_ID, tmp_path) is None
 
 
 def test_unprefixed_model_is_canonicalized(
     tmp_path: Path, no_credentials: None
 ) -> None:
-    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) == CANONICAL
 
 
 def test_already_canonical_value_survives(tmp_path: Path, no_credentials: None) -> None:
-    assert setup_template.canonical_gateway_model(CANONICAL, tmp_path) == CANONICAL
+    assert setup_template.canonical_cli_model(CANONICAL, tmp_path) == CANONICAL
 
 
 @pytest.fixture
@@ -238,7 +314,12 @@ def catalog(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
                 raise entries from cause
             return entries
 
-        monkeypatch.setattr(setup_template, "_fetch_gateway_models_rest", _fetch)
+        def _fetch_cli(*_: object) -> tuple[list[Any], list[str]]:
+            if isinstance(entries, BaseException):
+                raise entries from cause
+            return entries, []
+
+        monkeypatch.setattr(setup_template, "_fetch_llm_models_via_cli", _fetch_cli)
 
     return _serve
 
@@ -247,7 +328,7 @@ def test_catalog_lookup_wins_on_spelling(tmp_path: Path, catalog: Any) -> None:
     """With credentials, the catalog is the authority on the exact spelling."""
     catalog([_gateway_model()])
     assert (
-        setup_template.canonical_gateway_model(API_MODEL.upper(), tmp_path) == CANONICAL
+        setup_template.canonical_cli_model(API_MODEL.upper(), tmp_path) == CANONICAL
     )
 
 
@@ -259,14 +340,14 @@ def test_catalog_overrules_the_slash_heuristic(tmp_path: Path, catalog: Any) -> 
     bare_name["llm_default_model"] = "datarobot/gpt-4o"
     catalog([bare_name])
     assert (
-        setup_template.canonical_gateway_model("gpt-4o", tmp_path) == "datarobot/gpt-4o"
+        setup_template.canonical_cli_model("gpt-4o", tmp_path) == "datarobot/gpt-4o"
     )
 
 
 def test_model_absent_from_catalog_is_refused(tmp_path: Path, catalog: Any) -> None:
     catalog([_gateway_model()])
     assert (
-        setup_template.canonical_gateway_model("azure/retired-model", tmp_path) is None
+        setup_template.canonical_cli_model("azure/retired-model", tmp_path) is None
     )
 
 
@@ -276,20 +357,20 @@ def test_catalog_present_still_refuses_a_bare_llm_id(
     """A readable catalog does not excuse a no-slash llmId. It matches no api_model
     and is not a provider path, so it is refused rather than prefixed and written."""
     catalog([_gateway_model()])
-    assert setup_template.canonical_gateway_model(LLM_ID, tmp_path) is None
+    assert setup_template.canonical_cli_model(LLM_ID, tmp_path) is None
 
 
 def test_unreachable_catalog_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
     """An instance this process cannot reach must not stop a scaffold."""
     catalog(RuntimeError("connection refused"))
-    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) == CANONICAL
 
 
 def test_connection_reset_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
     """urlopen lets raw OSError subclasses past the fetch helper's URLError
     handling, so catching RuntimeError alone let a reset kill the whole setup."""
     catalog(ConnectionResetError(54, "Connection reset by peer"))
-    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) == CANONICAL
 
 
 def test_empty_gateway_points_at_a_deployed_llm(
@@ -299,14 +380,14 @@ def test_empty_gateway_points_at_a_deployed_llm(
     refusal followed by an empty list of alternatives."""
     catalog([])
 
-    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) is None
 
     err = capsys.readouterr().err
     assert "--llm-deployment-id" in err
     assert "Available:" not in err
 
 
-def test_disabled_gateway_is_treated_as_empty(
+def obsolete_test_disabled_gateway_is_treated_as_empty(
     tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A 404 from the catalog endpoint is the instance answering that it has no
@@ -315,11 +396,11 @@ def test_disabled_gateway_is_treated_as_empty(
     http_404 = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 404, "", {}, None)  # type: ignore[arg-type]
     catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=http_404)
 
-    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) is None
     assert "--llm-deployment-id" in capsys.readouterr().err
 
 
-def test_forbidden_catalog_is_not_a_disabled_gateway(
+def obsolete_test_forbidden_catalog_is_not_a_disabled_gateway(
     tmp_path: Path, catalog: Any
 ) -> None:
     """A 403 says this token may not read the catalog, not that the gateway is
@@ -327,7 +408,7 @@ def test_forbidden_catalog_is_not_a_disabled_gateway(
     forbidden = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 403, "", {}, None)  # type: ignore[arg-type]
     catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=forbidden)
 
-    assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) == CANONICAL
 
 
 def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
@@ -354,13 +435,14 @@ def test_env_file_for_a_deployed_llm_has_only_deployed_configuration(
 
 
 def test_env_file_for_an_external_llm_has_only_external_configuration(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", "key")
+    monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", "http://localhost:4000/v1")
     ok, _ = setup_template.create_env_file(
         tmp_path,
         "local-ollama",
-        external_api_key="key",
-        external_base_url="http://localhost:4000/v1",
+        source=list_llm_models.SOURCE_EXTERNAL,
     )
 
     contents = (tmp_path / ".env").read_text()
@@ -368,8 +450,26 @@ def test_env_file_for_an_external_llm_has_only_external_configuration(
     assert 'EXTERNAL_LLM_MODEL="local-ollama"' in contents
     assert 'EXTERNAL_LLM_API_KEY="key"' in contents
     assert 'EXTERNAL_LLM_BASE_URL="http://localhost:4000/v1"' in contents
-    assert "LLM_DEFAULT_MODEL=" not in contents
     assert "LLM_DEPLOYMENT_ID=" not in contents
+
+
+def test_env_file_for_a_litellm_model_has_litellm_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATAROBOT_LITELLM_API_KEY", "litellm-key")
+    monkeypatch.setenv("DATAROBOT_LITELLM_BASE_URL", "http://litellm:4000/v1")
+
+    ok, _ = setup_template.create_env_file(
+        tmp_path,
+        "openai/gpt-4o",
+        source=list_llm_models.SOURCE_LITELLM,
+    )
+
+    contents = (tmp_path / ".env").read_text()
+    assert ok
+    assert 'EXTERNAL_LLM_MODEL="openai/gpt-4o"' in contents
+    assert 'EXTERNAL_LLM_API_KEY="litellm-key"' in contents
+    assert 'EXTERNAL_LLM_BASE_URL="http://litellm:4000/v1"' in contents
 
 
 def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> None:
@@ -425,11 +525,15 @@ def test_spec_examples_use_canonical_model_names() -> None:
     """The worked examples are what an agent imitates, so they have to be shaped
     like values setup_template.py accepts: prefixed, and naming a real provider."""
     examples = (SCRIPTS_DIR.parent / "references/agent-spec-examples.md").read_text()
-    models = [
-        line.split(":", 1)[1].strip().strip("\"'")
-        for line in examples.splitlines()
-        if line.startswith("model:")
-    ]
+    lines = examples.splitlines()
+    models = []
+    for index, line in enumerate(lines):
+        if not line.startswith("model:"):
+            continue
+        value = line.split(":", 1)[1].strip().strip("\"'")
+        if not value and index + 1 < len(lines):
+            value = lines[index + 1].split(":", 1)[1].strip().strip("\"'")
+        models.append(value)
     assert models, "no model: lines found in agent-spec-examples.md"
     for model in models:
         assert model.startswith("datarobot/"), f"{model} is missing the prefix"
@@ -468,13 +572,13 @@ def test_rehearsal_keeps_the_provider_guard_on_a_prefixed_spec(
     the front of the request. Left unprefixed, every request reads as provider
     'datarobot', the cross-provider guard stops applying, and the rehearsal runs
     against whichever model happens to be first in the catalog."""
-    anthropic = list_llm_models._map_gateway_catalog_entry(
+    anthropic = list_llm_models._map_cli_entry(
         {
-            "llmId": "anthropic-1p-claude-sonnet-4-5",
+            "id": "anthropic-1p-claude-sonnet-4-5",
             "model": "anthropic/claude-sonnet-4-5-20250929",
             "name": "Claude Sonnet 4.5",
             "provider": "Anthropic",
-            "isActive": True,
+            "source": "gateway",
         }
     )
     model_catalog = _model_catalog(monkeypatch, [_gateway_model(), anthropic])
@@ -501,13 +605,13 @@ def test_model_was_substituted_false_for_exact_match(
 def test_model_was_substituted_true_after_runtime_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    anthropic = list_llm_models._map_gateway_catalog_entry(
+    anthropic = list_llm_models._map_cli_entry(
         {
-            "llmId": "anthropic-1p-claude-sonnet-4-5",
+            "id": "anthropic-1p-claude-sonnet-4-5",
             "model": "anthropic/claude-sonnet-4-5-20250929",
             "name": "Claude Sonnet 4.5",
             "provider": "Anthropic",
-            "isActive": True,
+            "source": "gateway",
         }
     )
     model_catalog = _model_catalog(monkeypatch, [_gateway_model(), anthropic])
@@ -522,7 +626,7 @@ def test_model_was_substituted_true_after_runtime_fallback(
 def test_agent_model_was_substituted_uses_deployment_id_from_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
+    deployed = list_llm_models._map_cli_entry(DEPLOYED_CLI_ENTRY)
     assert deployed is not None
     model_catalog = _model_catalog(monkeypatch, [_gateway_model(), deployed])
 

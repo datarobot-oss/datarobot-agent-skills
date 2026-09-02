@@ -12,7 +12,7 @@ This script performs initial setup for a DataRobot agent application template by
 
 Usage:
     python setup_template.py --llm-model <model-name> [--llm-deployment-id <id>]
-                             [--llm-base-url <url>]
+                             [--llm-source <source>]
                              [--target-dir <directory>]
 
 The script generates cryptographically secure random secrets for session
@@ -28,14 +28,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from urllib.error import HTTPError
-
 from env_utils import read_env_variable
 from list_llm_models import (
     LLMModel,
-    _fetch_gateway_models_rest,
+    SOURCE_DEPLOYED,
+    SOURCE_EXTERNAL,
+    SOURCE_GATEWAY,
+    SOURCE_LITELLM,
+    _fetch_llm_models_via_cli,
     ensure_datarobot_prefix,
-    get_external_model_api_key,
+    get_api_key_for_llm_source,
+    get_base_url_for_llm_source,
     is_deployed_llm_model,
     is_deployment_id,
     normalize_gateway_model,
@@ -108,42 +111,26 @@ _NO_GATEWAY_ERROR = (
 MODEL_VALUE_RE = re.compile(r"[A-Za-z0-9._:@/-]+")
 
 
-def read_gateway_catalog(target_dir: Path) -> list[LLMModel] | None:
-    """The instance's gateway catalog, or None when it could not be read.
-
-    Goes straight to REST rather than through fetch_llm_models, which prefers the
-    `dr` CLI. The CLI honors passed credentials only once they verify and otherwise
-    falls back to its own stored profile, so it can answer about a different
-    instance than the project points at. Tolerable for a listing someone reads,
-    wrong for a gate that decides accept or abort.
-
-    An empty list and None mean different things: the instance answered and has no
-    gateway models, versus nothing could be learned about it.
-    """
+def read_cli_models(target_dir: Path) -> list[LLMModel] | None:
+    """Read the model listing through the supported DataRobot CLI."""
     endpoint, api_token = read_credentials(target_dir)
     if not endpoint or not api_token:
         print("Note: no DataRobot credentials found, so the model was not verified.")
         return None
     try:
-        return _fetch_gateway_models_rest(endpoint, api_token)
+        models, warnings = _fetch_llm_models_via_cli(endpoint, api_token)
+        for warning in warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
+        return models
     except (RuntimeError, OSError) as e:
-        # OSError as well as RuntimeError: urlopen lets raw ConnectionResetError and
-        # RemoteDisconnected past the URLError handling in the fetch helper, and an
-        # unreachable instance must not take the whole setup down with it.
-        cause = e.__cause__
-        if isinstance(cause, HTTPError) and cause.code == 404:
-            # The instance answered and said the catalog is not there. That is a
-            # disabled gateway, not a failure to reach it, so it gets the same
-            # answer as an empty catalog rather than an unverified pass. 403 is
-            # excluded on purpose: it means this token may not read the catalog,
-            # which says nothing about whether the gateway exists.
-            return []
         print(f"Note: could not verify the model against the catalog ({e}).")
         return None
 
 
-def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
-    """Resolve a gateway model choice to the value LLM_DEFAULT_MODEL takes.
+def canonical_cli_model(
+    value: str, target_dir: Path, source: str = SOURCE_GATEWAY
+) -> str | None:
+    """Resolve a CLI-listed model choice to the value used by the template.
 
     Returns None when the value cannot be a gateway model, having printed why.
 
@@ -152,23 +139,25 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
     which the gateway answers 404 for. That heuristic never overrules the catalog,
     which is free to carry a model whose name has no slash in it.
     """
-    bare = normalize_gateway_model(value.strip())
-    catalog = read_gateway_catalog(target_dir)
+    bare = (
+        normalize_gateway_model(value.strip())
+        if source == SOURCE_GATEWAY
+        else value.strip()
+    )
+    catalog = read_cli_models(target_dir)
 
     if catalog is None:
         if "/" not in bare:
             print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
             return None
-        return ensure_datarobot_prefix(bare)
+        return ensure_datarobot_prefix(bare) if source == SOURCE_GATEWAY else bare
 
     for model in catalog:
-        if model["api_model"].lower() == bare.lower():
+        if model["source"] == source and model["api_model"].lower() == bare.lower():
             return model["llm_default_model"]
 
     if not catalog:
-        # No gateway entry at all means the LLM Gateway is disabled or empty, the
-        # normal shape of an on-prem install. Listing the empty catalog back would
-        # say nothing; the way forward is a deployed LLM instead.
+        # No CLI entry for this source means the selected model cannot be verified.
         print(_NO_GATEWAY_ERROR.format(value=value), file=sys.stderr)
         return None
 
@@ -176,7 +165,9 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
         print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
         return None
 
-    available = "\n  ".join(sorted(m["llm_default_model"] for m in catalog))
+    available = "\n  ".join(
+        sorted(m["llm_default_model"] for m in catalog if m["source"] == source)
+    )
     print(
         f'Error: --llm-model "{value}" is not in this instance\'s LLM Gateway '
         f"catalog.\nAvailable:\n  {available}",
@@ -187,10 +178,9 @@ def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
 
 def create_env_file(
     target_dir: Path,
-    llm_default_model: str,
+    llm_model: str,
     llm_deployment_id: str = "",
-    external_api_key: str = "",
-    external_base_url: str = "",
+    source: str = SOURCE_GATEWAY,
 ) -> tuple[bool, str]:
     """
     Create .env file with the LLM configuration.
@@ -201,32 +191,40 @@ def create_env_file(
 
     Args:
         target_dir: Directory where .env file should be created
-        llm_default_model: Value for LLM_DEFAULT_MODEL
+        llm_model: Value for the configured LLM model
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
-        external_api_key: API key for an external LLM, if selected
-        external_base_url: Base URL for an external LLM, if selected
-
     Returns:
         Tuple of (success, message)
     """
     env_file = target_dir / ".env"
 
-    # Guard here rather than in canonical_gateway_model: this is where the value is
+    # Guard here rather than in canonical_cli_model: this is where the value is
     # interpolated, and it is the one point every path goes through, including the
     # deployed one where the model is only a label.
-    if not MODEL_VALUE_RE.fullmatch(llm_default_model):
+    if not MODEL_VALUE_RE.fullmatch(llm_model):
         error_msg = (
-            f'--llm-model "{llm_default_model}" has characters that cannot go in a '
+            f'--llm-model "{llm_model}" has characters that cannot go in a '
             ".env value. Expected letters, digits, and any of . _ : @ / -"
         )
         print(f"Error: {error_msg}", file=sys.stderr)
         return False, error_msg
 
-    if external_api_key:
+    if source in {SOURCE_EXTERNAL, SOURCE_LITELLM}:
         lines = [
-            f'EXTERNAL_LLM_MODEL="{llm_default_model}"\n',
-            f'EXTERNAL_LLM_API_KEY="{external_api_key}"\n',
-            f'EXTERNAL_LLM_BASE_URL="{external_base_url}"\n',
+            "DATAROBOT_ENDPOINT=\n",
+            "DATAROBOT_API_TOKEN=\n",
+            f'EXTERNAL_LLM_MODEL="{llm_model}"\n',
+            f'EXTERNAL_LLM_API_KEY="{get_api_key_for_llm_source(source) or ""}"\n',
+            f'EXTERNAL_LLM_BASE_URL="{get_base_url_for_llm_source(source) or ""}"\n',
+            'USE_DATAROBOT_LLM_GATEWAY="0"\n',
+        ]
+    elif source == SOURCE_LITELLM:
+        lines = [
+            "DATAROBOT_ENDPOINT=\n",
+            "DATAROBOT_API_TOKEN=\n",
+            f'LLM_DEFAULT_MODEL="{llm_model}"\n',
+            f'DATAROBOT_LITELLM_API_KEY="{get_api_key_for_llm_source(source) or ""}"\n',
+            f'DATAROBOT_LITELLM_BASE_URL="{get_base_url_for_llm_source(source) or ""}"\n',
             'USE_DATAROBOT_LLM_GATEWAY="0"\n',
         ]
     elif llm_deployment_id:
@@ -244,7 +242,7 @@ def create_env_file(
         lines = [
             "DATAROBOT_ENDPOINT=\n",
             "DATAROBOT_API_TOKEN=\n",
-            f'LLM_DEFAULT_MODEL="{llm_default_model}"\n',
+            f'LLM_DEFAULT_MODEL="{llm_model}"\n',
         ]
 
     try:
@@ -260,10 +258,10 @@ def create_env_file(
                 f"{llm_deployment_id} (INFRA_ENABLE_LLM={DEPLOYED_LLM_CONFIGURATION}, "
                 "USE_DATAROBOT_LLM_GATEWAY=0)"
             )
-        elif external_api_key:
-            print(f'✓ Created .env file for external LLM "{llm_default_model}"')
+        elif source in {SOURCE_EXTERNAL, SOURCE_LITELLM}:
+            print(f'✓ Created .env file for {source} LLM "{llm_model}"')
         else:
-            print(f'✓ Created .env file with LLM_DEFAULT_MODEL="{llm_default_model}"')
+            print(f'✓ Created .env file with LLM_DEFAULT_MODEL="{llm_model}"')
 
         return True, f"Created {env_file}"
 
@@ -419,19 +417,19 @@ def run_command(command: str, target_dir: Path, timeout: int = 300) -> tuple[boo
 
 
 def setup_and_run(
-    llm_default_model: str,
+    llm_model: str,
     target_dir: Path,
+    source: str = SOURCE_GATEWAY,
     llm_deployment_id: str = "",
-    llm_base_url: str = "",
 ) -> int:
     """
     Create .env file and run required setup commands.
 
     Args:
-        llm_default_model: Value for LLM_DEFAULT_MODEL in .env file
+        llm_model: Value for the configured LLM model
         target_dir: Target directory for operations
+        source: Model source from the CLI listing
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
-        llm_base_url: Base URL for an external LLM, if selected
 
     Returns:
         Exit code (0 for success, 1 for failure)
@@ -440,17 +438,11 @@ def setup_and_run(
     print("Setup and Run Script")
     print("=" * 80)
     print(f"Target directory: {target_dir}")
-    print(f"LLM model: {llm_default_model}")
+    print(f"LLM model: {llm_model}")
 
-    external_api_key = get_external_model_api_key(llm_default_model, llm_base_url)
-    is_external_model = external_api_key is not None
-
-    if llm_base_url and not is_external_model:
-        print(
-            "Error: --llm-base-url does not match the configured external LLM.",
-            file=sys.stderr,
-        )
-        return 1
+    configured_base_url = get_base_url_for_llm_source(source) or ""
+    external_api_key = get_api_key_for_llm_source(source)
+    is_external_model = source == SOURCE_EXTERNAL and external_api_key is not None
 
     if llm_deployment_id:
         if is_external_model:
@@ -485,7 +477,7 @@ def setup_and_run(
             )
             return 1
 
-        if not is_deployed_llm_model(llm_default_model):
+        if not is_deployed_llm_model(llm_model):
             # Allowed, not an error: the deployment routes by id and treats the model
             # string as a label the endpoint ignores. Do not promise the label
             # survives, though. 'dr dotenv setup' rebuilds .env from
@@ -493,20 +485,20 @@ def setup_and_run(
             # LLM_DEFAULT_MODEL, so it drops the key and the template falls back to
             # its own placeholder.
             print(
-                f'Note: the deployment routes by id, so "{llm_default_model}" acts '
+                f'Note: the deployment routes by id, so "{llm_model}" acts '
                 "only as a label and is not persisted by 'dr dotenv setup'."
             )
-    elif is_deployed_llm_model(llm_default_model):
+    elif is_deployed_llm_model(llm_model):
         # The likelier slip, since agent_spec.md always carries `model` while
-        # `llm_deployment_id` is the extra field that is easy to drop. Nothing
+        # `model.llm_deployment_id` is the extra field that is easy to drop. Nothing
         # downstream catches it: without the id the template stays on its gateway
         # config, whose verify_llm checks the model against the gateway catalog and
         # dies much later at 'pulumi up' with "Model 'datarobot-deployed-llm' not
         # found in catalog", which points nowhere near the missing id.
         print(
-            f'Error: --llm-model "{llm_default_model}" is the DataRobot-deployed-LLM '
+            f'Error: --llm-model "{llm_model}" is the DataRobot-deployed-LLM '
             "placeholder, which only resolves with a deployment. Pass "
-            "--llm-deployment-id from the spec's llm_deployment_id field, or pick an "
+            "--llm-deployment-id from the spec's model.llm_deployment_id field, or pick an "
             "LLM Gateway model instead.",
             file=sys.stderr,
         )
@@ -523,18 +515,17 @@ def setup_and_run(
     # taking with it the credentials the catalog check reads. The deployed path is
     # exempt, since there the model is only a label and 'dr dotenv setup' drops it.
     if not llm_deployment_id and not is_external_model:
-        canonical = canonical_gateway_model(llm_default_model, target_dir)
+        canonical = canonical_cli_model(llm_model, target_dir, source)
         if canonical is None:
             return 1
-        llm_default_model = canonical
+        llm_model = canonical
 
     # Step 1: Create .env file
     success, _ = create_env_file(
         target_dir,
-        llm_default_model,
+        llm_model,
         llm_deployment_id,
-        external_api_key or "",
-        llm_base_url if is_external_model else "",
+        source,
     )
     if not success:
         return 1
@@ -579,16 +570,17 @@ def main() -> int:
     )
 
     parser.add_argument(
-        "--llm-deployment-id",
-        default="",
-        help="Deployment id of a DataRobot-deployed LLM, from the spec's "
-        "llm_deployment_id field (omit for LLM Gateway models)",
+        "--llm-source",
+        choices=[SOURCE_GATEWAY, SOURCE_LITELLM, SOURCE_DEPLOYED, SOURCE_EXTERNAL],
+        default=SOURCE_GATEWAY,
+        help="Model source from the CLI listing (default: gateway)",
     )
 
     parser.add_argument(
-        "--llm-base-url",
+        "--llm-deployment-id",
         default="",
-        help="Base URL of the configured external LLM (omit for DataRobot models)",
+        help="Deployment id of a DataRobot-deployed LLM, from the spec's "
+        "model.llm_deployment_id field (omit for LLM Gateway models)",
     )
 
     parser.add_argument(
@@ -607,8 +599,8 @@ def main() -> int:
     return setup_and_run(
         args.llm_model,
         target_dir,
+        args.llm_source,
         args.llm_deployment_id.strip(),
-        args.llm_base_url.strip(),
     )
 
 

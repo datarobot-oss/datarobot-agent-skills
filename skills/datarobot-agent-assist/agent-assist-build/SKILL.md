@@ -53,7 +53,7 @@ Run in order before proceeding:
 
 1. **Git** — run `git --version`. If missing, tell the user to install from https://git-scm.com and stop.
 2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
-3. **DataRobot CLI** — run `dr --version` and `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
+3. **DataRobot CLI** — run `dr auth check`. If either fails, invoke the `datarobot-setup` skill before continuing. Do not print manual install instructions.
 4. **Codespace** — run `python <skill_scripts_dir>/check_codespace.py` (no-op outside a Codespace). On non-zero exit, relay its message and stop; otherwise relay any exposed-ports warning it prints.
 
 If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` immediately and retry the script — do not present options to the user. The scripts create `.env` automatically via `dr dotenv setup`; the only prerequisite is an authenticated CLI session.
@@ -84,7 +84,7 @@ If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` 
 
   **CRITICAL**: In case the script fails due to any reason, do **not** proceed. Instead, return the error message to the user and ask how they want to proceed.
 
-- Read and follow [llm-selection.md](references/llm-selection.md) to pick from the two sources (`gateway` and `deployed`) and to record the choice in `agent_spec.md`.
+- Read and follow [llm-selection.md](references/llm-selection.md) to pick from the available sources (`gateway`, `litellm`, `deployed`, and `external`) and to record the choice in `agent_spec.md`.
 - If the user's desired model is unavailable, suggest starting with an available one and updating after implementation.
 
 ### Spec Display
@@ -183,7 +183,7 @@ Append `## Suggested Changes` to `<target_dir>/rehearsal_report/rehearsal_report
 
 Verify `agent_spec.md` contains at minimum:
 
-- `model` — either the `llm_default_model` value of a `gateway` entry (not the `id` or `api_model`) or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
+- `model` — either a legacy string containing the `llm_default_model` value of a gateway entry (strings are treated as `source: gateway`) or an object with `name` and `source` (`gateway`, `litellm`, `deployed`, or `external`). A deployed object uses the `datarobot/datarobot-deployed-llm` placeholder and must include `llm_deployment_id`.
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
@@ -221,28 +221,21 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
    ```
 
    e. **Validate the template**: Run `dr dependency check`. On non-zero exit:
-      - If the error mentions "DataRobot CLI" version — run `dr self update --force`, then retry `dr dependency check` once. If it still fails, hard stop and return the output.
       - Any other error — hard stop and return the full output to the user.
-   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
+   f. **Setup the template**: Run the helper script. Set `<model-name>` to the legacy string `model` value or to `model.name` for an object. Set `<model-source>` to `gateway` for a legacy string or to `model.source` for an object, then pass it as `--llm-source`:
    ```
    python <skill_scripts_dir>/setup_template.py \
      --llm-model <model-name> \
+     --llm-source <model-source> \
      --target-dir .
    ```
 
-   If the spec also has `llm_deployment_id`, pass it — the model placeholder alone cannot route to a deployment, and the script stops if it is missing:
+   If the spec's model object has `source: deployed`, also pass its `llm_deployment_id` — the model placeholder alone cannot route to a deployment, and the script stops if it is missing:
    ```
    python <skill_scripts_dir>/setup_template.py \
      --llm-model <model-name> \
+     --llm-source deployed \
      --llm-deployment-id <deployment-id> \
-     --target-dir .
-   ```
-
-   If the spec has `llm_base_url` instead, the choice is an external LLM — pass it, or the `EXTERNAL_LLM_*` keys are not written and setup fails:
-   ```
-   python <skill_scripts_dir>/setup_template.py \
-     --llm-model <model-name> \
-     --llm-base-url <base-url> \
      --target-dir .
    ```
 
@@ -321,12 +314,13 @@ Sets up a template repository for initializing a new agent project.
 ```bash
 python <skill_scripts_dir>/setup_template.py \
   --llm-model <model-name> \
+  --llm-source <model-source> \
   --target-dir .
 ```
 
-Add `--llm-deployment-id <deployment-id>` for a DataRobot-deployed LLM, so the template routes to the deployment instead of the gateway.
+Add `--llm-source deployed` and `--llm-deployment-id <deployment-id>` for a DataRobot-deployed LLM, so the template routes to the deployment instead of the gateway.
 
-Add `--llm-base-url <base-url>` for an external OpenAI-compatible LLM (the `external` source), so the template writes the `EXTERNAL_LLM_*` keys and reads the key from `AGENT_ASSIST_LLM_API_KEY`.
+For an external model, pass `--llm-source external`; the template reads its configured base URL and API key from the environment and writes the `EXTERNAL_LLM_*` keys.
 
 ### select_framework.py
 
@@ -356,8 +350,9 @@ Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
 Write specs in YAML to `agent_spec.md` in the working directory. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
-llm_deployment_id: ""                       # required only for a DataRobot-deployed LLM
+model:
+  name: "datarobot/azure/gpt-5-2025-08-07" # the listing's llm_default_model, verbatim
+  source: gateway
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name

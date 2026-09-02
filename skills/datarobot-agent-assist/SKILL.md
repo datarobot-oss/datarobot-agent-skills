@@ -118,7 +118,6 @@ Otherwise, run in order before proceeding:
 2. **Python** — run `python --version`. If missing or below 3.11, tell the user to install Python 3.11+ from https://python.org and stop.
 3. **DataRobot CLI** — read and follow [agent-assist-build/references/dr-cli-setup.md](agent-assist-build/references/dr-cli-setup.md):
    - If missing, **ALWAYS RUN** the install command before proceeding
-   - **ALWAYS RUN** the upgrade command before proceeding
    - If not authenticated, **ALWAYS RUN** the auth command before proceeding
 4. **Codespace** — run `python <skill_scripts_dir>/check_codespace.py` (no-op outside a Codespace). On non-zero exit, relay its message and stop; otherwise relay any exposed-ports warning it prints.
 

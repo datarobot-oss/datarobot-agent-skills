@@ -27,7 +27,7 @@ python <skill_scripts_dir>/clone_template.py \
 
 ### list_llm_models.py
 
-Lists the LLMs available to the project, from three sources: the LLM Gateway catalog (`source: gateway`), existing DataRobot text-generation deployments (`source: deployed`), and an external OpenAI-compatible model configured through the `AGENT_ASSIST_LLM_*` environment (`source: external`). Gateway and deployed come from `dr llm-gateway list`, with a direct REST call as fallback; the external entry is added from the environment.
+Lists the LLMs available to the project, from four sources: the LLM Gateway catalog (`source: gateway`), LiteLLM models (`source: litellm`), existing DataRobot text-generation deployments (`source: deployed`), and an external OpenAI-compatible model configured through the `AGENT_ASSIST_LLM_*` environment (`source: external`). Gateway, LiteLLM, and deployed entries come from `dr llm-gateway list`; the external entry is added from the environment.
 
 ```bash
 python <skill_scripts_dir>/list_llm_models.py \
@@ -48,14 +48,16 @@ Sets up a template repository for initializing a new agent project:
 ```bash
 python <skill_scripts_dir>/setup_template.py \
   --llm-model <model-name> \
+  --llm-source <model-source> \
   --target-dir <target_dir>
 ```
 
-For a DataRobot-deployed LLM, pass the spec's `llm_deployment_id` as well:
+For a DataRobot-deployed LLM, pass the model object's `llm_deployment_id` as well:
 
 ```bash
 python <skill_scripts_dir>/setup_template.py \
   --llm-model <model-name> \
+  --llm-source deployed \
   --llm-deployment-id <deployment-id> \
   --target-dir <target_dir>
 ```
@@ -64,16 +66,16 @@ That writes `LLM_DEPLOYMENT_ID`, `INFRA_ENABLE_LLM=deployed_llm.py`, and `USE_DA
 
 On the deployed path the deployment id is the only thing that selects the model. `dr dotenv setup` rebuilds `.env` from the template's `.datarobot/cli/llm.yml`, whose deployed-LLM group does not include `LLM_DEFAULT_MODEL`, so that key is dropped and the template falls back to its own `datarobot/datarobot-deployed-llm` placeholder. Routing is unaffected; a real model name passed as `--llm-model` alongside an id does not survive.
 
-For an external OpenAI-compatible LLM (the `external` source), pass the spec's `llm_base_url`:
+For an external OpenAI-compatible LLM, use the generic command with `--llm-source external`; the script reads the configured base URL from the environment:
 
 ```bash
 python <skill_scripts_dir>/setup_template.py \
   --llm-model <model-name> \
-  --llm-base-url <base-url> \
+  --llm-source external \
   --target-dir <target_dir>
 ```
 
-The model name and base URL must match `AGENT_ASSIST_LLM_MODEL_NAME` and `AGENT_ASSIST_LLM_BASE_URL` exactly; the script reads the key from `AGENT_ASSIST_LLM_API_KEY` and writes `EXTERNAL_LLM_MODEL`, `EXTERNAL_LLM_API_KEY`, and `EXTERNAL_LLM_BASE_URL` into `.env`. If `--llm-base-url` is omitted or does not match, the value is treated as a gateway model and setup fails. Cannot be combined with `--llm-deployment-id`.
+The model name and base URL must match `AGENT_ASSIST_LLM_MODEL_NAME` and `AGENT_ASSIST_LLM_BASE_URL` exactly; the script reads the key from `AGENT_ASSIST_LLM_API_KEY` and writes `EXTERNAL_LLM_MODEL`, `EXTERNAL_LLM_API_KEY`, and `EXTERNAL_LLM_BASE_URL` into `.env`.
 
 ### select_framework.py
 

@@ -3,9 +3,13 @@
 Write specs in YAML to `<target_dir>/agent_spec.md`. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
-llm_deployment_id: ""                       # required only for a DataRobot-deployed LLM
-llm_base_url: ""                            # required only for an external LLM
+model:
+  name: "datarobot/azure/gpt-5-2025-08-07" # the listing's llm_default_model, verbatim
+  source: gateway                            # gateway | litellm | deployed | external
+  llm_deployment_id: ""                     # only for a deployed model
+  llm_base_url: ""                           # only for an external model
+# Backward-compatible shorthand for a gateway model:
+# model: "datarobot/azure/gpt-5-2025-08-07"
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name
@@ -29,9 +33,9 @@ frontend:
   requirements: "(optional additional UI requirements)"
 ```
 
-`llm_deployment_id` selects an existing DataRobot text-generation deployment instead of an LLM Gateway model. Set it only when `model` is the `datarobot-deployed-llm` placeholder, which every deployment shares — the id is what identifies which one. Both fields are needed: pre-coding passes them to `setup_template.py` together, and the dress rehearsal resolves the deployment from the id.
+`model` may be a string for backward compatibility. A string is always treated as a gateway model. The preferred form is an object: `model.name` selects the model name from the listing, and `model.source` identifies whether it comes from the LLM Gateway, LiteLLM, a deployed model, or an external LLM. For a deployed model, `model.name` is the `datarobot/datarobot-deployed-llm` placeholder, which every deployment shares — `model.llm_deployment_id` identifies which one. Both fields are needed: pre-coding passes them to `setup_template.py` together, and the dress rehearsal resolves the deployment from the id.
 
-`llm_base_url` selects an external OpenAI-compatible LLM (the `external` source in the model listing), for an instance with no LLM Gateway. Set it only when `model` is that entry's model name; pre-coding passes both to `setup_template.py`, which reads the API key from `AGENT_ASSIST_LLM_API_KEY` and writes the `EXTERNAL_LLM_*` keys. Mutually exclusive with `llm_deployment_id`.
+`model.llm_base_url` identifies an external OpenAI-compatible LLM (the `external` source in the model listing), for an instance with no LLM Gateway. Set it only when `model.source` is `external`; pre-coding passes `model.name` and `model.source` to `setup_template.py`, which reads the configured URL and API key from the environment and writes the `EXTERNAL_LLM_*` keys. `model.llm_deployment_id` and `model.llm_base_url` are mutually exclusive.
 
 When tools require external service auth, note that credentials must be configured as **runtime parameters** in the infrastructure code (see `AGENTS.md` for the pattern).
 
