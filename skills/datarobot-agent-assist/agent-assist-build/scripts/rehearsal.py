@@ -202,7 +202,10 @@ def _spec_model_name(model_spec: object) -> str:
     if isinstance(model_spec, str):
         return model_spec.strip()
     if isinstance(model_spec, dict):
-        return str(model_spec["name"]).strip()
+        name = model_spec.get("name")
+        if name is None:
+            raise ValueError("model object must have a name")
+        return str(name).strip()
     raise ValueError("model must be a string or an object with a name")
 
 
