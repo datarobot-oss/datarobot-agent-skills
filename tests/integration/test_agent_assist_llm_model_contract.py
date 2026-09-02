@@ -189,6 +189,15 @@ def test_rehearsal_reads_nested_deployment_id() -> None:
     assert rehearsal._spec_deployment_id(spec) == DEPLOYED_ENTRY["id"]
 
 
+def test_rehearsal_reads_deployment_id_from_a_legacy_string_model_spec() -> None:
+    # The id lives in the spec text, so it survives a `model` the extractor returned
+    # as a name-only string instead of the object form.
+    spec = """model: datarobot/datarobot-deployed-llm
+llm_deployment_id: 6a43eb5f10dbecadbebc5b2b
+"""
+    assert rehearsal._spec_deployment_id(spec) == DEPLOYED_ENTRY["id"]
+
+
 def test_rehearsal_treats_litellm_as_gateway_style(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -417,6 +426,20 @@ def test_empty_gateway_points_at_a_deployed_llm(
     assert "Available:" not in err
 
 
+def test_gateway_model_on_a_deployed_only_catalog_points_at_a_deployment(
+    tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Deployed entries alongside no gateway entries is still a disabled gateway; the
+    # unified listing must not hide the pointer to --llm-deployment-id.
+    deployed = list_llm_models._map_cli_entry(DEPLOYED_CLI_ENTRY)
+    assert deployed is not None
+    catalog([dict(deployed)])
+    assert setup_template.canonical_cli_model(API_MODEL, tmp_path) is None
+    err = capsys.readouterr().err
+    assert "--llm-deployment-id" in err
+    assert "Available:" not in err
+
+
 def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
     ok, _ = setup_template.create_env_file(tmp_path, CANONICAL)
     assert ok
@@ -499,6 +522,18 @@ def test_env_file_rejects_dangerous_external_credentials(
 ) -> None:
     monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", 'ke"y')
     monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", "http://localhost:4000/v1")
+    ok, _ = setup_template.create_env_file(
+        tmp_path, "local-ollama", source=list_llm_models.SOURCE_EXTERNAL
+    )
+    assert not ok
+    assert not (tmp_path / ".env").exists()
+
+
+def test_env_file_refuses_missing_external_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AGENT_ASSIST_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("AGENT_ASSIST_LLM_API_KEY", raising=False)
     ok, _ = setup_template.create_env_file(
         tmp_path, "local-ollama", source=list_llm_models.SOURCE_EXTERNAL
     )
