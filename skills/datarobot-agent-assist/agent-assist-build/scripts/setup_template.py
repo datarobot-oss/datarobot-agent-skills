@@ -137,14 +137,11 @@ def read_cli_models(target_dir: Path) -> list[LLMModel] | None:
 def canonical_cli_model(
     value: str, target_dir: Path, source: str = SOURCE_GATEWAY
 ) -> str | None:
-    """Resolve a CLI-listed model choice to the value used by the template.
+    """Resolve a CLI-listed model choice to the value the template writes.
 
-    Returns None when the value cannot be a gateway model, having printed why.
-
-    The catalog decides. Where it cannot be read, fall back to shape: a catalog
-    model is a ``provider/model`` path, so a value with no slash is a catalog llmId,
-    which the gateway answers 404 for. That heuristic never overrules the catalog,
-    which is free to carry a model whose name has no slash in it.
+    The catalog decides. When it cannot be read, the slash heuristic (slashless =
+    an llmId the gateway 404s) applies only to gateway; litellm/external take a bare
+    name as-is. Returns None on a value that cannot be used, having printed why.
     """
     bare = (
         normalize_gateway_model(value.strip())
@@ -154,7 +151,9 @@ def canonical_cli_model(
     catalog = read_cli_models(target_dir)
 
     if catalog is None:
-        if "/" not in bare:
+        # The llmId shape heuristic is gateway-only: a bare name is normal for
+        # litellm/external, so accept it unverified rather than refuse it.
+        if source == SOURCE_GATEWAY and "/" not in bare:
             print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
             return None
         return ensure_datarobot_prefix(bare) if source == SOURCE_GATEWAY else bare
@@ -163,21 +162,23 @@ def canonical_cli_model(
         if model["source"] == source and model["api_model"].lower() == bare.lower():
             return model["llm_default_model"]
 
-    if not catalog:
-        # No CLI entry for this source means the selected model cannot be verified.
-        print(_NO_GATEWAY_ERROR.format(value=value), file=sys.stderr)
-        return None
-
-    if "/" not in bare:
-        print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
-        return None
+    if source == SOURCE_GATEWAY:
+        if not catalog:
+            print(_NO_GATEWAY_ERROR.format(value=value), file=sys.stderr)
+            return None
+        if "/" not in bare:
+            print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
+            return None
 
     available = "\n  ".join(
         sorted(m["llm_default_model"] for m in catalog if m["source"] == source)
     )
+    source_label = (
+        "LLM Gateway catalog" if source == SOURCE_GATEWAY else f"{source} listing"
+    )
+    hint = f"\nAvailable:\n  {available}" if available else ""
     print(
-        f'Error: --llm-model "{value}" is not in this instance\'s LLM Gateway '
-        f"catalog.\nAvailable:\n  {available}",
+        f'Error: --llm-model "{value}" is not in this instance\'s {source_label}.{hint}',
         file=sys.stderr,
     )
     return None
