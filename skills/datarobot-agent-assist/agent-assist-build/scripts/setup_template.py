@@ -189,17 +189,17 @@ def create_env_file(
     llm_deployment_id: str = "",
     source: str = SOURCE_GATEWAY,
 ) -> tuple[bool, str]:
-    """
-    Create .env file with the LLM configuration.
+    """Create .env file with the LLM configuration.
 
-    A deployment id switches the template off its default LLM Gateway routing and
-    onto an existing DataRobot text-generation deployment, which takes two extra
-    keys beyond the model name.
+    A deployment id routes to a DataRobot text-generation deployment; an external
+    or litellm source writes the OpenAI-compatible keys (see the source branch).
 
     Args:
         target_dir: Directory where .env file should be created
         llm_model: Value for the configured LLM model
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
+        source: Model source (gateway, litellm, deployed, or external)
+
     Returns:
         Tuple of (success, message)
     """
