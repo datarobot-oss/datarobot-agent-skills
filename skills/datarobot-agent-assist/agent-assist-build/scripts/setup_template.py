@@ -163,7 +163,9 @@ def canonical_cli_model(
             return model["llm_default_model"]
 
     if source == SOURCE_GATEWAY:
-        if not catalog:
+        # No gateway entries, even alongside deployed/litellm ones, is a disabled
+        # gateway: point at a deployed LLM rather than "not in catalog".
+        if not any(model["source"] == SOURCE_GATEWAY for model in catalog):
             print(_NO_GATEWAY_ERROR.format(value=value), file=sys.stderr)
             return None
         if "/" not in bare:
@@ -220,6 +222,13 @@ def create_env_file(
     if source in {SOURCE_EXTERNAL, SOURCE_LITELLM}:
         external_api_key = get_api_key_for_llm_source(source) or ""
         external_base_url = get_base_url_for_llm_source(source) or ""
+        if not external_base_url or not external_api_key:
+            error_msg = (
+                f"{source} LLM needs a base URL and API key in the environment; "
+                "one or both are missing."
+            )
+            print(f"Error: {error_msg}", file=sys.stderr)
+            return False, error_msg
         # Same interpolation risk for the external creds: a quote, backslash, '$' or
         # backtick would end the double-quoted .env line early and spill into new keys.
         if any(c in external_base_url + external_api_key for c in '"\\$`\n\r'):
