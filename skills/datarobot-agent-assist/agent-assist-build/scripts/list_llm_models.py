@@ -366,7 +366,7 @@ def _fetch_llm_models_via_cli(
     return models, warnings
 
 
-def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
+def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMModel]:
     """Fetch active LLMs from gateway catalog and deployed TextGeneration models.
 
     Uses ``dr llm-gateway list`` when available; falls back to direct REST calls.
