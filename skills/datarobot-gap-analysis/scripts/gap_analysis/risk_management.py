@@ -49,6 +49,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -65,7 +66,8 @@ from .llm import LLMClient, brief_error, parse_json
 from .models import Finding, Severity
 
 EU_AI_ACT_POLICY_NAME = "EU AI Act"
-_TIMEOUT_SECONDS = 15
+_TIMEOUT_SECONDS = 30
+_RETRY_DELAY_SECONDS = 2
 _MAX_FILES = 12  # cap files fed per mitigation, mirrors Layer 2's cap
 _PROMPT_FILE = "prompts/risk-management-mitigation.md"
 _DEFAULT_MAX_WORKERS = 4
@@ -78,9 +80,14 @@ class RiskManagementClient:
     def __init__(self, endpoint: str, token: str):
         self.endpoint = endpoint.rstrip("/")
         self.token = token
+        self.last_error: str | None = None
 
     def get(self, path: str) -> Any | None:
-        """GET a relative path under the risk-management API. None on any failure."""
+        """GET a relative path under the risk-management API.
+
+        None on any failure, with the reason kept in `last_error`. Timeouts
+        and 5xx responses are retried once; anything else is final.
+        """
         url = f"{self.endpoint}/{path.lstrip('/')}"
         req = urllib.request.Request(
             url,
@@ -89,11 +96,26 @@ class RiskManagementClient:
                 "Accept": "application/json",
             },
         )
-        try:
-            with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
-            return None
+        self.last_error = None
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                self.last_error = f"HTTP {e.code} {e.reason} from {url}"
+                if e.code < 500:
+                    return None
+            except (TimeoutError, socket.timeout):
+                self.last_error = f"timed out after {_TIMEOUT_SECONDS}s: {url}"
+            except urllib.error.URLError as e:
+                self.last_error = f"{e.reason} ({url})"
+                return None
+            except (ValueError, OSError) as e:
+                self.last_error = f"{brief_error(e)} ({url})"
+                return None
+            if attempt == 0:
+                time.sleep(_RETRY_DELAY_SECONDS)
+        return None
 
 
 def _drconfig_credentials() -> tuple[str | None, str | None]:
@@ -149,11 +171,13 @@ def fetch_policy_by_name(
     preferred over the built-in of the same name: the API prepends built-ins,
     so first-match would deterministically shadow an org's customized copy
     with the stock default. `note`, when set, explains the disambiguation for
-    the report's Engine Notes.
+    the report's Engine Notes, or, when no policy is returned, why: the
+    request failed (reason from the client) or the name matched none of the
+    policies the API listed.
     """
     data = client.get("riskPolicies/")
     if data is None:
-        return None, None
+        return None, f"request failed: {client.last_error or 'no response'}"
     policies = _as_list(data)
 
     for policy in policies:
@@ -162,7 +186,11 @@ def fetch_policy_by_name(
 
     matches = [p for p in policies if p.get("name") == name]
     if not matches:
-        return None, None
+        names = ", ".join(repr(p.get("name")) for p in policies) or "none"
+        return None, (
+            f"the API returned {len(policies)} policy(ies): {names}. Set "
+            "regulatory.policy_name to one of them, or to a policy id."
+        )
     tenant_owned = [p for p in matches if p.get("tenantId")]
     if not tenant_owned:
         return matches[0], None
@@ -523,9 +551,9 @@ def run_dynamic_layer4(
     policy, name_note = fetch_policy_by_name(client, policy_name)
     if policy is None:
         notes.append(
-            f"Layer 4 (DataRobot risk-management) skipped, no policy named "
-            f"'{policy_name}' was reachable (the feature may not be enabled "
-            "for this org)."
+            f"Layer 4 (DataRobot risk-management) skipped, policy "
+            f"'{policy_name}' could not be loaded from {client.endpoint}: "
+            f"{name_note or 'unknown reason'}"
         )
         return [], [], notes, {}
     if name_note:
