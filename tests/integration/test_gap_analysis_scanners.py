@@ -786,3 +786,63 @@ def test_leaked_key_never_exposes_the_secret() -> None:
     assert leaked_key({"Match": "token=abc123xyz", "Secret": "abc123xyz"}) == "token"
     assert leaked_key({"Match": "AKIAIOSFODNN7EXAMPLE"}) is None
     assert leaked_key({}) is None
+
+
+def test_policy_fetch_failure_reports_the_http_reason(monkeypatch):
+    import urllib.error
+
+    from gap_analysis import risk_management as rm
+
+    def boom(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
+
+    monkeypatch.setattr(rm.urllib.request, "urlopen", boom)
+    client = rm.RiskManagementClient("https://x.example/api/v2", "t")
+    policy, note = rm.fetch_policy_by_name(client, "EU AI Act")
+    assert policy is None
+    assert "HTTP 401 Unauthorized" in note
+    assert "riskPolicies" in note
+
+
+def test_policy_fetch_retries_once_on_timeout(monkeypatch):
+    import io
+
+    from gap_analysis import risk_management as rm
+
+    calls = []
+
+    class _Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError()
+        return _Resp(b'{"data": [{"id": "1", "name": "EU AI Act"}]}')
+
+    monkeypatch.setattr(rm.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(rm.time, "sleep", lambda s: None)
+    client = rm.RiskManagementClient("https://x.example/api/v2", "t")
+    policy, note = rm.fetch_policy_by_name(client, "EU AI Act")
+    assert len(calls) == 2
+    assert policy["name"] == "EU AI Act"
+    assert note is None
+
+
+def test_policy_name_mismatch_lists_available_policies(monkeypatch):
+    from gap_analysis import risk_management as rm
+
+    monkeypatch.setattr(
+        rm.RiskManagementClient,
+        "get",
+        lambda self, path: {"data": [{"id": "1", "name": "Custom framework"}]},
+    )
+    client = rm.RiskManagementClient("https://x.example/api/v2", "t")
+    policy, note = rm.fetch_policy_by_name(client, "EU AI Act")
+    assert policy is None
+    assert "'Custom framework'" in note
+    assert "regulatory.policy_name" in note
