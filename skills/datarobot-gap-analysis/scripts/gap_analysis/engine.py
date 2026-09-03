@@ -67,7 +67,7 @@ def analyze(
     def _lane_layer1():
         started = time.monotonic()
         _tick("▶ Layer 1 (scanners): secrets, dependencies, SAST, tests/CI…")
-        f1, n1 = run_layer1(workspace, taxonomy, exclude, progress=_tick)
+        f1, n1 = run_layer1(workspace, taxonomy, exclude, progress=_tick, policy=policy)
         _phase("Layer 1 (scanners)", started, f"{len(f1)} finding(s)")
         return f1, n1
 

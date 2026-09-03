@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 SCRIPTS = (
     Path(__file__).resolve().parents[2]
@@ -17,9 +18,41 @@ SCRIPTS = (
 sys.path.insert(0, str(SCRIPTS))
 
 from gap_analysis import scanners  # noqa: E402
+from gap_analysis.detect import _result_to_findings, layer2_files  # noqa: E402
+from gap_analysis.docs import parse_llms_txt, resolve_docs  # noqa: E402
 from gap_analysis.engine import _dedup  # noqa: E402
-from gap_analysis.inventory import glob_match, iter_base_images  # noqa: E402
-from gap_analysis.models import Finding, Severity  # noqa: E402
+from gap_analysis.inventory import (  # noqa: E402
+    build_inventory,
+    detect_agent_frameworks,
+    detect_python_version,
+    detect_python_versions,
+    detect_template_sources,
+    evidence_files,
+    extract_dependencies,
+    glob_match,
+    iter_base_images,
+)
+from gap_analysis.llm import brief_error, parse_json  # noqa: E402
+from gap_analysis.models import AnalysisResult, Finding, Severity  # noqa: E402
+from gap_analysis.posture import migration_advice  # noqa: E402
+from gap_analysis.remediate import (  # noqa: E402
+    _locked_version,
+    _uv_error_line,
+    fix_version_from,
+    pin_in_pyproject,
+    remediate,
+)
+from gap_analysis.report import compliance_path, python_label, render_report  # noqa: E402
+from gap_analysis.risk_management import (  # noqa: E402
+    _detect_iac,
+    _finding_for_mitigation,
+)
+from gap_analysis.scanners import (  # noqa: E402
+    gitleaks_findings,
+    hadolint_findings,
+    leaked_key,
+    trivy_findings,
+)
 from gap_analysis.taxonomy import Taxonomy  # noqa: E402
 
 
@@ -206,8 +239,6 @@ def test_dedup_keeps_distinct_file_level_findings() -> None:
 
 
 def test_evidence_files_prefer_source_over_config_and_skip_locks() -> None:
-    from gap_analysis.inventory import evidence_files
-
     inventory = {
         "files": [
             "infra/uv.lock",
@@ -234,9 +265,6 @@ def test_evidence_files_prefer_source_over_config_and_skip_locks() -> None:
 
 
 def test_detect_iac_finds_infra_program_behind_a_large_app_tree(tmp_path: Path) -> None:
-    from gap_analysis.inventory import build_inventory
-    from gap_analysis.risk_management import _detect_iac
-
     for i in range(250):
         _write(tmp_path, f"app/module_{i:03d}.py", "x = 1\n")
     _write(
@@ -272,9 +300,6 @@ def _pol(cid: str, via: str, requires: str = "", detector: str = "") -> Finding:
 
 
 def test_compliance_path_groups_gaps_by_what_unblocks_them() -> None:
-    from gap_analysis.models import AnalysisResult
-    from gap_analysis.report import compliance_path, render_report
-
     result = AnalysisResult(
         findings=[
             _pol("POL-DR-DRIFT-TRACKING", "pulumi", "deployment"),
@@ -319,9 +344,6 @@ def test_compliance_path_groups_gaps_by_what_unblocks_them() -> None:
 
 
 def test_compliance_path_configures_when_resources_exist() -> None:
-    from gap_analysis.models import AnalysisResult
-    from gap_analysis.report import compliance_path
-
     result = AnalysisResult(
         findings=[_pol("POL-DR-DRIFT-TRACKING", "pulumi", "deployment")],
         iac={
@@ -339,8 +361,6 @@ def test_compliance_path_configures_when_resources_exist() -> None:
 
 
 def test_layer4_finding_carries_steps_docs_and_prerequisite() -> None:
-    from gap_analysis.risk_management import _finding_for_mitigation
-
     meta = {
         "title": "Data-drift monitoring",
         "default_severity": "high",
@@ -375,8 +395,6 @@ def test_layer4_finding_carries_steps_docs_and_prerequisite() -> None:
 
 
 def test_mitigation_catalog_has_steps_and_docs_for_every_type() -> None:
-    import yaml
-
     catalog = yaml.safe_load((SCRIPTS / "risk_management_mitigations.yaml").read_text())
     for m in catalog["mitigations"]:
         assert m.get("steps"), m["mitigation_type"]
@@ -385,8 +403,6 @@ def test_mitigation_catalog_has_steps_and_docs_for_every_type() -> None:
 
 
 def test_docs_resolver_prefers_current_product_pages() -> None:
-    from gap_analysis.docs import parse_llms_txt, resolve_docs
-
     index = parse_llms_txt(
         "# DataRobot docs\n\n## Pages\n\n"
         "- [Data drift](https://docs.datarobot.com/en/docs/classic-ui/mlops/data-drift-settings.html): Classic UI drift settings.\n"
@@ -401,9 +417,6 @@ def test_docs_resolver_prefers_current_product_pages() -> None:
 
 
 def test_template_and_framework_detection(tmp_path: Path) -> None:
-    from gap_analysis.inventory import detect_agent_frameworks, detect_template_sources
-    from gap_analysis.posture import migration_advice
-
     _write(
         tmp_path,
         ".datarobot/answers/base.yml",
@@ -440,16 +453,12 @@ def test_template_and_framework_detection(tmp_path: Path) -> None:
 
 
 def test_migration_advice_without_af_components_hands_off_to_agent_assist() -> None:
-    from gap_analysis.posture import migration_advice
-
     assert "datarobot-agent-assist" in migration_advice(
         {"template_sources": [], "agent_frameworks": []}
     )
 
 
 def test_parse_json_ignores_trailing_commentary_and_errors_stay_short() -> None:
-    from gap_analysis.llm import brief_error, parse_json
-
     assert parse_json('{"status": "found", "findings": []}\nThat is my answer.') == {
         "status": "found",
         "findings": [],
@@ -460,8 +469,6 @@ def test_parse_json_ignores_trailing_commentary_and_errors_stay_short() -> None:
 
 
 def test_layer2_excludes_tests_and_iac_for_runtime_checks(taxonomy: Taxonomy) -> None:
-    from gap_analysis.detect import layer2_files
-
     inventory = {
         "files": [
             "app/main.py",
@@ -479,8 +486,6 @@ def test_layer2_excludes_tests_and_iac_for_runtime_checks(taxonomy: Taxonomy) ->
 
 
 def test_repo_scope_findings_collapse_to_one(taxonomy: Taxonomy) -> None:
-    from gap_analysis.detect import _result_to_findings
-
     ops = taxonomy.get("OPS-002")
     assert ops is not None
     result = {
@@ -529,3 +534,255 @@ def test_generic_credential_rule_needs_a_credential_shaped_value(
     hits = scanners._scan_text_for_secrets(line)
 
     assert bool(hits) is flagged, hits
+
+
+def test_python_floor_is_the_lowest_across_components(tmp_path: Path) -> None:
+    _write(tmp_path, "core/pyproject.toml", '[project]\nrequires-python = ">=3.10"\n')
+    _write(
+        tmp_path, "web/pyproject.toml", '[project]\nrequires-python = ">=3.12, <3.14"\n'
+    )
+    _write(
+        tmp_path, "web/.venv/pyproject.toml", '[project]\nrequires-python = ">=3.8"\n'
+    )
+
+    versions = detect_python_versions(tmp_path)
+
+    assert versions == {"core": "3.10", "web": "3.12"}
+    assert detect_python_version(tmp_path) == "3.10"
+    assert python_label({"python_version": "3.10", "python_versions": versions}) == (
+        "3.10 (core 3.10, web 3.12)"
+    )
+    assert python_label({}) == "n/a"
+
+
+def test_dependencies_come_from_every_component_manifest(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "core/pyproject.toml",
+        '[project]\nname = "core"\ndependencies = ["Pydantic-AI[ag-ui]>=2.8", "httpx"]\n',
+    )
+    _write(
+        tmp_path,
+        "web/requirements.txt",
+        "fastapi==0.115.0\n# comment\n-e .\nuvicorn[standard]>=0.30\n",
+    )
+    _write(
+        tmp_path, "web/.venv/pyproject.toml", '[project]\ndependencies = ["ignored"]\n'
+    )
+
+    deps = extract_dependencies(tmp_path)
+
+    assert {"pydantic-ai", "httpx", "fastapi", "uvicorn"} <= set(deps)
+    assert "ignored" not in deps
+
+
+def test_fix_version_parsing_and_lock_lookup() -> None:
+    assert (
+        fix_version_from("3 known vulnerabilities; fixed in: 3.14.2, 3.14.3.")
+        == "3.14.2"
+    )
+    assert fix_version_from("Known vulnerability X; fixed in: 10.2.") == "10.2"
+    assert fix_version_from("fixed in: see advisory.") is None
+    lock = 'name = "aiohttp"\nversion = "3.14.1"\n\n[[package]]\nname = "zipp"\nversion = "3.23.0"\n'
+    assert _locked_version(lock, "aiohttp") == "3.14.1"
+    assert _locked_version(lock, "click") is None
+
+
+def test_selected_advisory_ids_are_reported_not_ignored(tmp_path: Path) -> None:
+    finding = Finding(
+        "REL-006",
+        "REL",
+        Severity.MEDIUM,
+        "Dependencies not locked",
+        fix_type="advisory",
+    )
+
+    summary = remediate(
+        tmp_path, [finding], {}, "20260903T000000Z", None, selected_ids={"REL-006"}
+    )
+
+    assert summary["unfixable_selected"] == ["REL-006"]
+    assert summary["branch"] is None
+
+
+def test_pin_in_pyproject_prefers_manifest_over_lock() -> None:
+    direct = '[project]\ndependencies = [\n    "aiohttp[speedups]>=3.9,<4; python_version < \'3.14\'",\n    "httpx",\n]\n'
+    text, how = pin_in_pyproject(direct, "aiohttp", "3.14.2")
+    assert how == "direct"
+    assert "\"aiohttp[speedups]>=3.14.2,<4; python_version < '3.14'\"" in text
+
+    constrained = '[tool.uv]\nconstraint-dependencies = [\n    "tornado>=6.5.7",\n]\n'
+    text, how = pin_in_pyproject(constrained, "tornado", "6.5.8")
+    assert (how, '"tornado>=6.5.8"' in text) == ("constraint", True)
+
+    text, how = pin_in_pyproject(constrained, "click", "8.3.3")
+    assert how == "constraint" and '    "click>=8.3.3",\n    "tornado>=6.5.7",' in text
+
+    text, how = pin_in_pyproject('[project]\nname = "x"\n', "pyasn1", "0.6.4")
+    assert text.endswith(
+        '[tool.uv]\nconstraint-dependencies = [\n    "pyasn1>=0.6.4",\n]\n'
+    )
+
+
+def test_uv_error_line_skips_the_version_banner() -> None:
+    out = "Using CPython 3.13.13\n  × Failed to build `panel-library @ file:///x/web/panel-library`\n  ╰─▶ /x/web/panel-library\n"
+    assert _uv_error_line(out).startswith("Failed to build `panel-library")
+
+
+def test_trivy_report_routes_by_class(taxonomy: Taxonomy) -> None:
+    data = {
+        "Results": [
+            {
+                "Target": "infra/uv.lock",
+                "Vulnerabilities": [
+                    {
+                        "PkgName": "aiohttp",
+                        "InstalledVersion": "3.14.1",
+                        "VulnerabilityID": "CVE-2026-1",
+                        "FixedVersion": "3.14.2",
+                        "Severity": "HIGH",
+                    },
+                    {
+                        "PkgName": "aiohttp",
+                        "InstalledVersion": "3.14.1",
+                        "VulnerabilityID": "CVE-2026-2",
+                        "FixedVersion": "3.14.3",
+                        "Severity": "MEDIUM",
+                    },
+                ],
+                "Licenses": [
+                    {"PkgName": "readline", "Name": "GPL-3.0", "Severity": "HIGH"}
+                ],
+            },
+            {
+                "Target": "config/prod.yaml",
+                "Secrets": [
+                    {
+                        "RuleID": "aws-access-key-id",
+                        "Title": "AWS Access Key ID",
+                        "StartLine": 4,
+                    }
+                ],
+            },
+            {
+                "Target": "app/tests/fixtures/keys.yaml",
+                "Secrets": [
+                    {"RuleID": "aws-access-key-id", "Title": "AWS", "StartLine": 1}
+                ],
+            },
+            {
+                "Target": "Dockerfile",
+                "Misconfigurations": [
+                    {
+                        "ID": "DS002",
+                        "Title": "Image user should not be root",
+                        "Severity": "HIGH",
+                        "CauseMetadata": {"StartLine": 1},
+                    }
+                ],
+            },
+        ]
+    }
+
+    findings = trivy_findings(data, taxonomy, ["GPL-3.0", "AGPL-3.0"])
+    by_id = {}
+    for f in findings:
+        by_id.setdefault(f.condition_id, []).append(f)
+
+    assert [f.evidence for f in by_id["SEC-010"]] == [
+        "aiohttp==3.14.1: CVE-2026-1, CVE-2026-2"
+    ]
+    assert "fixed in: 3.14.2, 3.14.3" in by_id["SEC-010"][0].explanation
+    assert [f.file for f in by_id["SEC-003"]] == ["config/prod.yaml"]
+    assert "SEC-002" not in by_id
+    assert by_id["ITA-007"][0].evidence.startswith("1 trivy misconfiguration(s): DS002")
+    assert by_id["ITA-004"][0].evidence == "readline: GPL-3.0"
+
+
+def test_gitleaks_and_hadolint_group_per_file(
+    taxonomy: Taxonomy, tmp_path: Path
+) -> None:
+    leaks = gitleaks_findings(
+        [
+            {
+                "RuleID": "generic-api-key",
+                "File": ".env",
+                "Commit": "abcdef1234",
+                "StartLine": 3,
+                "Match": "OPENAI_API_KEY=REDACTED",
+                "Description": "Generic API Key",
+            },
+            {
+                "RuleID": "generic-api-key",
+                "File": ".env",
+                "Commit": "1234567abc",
+                "StartLine": 2,
+                "Match": 'DATAROBOT_API_TOKEN: "REDACTED"',
+                "Description": "Generic API Key",
+            },
+            {
+                "RuleID": "generic-api-key",
+                "File": ".env",
+                "Commit": "1234567abc",
+                "StartLine": 7,
+                "Match": "DATAROBOT_API_TOKEN=REDACTED",
+                "Description": "Generic API Key",
+            },
+            {
+                "RuleID": "private-key",
+                "File": ".env",
+                "Commit": "abcdef1234",
+                "StartLine": 11,
+                "Match": "REDACTED",
+                "Secret": "REDACTED",
+                "Description": "Private Key",
+            },
+        ],
+        taxonomy,
+    )
+    assert [f.condition_id for f in leaks] == ["SEC-005", "SEC-005"]
+    by_rule = {f.evidence.split(" ")[0]: f for f in leaks}
+    assert (
+        by_rule["DATAROBOT_API_TOKEN"].evidence
+        == "DATAROBOT_API_TOKEN (lines 2, 7), OPENAI_API_KEY (line 3)"
+        " in 2 commit(s) (1234567a, abcdef12)"
+    )
+    assert by_rule["DATAROBOT_API_TOKEN"].line == 3
+    assert by_rule["private-key"].evidence == (
+        "private-key block (line 11) in 1 commit(s) (abcdef12)"
+    )
+
+    lint = hadolint_findings(
+        [
+            {
+                "file": str(tmp_path / "svc/Dockerfile"),
+                "code": "DL3007",
+                "level": "warning",
+                "line": 1,
+                "message": "Using latest is prone to errors",
+            },
+            {
+                "file": str(tmp_path / "svc/Dockerfile"),
+                "code": "DL3002",
+                "level": "warning",
+                "line": 9,
+                "message": "Last USER should not be root",
+            },
+        ],
+        taxonomy,
+        tmp_path,
+    )
+    assert (
+        len(lint) == 1
+        and lint[0].condition_id == "ITA-007"
+        and lint[0].file == "svc/Dockerfile"
+    )
+    assert lint[0].evidence == "2 hadolint finding(s): DL3002, DL3007"
+
+
+def test_leaked_key_never_exposes_the_secret() -> None:
+    assert leaked_key({"Match": "  export AWS_SECRET='REDACTED'"}) is None
+    assert leaked_key({"Match": "AWS_SECRET='REDACTED'"}) == "AWS_SECRET"
+    assert leaked_key({"Match": "token=abc123xyz", "Secret": "abc123xyz"}) == "token"
+    assert leaked_key({"Match": "AKIAIOSFODNN7EXAMPLE"}) is None
+    assert leaked_key({}) is None

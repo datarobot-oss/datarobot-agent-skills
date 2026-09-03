@@ -276,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
             "\nNote: --fix patches the repo IN PLACE — it does not adopt the af-component "
             "stack. Re-platforming onto af-components is the migration path (RE-PLATFORM)."
         )
+        if summary.get("unfixable_selected"):
+            print(
+                "Selected but advisory-only (no automated fix exists; follow the report's "
+                "guidance): " + ", ".join(summary["unfixable_selected"])
+            )
         print(
             "Review the branch and, if good, push / open a PR (not done automatically)."
         )

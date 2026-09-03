@@ -99,6 +99,22 @@ conditions:
     fix_type: assisted
     fix_strategy: prompts/fix-sec-004-redact-log.md
 
+  - id: SEC-005
+    pillar: SEC
+    layer: 1
+    severity: high
+    title: Secret in git history
+    description: >
+      A credential was committed at some point and remains in the repository history even if the current tree no longer contains
+      it; anyone with clone access can recover it.
+    files_glob: ["**/*"]
+    relational: false
+    detector: gitleaks
+    remediation: Rotate the credential first (deleting it does not revoke it), then purge it from history if the repository
+      is or will be shared.
+    fix_type: advisory
+    fix_strategy: null
+
   - id: SEC-006
     pillar: SEC
     layer: 1
@@ -124,7 +140,7 @@ conditions:
     files_glob: ["**/requirements*.txt", "**/pyproject.toml", "**/poetry.lock", "**/package.json", "**/package-lock.json",
       "**/uv.lock"]
     relational: false
-    detector: pip-audit
+    detector: pip-audit, npm-audit, trivy
     remediation: Upgrade affected packages to the patched versions.
     fix_type: auto
     fix_strategy: bump_vulnerable_dependency
@@ -647,5 +663,20 @@ conditions:
     relational: false
     detector: codeowners_presence
     remediation: Add `.github/CODEOWNERS` naming a real GitHub team for the whole repo.
+    fix_type: advisory
+    fix_strategy: null
+
+  - id: ITA-007
+    pillar: ITA
+    layer: 1
+    severity: medium
+    title: Container or infrastructure misconfiguration
+    description: >
+      A Dockerfile, Kubernetes manifest or Terraform/Pulumi file violates container and IaC hardening rules (running as root,
+      unpinned base images, secrets in build args, permissive settings).
+    files_glob: ["**/Dockerfile*", "**/*.dockerfile", "**/*.yaml", "**/*.yml", "**/*.tf"]
+    relational: false
+    detector: trivy_misconfig, hadolint
+    remediation: Fix the flagged instruction; the rule id links to the tool's documentation for the exact change.
     fix_type: advisory
     fix_strategy: null

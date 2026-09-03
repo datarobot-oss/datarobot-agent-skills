@@ -15,6 +15,11 @@ import json
 import os
 from typing import Any, Protocol
 
+try:
+    import litellm
+except ImportError:  # optional: only standalone runs need it
+    litellm = None
+
 
 class LLMClient(Protocol):
     def complete(self, system: str, user: str) -> str:  # pragma: no cover - interface
@@ -31,8 +36,8 @@ class LiteLLMClient:
     """
 
     def __init__(self, model: str | None = None):
-        import litellm  # noqa: F401  (import-time check)
-
+        if litellm is None:
+            raise ImportError("litellm is not installed")
         self._litellm = litellm
         self.model = model or os.environ.get(
             "GAP_LLM_MODEL", "datarobot/anthropic/claude-sonnet-4-6"

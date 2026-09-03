@@ -13,6 +13,7 @@ Safety rails:
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -129,18 +130,138 @@ def _add_gitignore(workspace: Path, rel: str) -> None:
 def _fix_bump_dependency(workspace: Path, f: Finding) -> dict[str, Any]:
     if not f.file:
         return _cannot(f, "no manifest location")
-    m = re.search(r"fixed in:\s*([0-9][^\s.;]+(?:\.[0-9]+)*)", f.explanation)
+    fix_ver = fix_version_from(f.explanation)
     pkg = (f.evidence.split("==")[0] if "==" in f.evidence else "").strip()
-    if not m or not pkg:
+    if not fix_ver or not pkg:
         return _cannot(f, "no fix version available")
-    fix_ver = m.group(1).rstrip(".")
     path = workspace / f.file
+    if path.name == "uv.lock":
+        return _bump_uv_lock(f, path.parent, pkg, fix_ver)
     text = path.read_text(errors="ignore")
     new = re.sub(rf"(?im)^({re.escape(pkg)})\s*[<>=!~]=?.*$", rf"\1>={fix_ver}", text)
     if new == text:
         return _cannot(f, f"could not find {pkg} pin to bump")
     path.write_text(new)
     return _ok(f, f"Bumped {pkg} to >= {fix_ver} in {f.file}.")
+
+
+_FIX_VERSION_RE = re.compile(r"fixed in:\s*([0-9]+(?:\.[0-9]+)*)", re.IGNORECASE)
+
+
+def fix_version_from(explanation: str) -> str | None:
+    """The first version after 'fixed in:' in a SEC-010 explanation."""
+    m = _FIX_VERSION_RE.search(explanation)
+    return m.group(1) if m else None
+
+
+def _locked_version(lock_text: str, pkg: str) -> str | None:
+    m = re.search(
+        rf'^name = "{re.escape(pkg)}"\nversion = "([^"]+)"', lock_text, re.M | re.I
+    )
+    return m.group(1) if m else None
+
+
+_SPEC_RE = re.compile(r"^([A-Za-z0-9._-]+(?:\[[^\]]*\])?)\s*([^;]*)(;.*)?$")
+
+
+def _raise_floor(spec: str, fix_ver: str) -> str:
+    """`aiohttp[speedups]>=3.9,<4; python_version<'3.13'` -> floor raised to
+    fix_ver, upper bounds, exclusions and markers kept."""
+    m = _SPEC_RE.match(spec.strip())
+    if not m:
+        return spec
+    name, specifiers, marker = m.group(1), m.group(2), m.group(3) or ""
+    keep = [
+        part.strip()
+        for part in specifiers.split(",")
+        if part.strip() and not part.strip().startswith((">", "=", "~"))
+    ]
+    return f"{name}>={fix_ver}" + ("," + ",".join(keep) if keep else "") + marker
+
+
+def pin_in_pyproject(text: str, pkg: str, fix_ver: str) -> tuple[str, str]:
+    """Record the fixed version in pyproject.toml, the file uv.lock is generated from.
+
+    A direct dependency or an existing `[tool.uv] constraint-dependencies` entry
+    gets its floor raised; a transitive package gets a new constraint entry, the
+    same pattern DataRobot templates use for CVE pins. Returns (new text, how).
+    """
+    entry_re = re.compile(rf'"({re.escape(pkg)}(?:\[[^\]]*\])?[^"]*)"', re.IGNORECASE)
+    m = entry_re.search(text)
+    if m:
+        # The key of the list this entry sits in is on the line holding the last "[".
+        opener = text.rfind("[", 0, m.start())
+        key_line = text[text.rfind("\n", 0, opener) + 1 : opener]
+        how = "constraint" if "constraint-dependencies" in key_line else "direct"
+        return text[: m.start()] + f'"{_raise_floor(m.group(1), fix_ver)}"' + text[
+            m.end() :
+        ], how
+    entry = f'    "{pkg}>={fix_ver}",\n'
+    cm = re.search(r"^constraint-dependencies\s*=\s*\[\n", text, re.M)
+    if cm:
+        return text[: cm.end()] + entry + text[cm.end() :], "constraint"
+    um = re.search(r"^\[tool\.uv\]\n", text, re.M)
+    block = f"constraint-dependencies = [\n{entry}]\n"
+    if um:
+        return text[: um.end()] + block + text[um.end() :], "constraint"
+    return text.rstrip("\n") + f"\n\n[tool.uv]\n{block}", "constraint"
+
+
+def _uv_error_line(output: str) -> str:
+    """uv reports the failure on a line marked with × or 'error'; the version
+    banner that precedes it is noise."""
+    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+    for ln in lines:
+        low = ln.lower()
+        if ln.startswith("×") or "error" in low or "failed" in low:
+            return ln.lstrip("× ").strip()
+    return lines[-1] if lines else ""
+
+
+def _bump_uv_lock(
+    f: Finding, project_dir: Path, pkg: str, fix_ver: str
+) -> dict[str, Any]:
+    """Pin the fixed version in pyproject.toml and regenerate uv.lock from it.
+
+    The lock is generated output, so the durable change is the manifest; the
+    constraint in pyproject.toml is what a future `uv lock` will honour.
+    """
+    if not shutil.which("uv"):
+        return _cannot(f, "uv is not installed, cannot re-lock")
+    pyproject = project_dir / "pyproject.toml"
+    if not pyproject.is_file():
+        return _cannot(f, f"{project_dir.name}/ has a uv.lock but no pyproject.toml")
+    original = pyproject.read_text(errors="ignore")
+    updated, how = pin_in_pyproject(original, pkg, fix_ver)
+    pyproject.write_text(updated)
+    try:
+        proc = subprocess.run(
+            ["uv", "lock"], cwd=project_dir, capture_output=True, text=True, timeout=300
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        pyproject.write_text(original)
+        return _cannot(f, f"uv lock failed: {e}")
+    if proc.returncode != 0:
+        pyproject.write_text(original)
+        first = _uv_error_line(proc.stderr or proc.stdout)
+        return _cannot(
+            f,
+            f"uv lock failed in {project_dir.name}/ after pinning {pkg}>={fix_ver}: "
+            f"{first[:240]}. Another constraint may block the fixed version, or a path "
+            "dependency is missing from this checkout; pyproject.toml was left unchanged.",
+        )
+    now = _locked_version((project_dir / "uv.lock").read_text(errors="ignore"), pkg)
+    where = (
+        "[tool.uv] constraint-dependencies"
+        if how == "constraint"
+        else "its dependency entry"
+    )
+    return _ok(
+        f,
+        f"Pinned {pkg}>={fix_ver} in {project_dir.name}/pyproject.toml ({where}) and "
+        f"regenerated uv.lock ({pkg} now {now or 'updated'}).",
+        manual="Run `uv sync` and the tests in that component.",
+    )
 
 
 def _fix_pin_model(workspace: Path, f: Finding) -> dict[str, Any]:
@@ -319,6 +440,12 @@ def remediate(
         else:
             targets.append(f)
 
+    fixable_ids = {f.condition_id for f in candidates}
+    unfixable_selected = sorted(
+        cid
+        for cid in (selected_ids or set())
+        if cid not in fixable_ids and any(f.condition_id == cid for f in findings)
+    )
     branch = create_fix_branch(workspace, timestamp) if targets else None
     results = []
     for f in targets:
@@ -352,6 +479,7 @@ def remediate(
         "applied": len(applied),
         "results": results,
         "held_back": skipped_risky,
+        "unfixable_selected": unfixable_selected,
         "diff_stat": git_diff_stat(workspace) if branch else "",
         "followups": followups,
     }

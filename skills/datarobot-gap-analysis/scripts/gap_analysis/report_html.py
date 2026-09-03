@@ -19,10 +19,10 @@ from typing import Any
 from .models import AnalysisResult, Finding, PILLARS
 from .report import (
     CONFORMANCE_ROWS,
-    COVERAGE_STATUS_LABEL,
     _clip,
     _short_title,
     compliance_path,
+    python_label,
 )
 
 _SEV_LABEL = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
@@ -158,7 +158,7 @@ def render_html(
         meta.append(f"<b>Repository:</b> {_esc(repo)}")
     if inv:
         meta.append(f"<b>Files scanned:</b> {inv.get('file_count', 0)}")
-        meta.append(f"<b>Python:</b> {_esc(inv.get('python_version') or 'n/a')}")
+        meta.append(f"<b>Python:</b> {_esc(python_label(inv))}")
     if meta:
         body.append('<p class="meta">' + " &nbsp;|&nbsp; ".join(meta) + "</p>")
     stack = []
@@ -407,11 +407,7 @@ def _conformance_section(found_ids: set[str]) -> str:
     rows = []
     for cid, label in CONFORMANCE_ROWS:
         gap = cid in found_ids
-        status = (
-            '<span class="st gap">gap</span>'
-            if gap
-            else '<span class="st pass">pass</span>'
-        )
+        status = _status_html("gap") if gap else _status_html("pass", "pass")
         rows.append(f"<tr><td>{_esc(cid)} — {_esc(label)}</td><td>{status}</td></tr>")
     return (
         '<section class="scorecard"><h2>IT Conformance Scorecard</h2>'
@@ -419,6 +415,30 @@ def _conformance_section(found_ids: set[str]) -> str:
         + "".join(rows)
         + "</tbody></table></section>"
     )
+
+
+# Status glyphs as inline SVG so they share the text baseline; emoji sit on their own.
+_STATUS_TEXT = {
+    "gap": "gap",
+    "pass": "evidence found",
+    "not_assessed": "not assessed",
+    "unknown_type": "unknown",
+}
+_STATUS_PATH = {
+    "gap": "M6 6l12 12M18 6L6 18",
+    "pass": "M5 12.5l4.5 4.5L19 7",
+    "not_assessed": "M9 9.5a3 3 0 1 1 4.3 2.7c-1 .5-1.3 1.2-1.3 2.3M12 18h.01",
+}
+
+
+def _status_html(status: str, label: str | None = None) -> str:
+    css = {"gap": "gap", "pass": "pass"}.get(status, "skip")
+    path = _STATUS_PATH.get(status, _STATUS_PATH["not_assessed"])
+    svg = (
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" '
+        f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{path}"/></svg>'
+    )
+    return f'<span class="st {css}">{svg}{_esc(label or _STATUS_TEXT.get(status, status))}</span>'
 
 
 def _docs_link(f: Finding, label: str | None = None) -> str:
@@ -462,7 +482,7 @@ def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
         for f in step["items"]:
             out.append(
                 '<details class="mit"><summary>'
-                f'<span class="st gap">{_esc(COVERAGE_STATUS_LABEL["gap"])}</span>'
+                f"{_status_html('gap')}"
                 f'<span class="mit-title">{_esc(_short_title(f))}</span>'
                 f"<code>{_esc(f.condition_id)}</code>{_docs_link(f, 'docs')}</summary>"
                 f"{_finding_card(f, repo)}</details>"
@@ -470,17 +490,13 @@ def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
     if passed:
         out.append('<h3 class="step">Evidence found</h3><ul class="mit-list">')
         out.extend(
-            f'<li><span class="st pass">{_esc(COVERAGE_STATUS_LABEL["pass"])}</span> '
-            f"{_esc(r['title'])}</li>"
-            for r in passed
+            f"<li>{_status_html('pass')} {_esc(r['title'])}</li>" for r in passed
         )
         out.append("</ul>")
     if unassessed:
         out.append('<h3 class="step">Required, not assessed</h3><ul class="mit-list">')
         out.extend(
-            f'<li><span class="st skip">'
-            f"{_esc(COVERAGE_STATUS_LABEL.get(r['status'], r['status']))}</span> "
-            f"{_esc(r['title'])}</li>"
+            f"<li>{_status_html(r['status'])} {_esc(r['title'])}</li>"
             for r in unassessed
         )
         out.append("</ul>")
@@ -641,7 +657,8 @@ table{border-collapse:collapse;width:100%;background:var(--card);border:1px soli
 th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
 th{background:var(--bg);font-size:12px;text-transform:uppercase;color:var(--muted)}
 tr:last-child td{border-bottom:none}
-.st{font-weight:700} .st.gap{color:var(--crit)} .st.pass{color:var(--ok)} .st.skip{color:var(--muted)}
+.st{font-weight:700;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.st svg{flex:none} .st.gap{color:var(--crit)} .st.pass{color:var(--ok)} .st.skip{color:var(--muted)}
 .notes summary{cursor:pointer;list-style:none} .notes summary::-webkit-details-marker{display:none}
 .notes summary h2{display:inline-block} .notes summary .count{float:none;margin-left:8px;font-size:12px;vertical-align:middle}
 .notes ul{margin:0;padding-left:18px}
