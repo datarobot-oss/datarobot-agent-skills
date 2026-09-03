@@ -199,6 +199,7 @@ def build_inventory(
         "languages": dict(sorted(languages.items(), key=lambda kv: -kv[1])),
         "key_files": key,
         "python_version": detect_python_version(root),
+        "python_versions": detect_python_versions(root),
         "dependencies": deps,
         "model_ids": extract_model_ids(root, exclude),
         "declared_licenses": extract_declared_licenses(root, exclude),
@@ -210,32 +211,44 @@ def build_inventory(
     }
 
 
+def detect_python_versions(root: Path) -> dict[str, str]:
+    """Declared Python floor per component ({relative dir: '3.12'}), from
+    .python-version, runtime.txt, pyproject.toml, setup.py and setup.cfg
+    anywhere in the repo. Multi-component templates declare one per component
+    and often nothing at the root."""
+    found: dict[str, str] = {}
+    for p in sorted(root.rglob("*")):
+        if not p.is_file() or _SKIP_DIRS.intersection(p.parts):
+            continue
+        rel = p.parent.relative_to(root)
+        # Hidden directories (docs/.bin, backend/.internals) hold tooling, not components.
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        rel_dir = rel.as_posix() or "."
+        if rel_dir in found:
+            continue
+        m: re.Match[str] | None
+        if p.name in (".python-version", "runtime.txt"):
+            m = re.search(r"([0-9]+\.[0-9]+)", p.read_text(errors="ignore"))
+        elif p.name == "pyproject.toml":
+            m = _PYPROJECT_VER_RE.search(p.read_text(errors="ignore"))
+            m = re.search(r"([0-9]+\.[0-9]+)", m.group(1)) if m else None
+        elif p.name in ("setup.py", "setup.cfg"):
+            m = _PY_VER_RE.search(p.read_text(errors="ignore"))
+        else:
+            continue
+        if m:
+            found[rel_dir] = m.group(1)
+    return found
+
+
 def detect_python_version(root: Path) -> str | None:
-    """Best-effort lowest declared Python version (e.g. '3.9')."""
-    pv = root / ".python-version"
-    if pv.exists():
-        m = re.search(r"([0-9]+\.[0-9]+)", pv.read_text())
-        if m:
-            return m.group(1)
-    rt = root / "runtime.txt"
-    if rt.exists():
-        m = re.search(r"([0-9]+\.[0-9]+)", rt.read_text())
-        if m:
-            return m.group(1)
-    pp = root / "pyproject.toml"
-    if pp.exists():
-        m = _PYPROJECT_VER_RE.search(pp.read_text())
-        if m:
-            vm = re.search(r"([0-9]+\.[0-9]+)", m.group(1))
-            if vm:
-                return vm.group(1)
-    for fn in ("setup.py", "setup.cfg"):
-        f = root / fn
-        if f.exists():
-            m = _PY_VER_RE.search(f.read_text())
-            if m:
-                return m.group(1)
-    return None
+    """The lowest Python floor declared anywhere in the repo (e.g. '3.10'), the
+    version a minimum-version policy has to be judged against."""
+    versions = detect_python_versions(root)
+    if not versions:
+        return None
+    return min(versions.values(), key=lambda v: tuple(int(x) for x in v.split(".")))
 
 
 def _norm_req(spec: str) -> str:

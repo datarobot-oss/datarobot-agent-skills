@@ -42,7 +42,15 @@ Run in order before proceeding:
    (PyYAML) automatically, so there is no manual `pip install` step. The launcher
    locates the shared `datarobot-skills-utils` package itself: a repo checkout, an
    installed copy, or a one-time install from PyPI.
-4. **DataRobot CLI** — run `dr --version`. If missing, invoke the
+4. **Optional scanners**: check `which trivy gitleaks hadolint`. Any that is installed
+   is used; without `trivy` dependency CVEs still come from `pip-audit`/`npm audit`,
+   and without the others git-history secrets, IaC misconfiguration, dependency
+   licenses and Dockerfile lint are skipped and named in the report. When one is
+   missing, tell the user which checks will be skipped and offer to install it with
+   the package manager native to their OS (Homebrew, apt/dnf, winget/scoop) or the
+   release binary from the tool's own install docs. Install only if they agree; never
+   install silently.
+5. **DataRobot CLI**: run `dr --version`. If missing, invoke the
    `datarobot-setup` skill to install it, then re-check. The LLM layers (2 and 4)
    run through `dr opencode` workers authenticated by `dr auth`; without `dr` the
    engine falls back to direct API calls via litellm (add `--with litellm` to the

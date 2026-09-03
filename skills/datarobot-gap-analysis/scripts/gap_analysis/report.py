@@ -74,7 +74,7 @@ def render_report(
         )
         lines.append(
             f"**Files scanned:** {inv.get('file_count', 0)} &nbsp;|&nbsp; "
-            f"**Python:** {inv.get('python_version') or 'n/a'} &nbsp;|&nbsp; "
+            f"**Python:** {python_label(inv)} &nbsp;|&nbsp; "
             f"**Top types:** {langs or 'n/a'}"
         )
         stack = stack_line(inv)
@@ -186,6 +186,19 @@ def _conformance_table(result: AnalysisResult, policy: dict[str, Any]) -> str:
         status = "❌ gap" if cid in found_ids else "✅ pass"
         out.append(f"| {cid} — {label} | {status} |")
     return "\n".join(out)
+
+
+def python_label(inv: dict[str, Any]) -> str:
+    """'3.10' for one floor, '3.10 (core 3.10, infra 3.11, web 3.12)' when
+    components differ, 'n/a' when nothing declares one."""
+    floor = inv.get("python_version")
+    if not floor:
+        return "n/a"
+    versions = inv.get("python_versions") or {}
+    if len(set(versions.values())) > 1:
+        parts = ", ".join(f"{d} {v}" for d, v in sorted(versions.items()))
+        return f"{floor} ({parts})"
+    return str(floor)
 
 
 def stack_line(inv: dict[str, Any]) -> str:

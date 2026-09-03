@@ -25,6 +25,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from . import paths
 from .llm import LLMClient, parse_json
 
@@ -153,8 +155,6 @@ def extract_spec(
 
 def render_spec_markdown(spec: dict[str, Any]) -> str:
     """Render the extracted spec as an agent_spec.md for human review/edit."""
-    import yaml  # local import; yaml already a dependency via taxonomy/policy
-
     lines = [
         "# Migrated Agent — agent_spec.md",
         "#",

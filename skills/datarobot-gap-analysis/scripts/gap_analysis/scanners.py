@@ -10,15 +10,19 @@ engine always produces Layer-1 results offline. Never emits a raw secret value.
 
 from __future__ import annotations
 
+import fnmatch
 import json
+import os
 import re
 import shutil
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 from .inventory import _DEF_EXCLUDE, _iter_files, glob_match
+from .llm import brief_error
 from .models import Finding
 from .taxonomy import Taxonomy
 
@@ -324,6 +328,7 @@ def _audit_one(root: Path, target: Path) -> list[dict]:
             "-f",
             "json",
             "--no-deps",
+            "--disable-pip",  # pinned exports need no resolver; pip-less interpreters must not fail
             "--progress-spinner",
             "off",
             "-r",
@@ -334,7 +339,14 @@ def _audit_one(root: Path, target: Path) -> list[dict]:
         text=True,
         timeout=300,
     )
-    data = json.loads(proc.stdout or "{}")
+    if not proc.stdout.strip():
+        # pip-audit exits non-zero both on findings (with JSON) and on failure
+        # (without); only the empty-output case is an error.
+        raise RuntimeError(
+            f"pip-audit produced no output (exit {proc.returncode}): "
+            f"{proc.stderr.strip()[-300:] or 'no stderr'}"
+        )
+    data = json.loads(proc.stdout)
     deps = data.get("dependencies", data) if isinstance(data, dict) else data
     return deps if isinstance(deps, list) else []
 
@@ -913,8 +925,383 @@ def _mk(cond, file, line, evidence, explanation) -> Finding:
     )
 
 
+# ---------------------------------------------------------------------------
+# Optional binaries: trivy, gitleaks, hadolint. Each runs only when installed,
+# honours the repo's own configuration, and is named in the notes when absent.
+# ---------------------------------------------------------------------------
+
+_SEV_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def _run_json(cmd: list[str], cwd: Path, timeout: int) -> Any:
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    if not proc.stdout.strip():
+        raise RuntimeError(
+            f"{cmd[0]} produced no output (exit {proc.returncode}): "
+            f"{proc.stderr.strip()[-300:] or 'no stderr'}"
+        )
+    return json.loads(proc.stdout)
+
+
+def trivy_findings(
+    data: dict[str, Any], taxonomy: Taxonomy, deny_licenses: list[str]
+) -> list[Finding]:
+    """Route a `trivy fs --format json` report onto SEC-010 (vulnerabilities),
+    SEC-002/003 (secrets), ITA-007 (misconfiguration) and ITA-004 (licenses)."""
+    findings: list[Finding] = []
+    c010, c002, c003 = (
+        taxonomy.get("SEC-010"),
+        taxonomy.get("SEC-002"),
+        taxonomy.get("SEC-003"),
+    )
+    c007, c004 = taxonomy.get("ITA-007"), taxonomy.get("ITA-004")
+    for res in data.get("Results") or []:
+        target = str(res.get("Target") or "")
+        by_pkg: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for v in res.get("Vulnerabilities") or []:
+            by_pkg.setdefault(
+                (v.get("PkgName", "?"), v.get("InstalledVersion", "?")), []
+            ).append(v)
+        for (pkg, ver), vulns in by_pkg.items():
+            if not c010:
+                break
+            ids = ", ".join(v.get("VulnerabilityID", "?") for v in vulns[:6])
+            if len(vulns) > 6:
+                ids += f", +{len(vulns) - 6} more"
+            fixes = sorted(
+                {
+                    fv.strip()
+                    for v in vulns
+                    for fv in str(v.get("FixedVersion") or "").split(",")
+                    if fv.strip()
+                }
+            )
+            worst = max(
+                (v.get("Severity", "") for v in vulns),
+                key=lambda x: _SEV_RANK.get(x, 0),
+                default="",
+            )
+            f = _mk(
+                c010,
+                target,
+                None,
+                f"{pkg}=={ver}: {ids}",
+                f"{len(vulns)} known vulnerabilit{'y' if len(vulns) == 1 else 'ies'}"
+                f"{' (' + worst.lower() + ')' if worst else ''}; fixed in: {', '.join(fixes) or 'see advisory'}.",
+            )
+            f.detector = "trivy"
+            findings.append(f)
+        for sec in res.get("Secrets") or []:
+            if _NOISE_PATH.search(target):
+                continue
+            cond = (
+                c003
+                if target.lower().endswith((".env", ".yaml", ".yml", ".json", ".toml"))
+                or Path(target).name.startswith(".env")
+                else c002
+            )
+            if not cond:
+                continue
+            f = _mk(
+                cond,
+                target,
+                sec.get("StartLine"),
+                f"{sec.get('RuleID', 'secret')}: {sec.get('Title', '')}".strip(": "),
+                "Credential-shaped value detected by trivy's secret rules.",
+            )
+            f.detector = "trivy"
+            findings.append(f)
+        mis = res.get("Misconfigurations") or []
+        if mis and c007:
+            ids = ", ".join(sorted({m.get("ID", "?") for m in mis})[:8])
+            worst = max(
+                (m.get("Severity", "") for m in mis),
+                key=lambda x: _SEV_RANK.get(x, 0),
+                default="",
+            )
+            first = mis[0]
+            f = _mk(
+                c007,
+                target,
+                (first.get("CauseMetadata") or {}).get("StartLine"),
+                f"{len(mis)} trivy misconfiguration(s): {ids}",
+                "; ".join(f"{m.get('ID')}: {m.get('Title')}" for m in mis[:4])
+                + (f" (worst: {worst.lower()})" if worst else ""),
+            )
+            f.detector = "trivy_misconfig"
+            findings.append(f)
+        if c004 and deny_licenses:
+            for lic in res.get("Licenses") or []:
+                name = str(lic.get("Name") or "")
+                if any(fnmatch.fnmatch(name, pat) for pat in deny_licenses):
+                    f = _mk(
+                        c004,
+                        target,
+                        None,
+                        f"{lic.get('PkgName', '?')}: {name}",
+                        f"Dependency {lic.get('PkgName')} is licensed {name}, which the policy denies.",
+                    )
+                    f.detector = "trivy"
+                    findings.append(f)
+    return findings
+
+
+def _trivy_db_present() -> bool:
+    """trivy keeps its DB under its cache dir; without it every scan first downloads."""
+    for base in (
+        os.environ.get("TRIVY_CACHE_DIR"),
+        Path.home() / "Library" / "Caches" / "trivy",
+        Path.home() / ".cache" / "trivy",
+    ):
+        if base and (Path(base) / "db" / "trivy.db").is_file():
+            return True
+    return False
+
+
+def run_trivy(
+    workspace: str | Path, taxonomy: Taxonomy, policy: dict[str, Any] | None = None
+) -> tuple[list[Finding], list[str], bool]:
+    """Filesystem scan with trivy when installed. Returns (findings, notes, ran)."""
+    root = Path(workspace)
+    notes: list[str] = []
+    if not shutil.which("trivy"):
+        notes.append(
+            "trivy not installed: dependency CVEs come from pip-audit/npm audit; IaC misconfiguration and dependency licenses were not scanned."
+        )
+        return [], notes, False
+    # The vulnerability DB is a one-off download that can stall for minutes on a
+    # restricted network; fetch it under a short deadline so a failure falls back
+    # to pip-audit quickly instead of blocking the whole run.
+    if not _trivy_db_present():
+        try:
+            pre = subprocess.run(
+                ["trivy", "image", "--download-db-only", "--quiet"],
+                capture_output=True,
+                text=True,
+                timeout=150,
+            )
+            if pre.returncode != 0:
+                raise RuntimeError(pre.stderr.strip()[-300:] or "download failed")
+        except (subprocess.TimeoutExpired, OSError, RuntimeError) as e:
+            notes.append(
+                "trivy could not download its vulnerability DB within 150s "
+                f"({brief_error(e)}); falling back to pip-audit/npm audit. Run "
+                "`trivy image --download-db-only` once on a network that can reach "
+                "ghcr.io or mirror.gcr.io."
+            )
+            return [], notes, False
+    cmd = [
+        "trivy",
+        "fs",
+        "--scanners",
+        "vuln,secret,misconfig,license",
+        "--format",
+        "json",
+        "--quiet",
+        "--skip-db-update",
+        "--skip-dirs",
+        ".venv,node_modules,dist,build",
+    ]
+    rego = root / "trivy-ignore.rego"
+    if rego.is_file():
+        cmd += ["--ignore-policy", str(rego)]
+    cmd.append(str(root))
+    deny = ((policy or {}).get("it_admin", {}).get("licenses", {}) or {}).get(
+        "deny"
+    ) or []
+    try:
+        data = _run_json(cmd, root, timeout=900)
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"trivy failed: {brief_error(e)}")
+        return [], notes, False
+    findings = trivy_findings(data, taxonomy, list(deny))
+    if rego.is_file():
+        notes.append("trivy honoured the repo's trivy-ignore.rego waivers.")
+    return findings, notes, True
+
+
+_LEAK_KEY_RE = re.compile(r"^[\s\"'`]*([A-Za-z_][A-Za-z0-9_.\-]{1,63})[\s\"'`]*[=:]")
+
+
+def leaked_key(item: dict[str, Any]) -> str | None:
+    """Variable name in front of a redacted gitleaks match; never reads the secret."""
+    match = str(item.get("Match") or "")
+    secret = str(item.get("Secret") or "")
+    if secret and secret in match:
+        match = match.replace(secret, "REDACTED")
+    m = _LEAK_KEY_RE.match(match)
+    return m.group(1) if m else None
+
+
+def _leak_summary(hits: list[dict[str, Any]], rule: str, limit: int = 4) -> str:
+    lines_by_key: dict[str, set[int]] = {}
+    for h in sorted(hits, key=lambda h: h.get("StartLine") or 0):
+        lines = lines_by_key.setdefault(leaked_key(h) or f"{rule} block", set())
+        if isinstance(h.get("StartLine"), int):
+            lines.add(h["StartLine"])
+    parts: list[str] = []
+    for key, lines in list(lines_by_key.items())[:limit]:
+        if lines:
+            label = "line" if len(lines) == 1 else "lines"
+            parts.append(f"{key} ({label} {', '.join(map(str, sorted(lines)))})")
+        else:
+            parts.append(key)
+    if len(lines_by_key) > limit:
+        parts.append(f"+{len(lines_by_key) - limit} more")
+    return ", ".join(parts)
+
+
+def gitleaks_findings(items: list[dict[str, Any]], taxonomy: Taxonomy) -> list[Finding]:
+    """One SEC-005 finding per (rule, file) naming the leaked keys, lines and commits."""
+    cond = taxonomy.get("SEC-005")
+    if not cond:
+        return []
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for it in items:
+        grouped.setdefault(
+            (str(it.get("RuleID", "secret")), str(it.get("File", ""))), []
+        ).append(it)
+    out: list[Finding] = []
+    for (rule, file), hits in sorted(grouped.items()):
+        commits = sorted(
+            {str(h.get("Commit", ""))[:8] for h in hits if h.get("Commit")}
+        )
+        commit_note = ""
+        if commits:
+            shown = ", ".join(commits[:3]) + (", ..." if len(commits) > 3 else "")
+            commit_note = f" in {len(commits)} commit(s) ({shown})"
+        f = _mk(
+            cond,
+            file,
+            hits[0].get("StartLine"),
+            _leak_summary(hits, rule) + commit_note,
+            str(
+                hits[0].get("Description") or "Credential-shaped value in git history."
+            ),
+        )
+        f.detector = "gitleaks"
+        out.append(f)
+    return out
+
+
+def run_gitleaks(
+    workspace: str | Path, taxonomy: Taxonomy
+) -> tuple[list[Finding], list[str]]:
+    """Scan git history for secrets when gitleaks is installed."""
+    root = Path(workspace)
+    notes: list[str] = []
+    if not shutil.which("gitleaks"):
+        notes.append(
+            "gitleaks not installed: git history was not scanned for secrets (the working tree was)."
+        )
+        return [], notes
+    if not (root / ".git").exists():
+        notes.append("gitleaks skipped: not a git checkout.")
+        return [], notes
+    report = Path(tempfile.mkdtemp(prefix="gap-gitleaks-")) / "report.json"
+    cmd = [
+        "gitleaks",
+        "detect",
+        "--source",
+        str(root),
+        "--report-format",
+        "json",
+        "--report-path",
+        str(report),
+        "--no-banner",
+        "--exit-code",
+        "0",
+        "--redact",
+    ]
+    for cfg in (".gitleaks.toml", "gitleaks.toml"):
+        if (root / cfg).is_file():
+            cmd += ["--config", str(root / cfg)]
+            break
+    try:
+        subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=600)
+        items = json.loads(report.read_text() or "[]") if report.exists() else []
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"gitleaks failed: {brief_error(e)}")
+        return [], notes
+    return gitleaks_findings(items if isinstance(items, list) else [], taxonomy), notes
+
+
+def hadolint_findings(
+    items: list[dict[str, Any]], taxonomy: Taxonomy, root: Path
+) -> list[Finding]:
+    """One ITA-007 finding per Dockerfile listing the hadolint rule codes."""
+    cond = taxonomy.get("ITA-007")
+    if not cond:
+        return []
+    by_file: dict[str, list[dict[str, Any]]] = {}
+    for it in items:
+        by_file.setdefault(str(it.get("file", "")), []).append(it)
+    out: list[Finding] = []
+    for file, hits in sorted(by_file.items()):
+        try:
+            rel = Path(file).resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            rel = file
+        codes = sorted({str(h.get("code", "?")) for h in hits})
+        worst = max(
+            (str(h.get("level", "")).upper() for h in hits),
+            key=lambda x: {"ERROR": 3, "WARNING": 2, "INFO": 1, "STYLE": 0}.get(x, 0),
+            default="",
+        )
+        f = _mk(
+            cond,
+            rel,
+            hits[0].get("line"),
+            f"{len(hits)} hadolint finding(s): {', '.join(codes[:8])}",
+            "; ".join(f"{h.get('code')}: {h.get('message')}" for h in hits[:4])
+            + (f" (worst: {worst.lower()})" if worst else ""),
+        )
+        f.detector = "hadolint"
+        out.append(f)
+    return out
+
+
+def run_hadolint(
+    workspace: str | Path, taxonomy: Taxonomy
+) -> tuple[list[Finding], list[str]]:
+    """Lint every Dockerfile with hadolint when installed and Dockerfiles exist."""
+    root = Path(workspace)
+    notes: list[str] = []
+    dockerfiles = [
+        p
+        for p in root.rglob("*")
+        if p.is_file()
+        and (p.name.startswith("Dockerfile") or p.suffix.lower() == ".dockerfile")
+        and not _SKIP_MANIFEST_DIRS & set(p.parts)
+    ]
+    if not dockerfiles:
+        return [], notes
+    if not shutil.which("hadolint"):
+        notes.append(
+            f"hadolint not installed: {len(dockerfiles)} Dockerfile(s) were not linted."
+        )
+        return [], notes
+    cmd = ["hadolint", "--format", "json", "--no-fail"]
+    for cfg in (".hadolint.yaml", ".hadolint.yml"):
+        if (root / cfg).is_file():
+            cmd += ["--config", str(root / cfg)]
+            break
+    cmd += [str(p) for p in dockerfiles]
+    try:
+        proc = subprocess.run(
+            cmd, cwd=root, capture_output=True, text=True, timeout=300
+        )
+        items = json.loads(proc.stdout or "[]")
+    except Exception as e:  # noqa: BLE001
+        notes.append(f"hadolint failed: {brief_error(e)}")
+        return [], notes
+    return hadolint_findings(
+        items if isinstance(items, list) else [], taxonomy, root
+    ), notes
+
+
 def run_layer1(
-    workspace, taxonomy, exclude=None, progress=None
+    workspace, taxonomy, exclude=None, progress=None, policy=None
 ) -> tuple[list[Finding], list[str]]:
     def _tick(msg: str) -> None:
         if progress:
@@ -926,9 +1313,23 @@ def run_layer1(
     f, n = run_secret_scan(workspace, taxonomy, exclude)
     findings += f
     notes += n
+    _tick("Layer 1: trivy (vulnerabilities, secrets, misconfiguration, licenses)…")
+    f, n, trivy_ran = run_trivy(workspace, taxonomy, policy)
+    findings += f
+    notes += n
+    # trivy already covered dependency CVEs; pip-audit and npm audit are the fallback.
+    sca_steps = (
+        ()
+        if trivy_ran
+        else (
+            ("dependency CVEs (pip-audit)", run_sca),
+            ("npm dependency CVEs (npm audit)", run_sca_npm),
+        )
+    )
     for label, fn in (
-        ("dependency CVEs (pip-audit)", run_sca),
-        ("npm dependency CVEs (npm audit)", run_sca_npm),
+        *sca_steps,
+        ("secrets in git history (gitleaks)", run_gitleaks),
+        ("Dockerfile lint (hadolint)", run_hadolint),
         ("SAST (semgrep)", run_sast),
         ("tests/CI presence", check_presence),
         ("engineering baseline", check_engineering_baseline),
