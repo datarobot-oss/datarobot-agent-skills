@@ -189,15 +189,16 @@ def _conformance_table(result: AnalysisResult, policy: dict[str, Any]) -> str:
 
 
 def python_label(inv: dict[str, Any]) -> str:
-    """'3.10' for one floor, '3.10 (core 3.10, infra 3.11, web 3.12)' when
-    components differ, 'n/a' when nothing declares one."""
+    """'3.10' for one floor, '3.10 lowest (repo root 3.10, core 3.11,
+    web 3.12)' when components differ, 'n/a' when nothing declares one."""
     floor = inv.get("python_version")
     if not floor:
         return "n/a"
     versions = inv.get("python_versions") or {}
     if len(set(versions.values())) > 1:
-        parts = ", ".join(f"{d} {v}" for d, v in sorted(versions.items()))
-        return f"{floor} ({parts})"
+        ordered = sorted(versions.items(), key=lambda kv: (kv[0] != ".", kv[0]))
+        parts = ", ".join(f"{'repo root' if d == '.' else d} {v}" for d, v in ordered)
+        return f"{floor} lowest ({parts})"
     return str(floor)
 
 

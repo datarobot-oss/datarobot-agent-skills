@@ -550,7 +550,16 @@ def test_python_floor_is_the_lowest_across_components(tmp_path: Path) -> None:
     assert versions == {"core": "3.10", "web": "3.12"}
     assert detect_python_version(tmp_path) == "3.10"
     assert python_label({"python_version": "3.10", "python_versions": versions}) == (
-        "3.10 (core 3.10, web 3.12)"
+        "3.10 lowest (core 3.10, web 3.12)"
+    )
+    assert (
+        python_label(
+            {
+                "python_version": "3.10",
+                "python_versions": {"core": "3.11", ".": "3.10", "app": "3.12"},
+            }
+        )
+        == "3.10 lowest (repo root 3.10, app 3.12, core 3.11)"
     )
     assert python_label({}) == "n/a"
 
