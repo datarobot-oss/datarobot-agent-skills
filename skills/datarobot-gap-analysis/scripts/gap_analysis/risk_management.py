@@ -61,7 +61,7 @@ import yaml
 
 from . import paths
 from .docs import resolve_docs
-from .inventory import evidence_files, files_matching
+from .inventory import PREDICTIVE_TARGET, evidence_files, files_matching
 from .llm import LLMClient, brief_error, parse_json
 from .models import Finding, Severity
 
@@ -274,16 +274,27 @@ def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | 
         "file": None,
         "files": [],
         "variants": {},
+        "inactive_variants": {},
+        "variant_selector": None,
         "deployment": False,
         "deployment_file": None,
+        "referenced_deployment": False,
+        "referenced_deployment_file": None,
         "custom_model": False,
         "custom_model_file": None,
         "application": False,
+        "target_type": None,
     }
+    target_re = re.compile(
+        r"target_type\s*=\s*(?:[\"']([A-Za-z]+)[\"']|[\w.]*TargetType\.([A-Z_]+))"
+    )
     # \bDeployment( catches datarobot.Deployment; CustomModelDeployment( is the
     # datarobot-pulumi-utils wrapper, which creates a Deployment under the hood.
+    # Deployment.get( only references a deployment that another stack owns.
     deployment_re = re.compile(r"\bDeployment\(|CustomModelDeployment\(")
+    referenced_re = re.compile(r"\bDeployment\.get\(")
     custom_model_re = re.compile(r"\bCustomModel\(")
+    selector_re = re.compile(r"\bINFRA_ENABLE_[A-Z_]+\b")
     # Program entry points and infra/ modules first, then everything else, so a
     # large application tree cannot push the Pulumi program past the cap.
     candidates = files_matching(inventory, _PULUMI_PROGRAM_GLOBS[:2])
@@ -291,17 +302,15 @@ def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | 
     candidates += [
         f for f in files_matching(inventory, _PULUMI_PROGRAM_GLOBS[2:]) if f not in seen
     ]
-    for rel in candidates[:400]:
+    candidates = candidates[:400]
+    texts: dict[str, str] = {}
+    for rel in candidates:
         try:
             text = (workspace / rel).read_text(errors="ignore")
         except OSError:
             continue
-        if not any(marker in text for marker in _PULUMI_MARKERS):
-            continue
-        if info["file"] is None:
-            info["file"] = rel
-        if len(info["files"]) < _MAX_PULUMI_FILES:
-            info["files"].append(rel)
+        if any(marker in text for marker in _PULUMI_MARKERS):
+            texts[rel] = text
         path = workspace / rel
         if path.is_symlink():
             try:
@@ -309,15 +318,68 @@ def _detect_iac(workspace: Path, inventory: dict[str, Any]) -> dict[str, Any] | 
             except ValueError:
                 target = os.readlink(path)
             info["variants"][rel] = target
-        if deployment_re.search(text):
+    active_targets = set(info["variants"].values())
+
+    def shape(text: str) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "deployment": bool(deployment_re.search(text)),
+            "custom_model": bool(custom_model_re.search(text)),
+            "target_type": None,
+        }
+        m = target_re.search(text) if out["custom_model"] else None
+        if m:
+            raw = m.group(1) or m.group(2).replace("_", "")
+            out["target_type"] = _TARGET_TYPE_NAMES.get(raw.lower(), raw)
+        return out
+
+    for rel, text in texts.items():
+        # A file under configurations/ is one selectable variant; only the one
+        # the symlink points at is part of the deployed program.
+        if "configurations" in rel.split("/") and rel not in active_targets:
+            info["inactive_variants"][rel] = shape(text)
+            continue
+        if info["file"] is None:
+            info["file"] = rel
+            m = selector_re.search(text)
+            if m:
+                info["variant_selector"] = m.group(0)
+        if len(info["files"]) < _MAX_PULUMI_FILES:
+            info["files"].append(rel)
+        found = shape(text)
+        if found["deployment"]:
             info["deployment"] = True
             info["deployment_file"] = info["deployment_file"] or rel
-        if custom_model_re.search(text):
+        if referenced_re.search(text):
+            info["referenced_deployment"] = True
+            info["referenced_deployment_file"] = (
+                info["referenced_deployment_file"] or rel
+            )
+        if found["custom_model"]:
             info["custom_model"] = True
             info["custom_model_file"] = info["custom_model_file"] or rel
         if "CustomApplication" in text or "ApplicationSource" in text:
             info["application"] = True
+        if info["target_type"] is None and found["target_type"]:
+            info["target_type"] = found["target_type"]
     return info if info["file"] else None
+
+
+_TARGET_TYPE_NAMES = {
+    t.lower(): t
+    for t in (
+        "AgenticWorkflow",
+        "TextGeneration",
+        "Regression",
+        "Binary",
+        "Multiclass",
+        "Multilabel",
+        "MinInflated",
+        "GeoPoint",
+        "Anomaly",
+        "VectorDatabase",
+        "Unstructured",
+    )
+}
 
 
 def _gather_files(
@@ -334,6 +396,51 @@ def _gather_files(
             data = data[:max_bytes] + "\n…[truncated]…"
         out.append((rel, data.replace("\x00", "")))
     return out
+
+
+def repo_target_type(
+    iac: dict[str, Any] | None, inventory: dict[str, Any]
+) -> str | None:
+    """The target type the repo deploys (or would deploy) as: the Pulumi
+    CustomModel's declared target_type when present, else inferred from the
+    code (see inventory.infer_deploy_target)."""
+    declared = (iac or {}).get("target_type")
+    return declared or inventory.get("deploy_target")
+
+
+def applicability(
+    meta: dict[str, Any], iac: dict[str, Any] | None, inventory: dict[str, Any]
+) -> str | None:
+    """Why a mitigation does not apply to this repo, or None when it does.
+
+    Mirrors the platform evaluator: a check is not applicable only when the
+    repo has no model or LLM path at all (nothing for the policy to govern) or
+    when its target type is outside the check's applicable_target_types. A
+    missing deployment never exempts a check; it is a gap closed by deploying
+    through DataRobot.
+    """
+    entity = meta.get("applicable_entity")
+    if entity in (None, "system", "organization"):
+        return None
+    target = repo_target_type(iac, inventory)
+    if target is None:
+        return (
+            "evaluated on a DataRobot "
+            + entity.replace("_", " ")
+            + "; this repo has no model or LLM path to deploy"
+        )
+    allowed = meta.get("applicable_target_types")
+    if not allowed:
+        return None
+    if target == PREDICTIVE_TARGET:
+        # Exact predictive type is unknowable from code; any predictive type
+        # in the list keeps the check applicable.
+        if any(t not in ("AgenticWorkflow", "TextGeneration") for t in allowed):
+            return None
+    elif target in allowed:
+        return None
+    shown = "a predictive model" if target == PREDICTIVE_TARGET else target
+    return f"applies to {', '.join(allowed)} targets; this repo deploys as {shown}"
 
 
 def _finding_for_mitigation(
@@ -369,6 +476,9 @@ def _finding_for_mitigation(
         steps = [fix_meta["hint"]]
 
     requires = fix_meta.get("requires")
+    variant = shipped_deployment_variant(iac)
+    if variant and fix_meta.get("via") in ("pulumi", "automatic"):
+        steps.insert(0, _select_variant_text(iac or {}, variant))
     pulumi_file = (iac or {}).get("file")
     if requires == "deployment" and (iac or {}).get("deployment_file"):
         pulumi_file = iac["deployment_file"]
@@ -429,6 +539,53 @@ _RESOURCE_NAMES = {
 }
 
 
+def shipped_deployment_variant(iac: dict[str, Any] | None) -> str | None:
+    """An inactive configuration variant that declares a datarobot.Deployment,
+    when the active one does not: selecting it is the remedy, not new IaC."""
+    iac = iac or {}
+    if iac.get("deployment"):
+        return None
+    candidates = [
+        rel
+        for rel, found in (iac.get("inactive_variants") or {}).items()
+        if found.get("deployment")
+    ]
+    # A gateway-backed variant keeps the LLM provider the org already governs.
+    return min(
+        candidates, key=lambda rel: ("gateway" not in rel.lower(), rel), default=None
+    )
+
+
+def _select_variant_text(iac: dict[str, Any], variant: str) -> str:
+    selector = iac.get("variant_selector")
+    how = (
+        f"set {selector}={variant.rsplit('/', 1)[-1]}"
+        if selector
+        else "point the configuration symlink at it"
+    )
+    return (
+        f"This repo already ships a variant that declares one: {variant}. "
+        f"Select it ({how}) instead of writing new infrastructure."
+    )
+
+
+def externally_provided(meta: dict[str, Any], iac: dict[str, Any] | None) -> str | None:
+    """Why a mitigation cannot be evidenced from this repo even though it is
+    satisfied elsewhere: the active program only references a deployment that
+    another stack owns (datarobot.Deployment.get), so its settings, guards and
+    tests live there."""
+    iac = iac or {}
+    if meta.get("applicable_entity") in (None, "system", "organization"):
+        return None
+    if iac.get("deployment") or not iac.get("referenced_deployment"):
+        return None
+    return (
+        "provided by an existing DataRobot deployment referenced in "
+        f"{iac.get('referenced_deployment_file')}; verify its configuration on that "
+        "deployment in DataRobot, this repo does not own it"
+    )
+
+
 def _prerequisite(
     requires: str | None, via: str | None, iac: dict[str, Any] | None
 ) -> str:
@@ -438,7 +595,11 @@ def _prerequisite(
         return ""
     name = _RESOURCE_NAMES.get(needed, needed)
     if not iac:
-        return f"Needs a {name} in a Pulumi program; this repo has no pulumi-datarobot program."
+        return (
+            f"Needs a {name} in a Pulumi program; this repo has no pulumi-datarobot "
+            "program. Deploy the agent or LLM path as an agentic deployment (a "
+            "CustomModel with target type AgenticWorkflow behind a Deployment)."
+        )
     if iac.get(needed):
         where = iac.get(f"{needed}_file") or iac.get("file")
         return f"Needs a {name}; present in {where}."
@@ -447,9 +608,18 @@ def _prerequisite(
         if iac.get("application")
         else "no Deployment or CustomModel"
     )
+    variant = shipped_deployment_variant(iac)
+    if variant:
+        return (
+            f"Needs a {name}; not present in the active configuration. "
+            + _select_variant_text(iac, variant)
+        )
     return (
         f"Needs a {name}; not present. This repo's Pulumi program deploys {shape}, "
-        "so the model or LLM path must first be put behind a DataRobot deployment."
+        "so the agent or LLM path must first become an agentic deployment: a "
+        "datarobot.CustomModel with target type AgenticWorkflow behind a "
+        "datarobot.Deployment. Its LLM calls can keep going through the DataRobot "
+        "LLM Gateway from inside that model."
     )
 
 
@@ -529,8 +699,9 @@ def run_dynamic_layer4(
     Returns (findings, coverage, notes, iac). `coverage` lists every mitigation
     considered, not just the ones that became findings, {mitigation_type,
     title, status}, status one of "pass" | "gap" | "not_assessed" |
-    "unknown_type" (a live mitigation type this skill's metadata doesn't
-    recognize yet, see validate_risk_management_mapping.py). Never raises:
+    "not_applicable" (target type or entity mismatch, `reason` says why) |
+    "referenced" (provided by a deployment another stack owns) | "unknown_type" (a live mitigation type this skill's metadata
+    doesn't recognize yet, see validate_risk_management_mapping.py). Never raises:
     any failure here just means an empty result with a reason in `notes`.
     """
     notes: list[str] = []
@@ -600,12 +771,28 @@ def run_dynamic_layer4(
     # LLM-assess all judgeable mitigations in parallel; each assessment is an
     # independent (prompt, files) completion, so only the aggregation below
     # needs to stay in `required` order for deterministic output.
+    not_applicable = {
+        mt: reason
+        for mt in required
+        if metadata.get(mt)
+        for reason in [applicability(metadata[mt], iac, inventory)]
+        if reason
+    }
+    referenced = {
+        mt: reason
+        for mt in required
+        if metadata.get(mt) and mt not in not_applicable
+        for reason in [externally_provided(metadata[mt], iac)]
+        if reason
+    }
     assessable = [
         mt
         for mt in required
         if metadata.get(mt)
         and metadata[mt].get("files_glob")
         and llm_client is not None
+        and mt not in not_applicable
+        and mt not in referenced
     ]
     assessed: dict[str, tuple[str, dict[str, Any] | None, str | None]] = {}
     if assessable:
@@ -661,6 +848,28 @@ def run_dynamic_layer4(
             )
             continue
 
+        if mitigation_type in not_applicable:
+            coverage.append(
+                {
+                    "mitigation_type": mitigation_type,
+                    "title": meta["title"],
+                    "status": "not_applicable",
+                    "reason": not_applicable[mitigation_type],
+                }
+            )
+            continue
+
+        if mitigation_type in referenced:
+            coverage.append(
+                {
+                    "mitigation_type": mitigation_type,
+                    "title": meta["title"],
+                    "status": "referenced",
+                    "reason": referenced[mitigation_type],
+                }
+            )
+            continue
+
         verdict, item, skip_reason = "skipped", None, None
         if not meta.get("files_glob"):
             skip_reason = "organizational requirement, not assessable from code"
@@ -698,6 +907,28 @@ def run_dynamic_layer4(
             }
         )
 
+    if not_applicable:
+        notes.append(
+            f"Layer 4: {len(not_applicable)} mitigation(s) not applicable to this repo "
+            f"(target type {repo_target_type(iac, inventory) or 'none'}): "
+            + ", ".join(metadata[mt]["title"] for mt in not_applicable)
+            + "."
+        )
+    if referenced:
+        notes.append(
+            f"Layer 4: {len(referenced)} mitigation(s) are provided by an existing "
+            f"deployment referenced in {iac.get('referenced_deployment_file')}; verify "
+            "them on that deployment in DataRobot."
+        )
+    if iac and iac.get("inactive_variants"):
+        active = (
+            ", ".join(f"{k} -> {v}" for k, v in sorted(iac["variants"].items()))
+            or "none selected"
+        )
+        notes.append(
+            f"Layer 4: {len(iac['inactive_variants'])} inactive configuration variant(s) "
+            f"under configurations/ were not counted as deployed (active: {active})."
+        )
     unassessed = sum(1 for row in coverage if row["status"] == "not_assessed")
     if findings or unassessed:
         _tick(

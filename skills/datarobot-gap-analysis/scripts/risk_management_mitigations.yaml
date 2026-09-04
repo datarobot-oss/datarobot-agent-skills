@@ -10,31 +10,28 @@
 # feature satisfies it, the remediation text shown in the report, what counts
 # as evidence in a repo (evidence), and which files to show the LLM
 # (files_glob; an empty list marks an organizational requirement that cannot
-# be assessed from code at all).
+# be assessed from code at all), and the platform's own applicability rules
+# (applicable_entity, applicable_target_types), copied from the risk-management
+# evaluator: the DataRobot entity a check is evaluated on, and the target types
+# it applies to (unset means every target type). The evaluator returns
+# not_applicable only for a target-type or model-type mismatch; a missing
+# deployment or custom model is "not set up" and counts against the compliance
+# score. Layer 4 mirrors that: it infers the target type this repo would deploy
+# as (AgenticWorkflow for an agent, TextGeneration for a plain LLM app, a
+# predictive type for a scoring model) and marks mismatched checks not
+# applicable; everything else is a gap until the code is behind a DataRobot
+# deployment. Calling the LLM Gateway directly exempts nothing: the gateway is
+# the model provider, the deployment is the governed entity. A repo with no
+# model or LLM path at all is not an AI system, so entity-scoped checks are
+# not applicable to it.
 #
-# The remediation for nearly every mitigation type here is "adopt the DataRobot
-# platform feature that provides this," not a code patch; a repo can still show
-# pre-deployment evidence (its own implementation, or DataRobot deployment
-# configuration that will provide the capability once deployed).
-#
-# `datarobot_feature` names are based on general knowledge of DataRobot's product
-# surface (Model Registry documentation, deployment monitoring, GenAI Guards,
-# RBAC), not verified against current product documentation or UI paths. Confirm
-# the specific feature name/location before presenting this to a user as exact
-# product guidance, DataRobot's own naming may have moved on.
-#
-# Grounded against DataRobot's built-in "EU AI Act" risk policy as of
-# 2026-07-31. The risk-management API is not yet public, so DataRobot may add,
-# rename, or retire mitigation types with no compatibility guarantee. Run
-# validate_risk_management_mapping.py against a live GET /mitigationMethods/
-# catalog before relying on this in production, it flags drift rather than
-# letting this file silently go stale.
-
 version: 1
 
 mitigations:
 
   - mitigation_type: compliance_doc
+    applicable_entity: registered_model_version
+    applicable_target_types: [Regression, Binary, Multiclass, MinInflated, GeoPoint, TextGeneration]
     title: Technical documentation
     default_severity: medium
     structural: true
@@ -58,6 +55,7 @@ mitigations:
       - "Store the generated document with the Use Case risk assessment."
 
   - mitigation_type: deployment_logs
+    applicable_entity: deployment
     title: Record-keeping and event logging
     default_severity: high
     structural: true
@@ -79,6 +77,7 @@ mitigations:
       - "Nothing else to configure; review it under the deployment's Data exploration tab in Console."
 
   - mitigation_type: deployment_tracing
+    applicable_entity: deployment
     title: Lifecycle tracing
     default_severity: medium
     structural: true
@@ -101,6 +100,7 @@ mitigations:
       - "Review under the deployment's Data exploration, Tracing view."
 
   - mitigation_type: deployment_notification
+    applicable_entity: deployment
     title: Human oversight notification
     default_severity: high
     structural: true
@@ -125,6 +125,7 @@ mitigations:
       - "Console alternative: deployment, Notifications tab, add a policy and channel."
 
   - mitigation_type: risk_description_filled
+    applicable_entity: system
     title: Risk classification documented
     default_severity: high
     structural: true
@@ -143,6 +144,7 @@ mitigations:
       - "Revisit it after material changes; risk assessments are expected to be updated periodically."
 
   - mitigation_type: rbac
+    applicable_entity: system
     title: Access control
     default_severity: high
     structural: true
@@ -162,6 +164,8 @@ mitigations:
       - "Share the deployment and application only with the groups that need them, at the least-privileged role."
 
   - mitigation_type: prompt_injection_guard
+    applicable_entity: custom_model_version
+    applicable_target_types: [AgenticWorkflow, TextGeneration]
     title: Prompt-injection defense
     default_severity: high
     structural: true
@@ -188,6 +192,8 @@ mitigations:
       - "Console alternative: Registry, model workshop, Evaluation and moderation, add the prompt-injection guard, then redeploy."
 
   - mitigation_type: jailbreak_compliance_test
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: Jailbreak-resistance testing
     default_severity: high
     structural: true
@@ -208,6 +214,7 @@ mitigations:
       - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: ai_literacy
+    applicable_entity: organization
     title: Staff AI literacy
     default_severity: medium
     structural: false
@@ -225,6 +232,8 @@ mitigations:
         there is no repo change for this mitigation."
 
   - mitigation_type: bias_benchmark_compliance_test
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: Bias benchmark testing
     default_severity: high
     structural: true
@@ -242,6 +251,8 @@ mitigations:
       - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: completeness_compliance_test
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: Response completeness testing
     default_severity: medium
     structural: true
@@ -259,6 +270,8 @@ mitigations:
       - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: pii_compliance_test
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: PII leakage testing
     default_severity: high
     structural: true
@@ -276,6 +289,8 @@ mitigations:
       - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: toxicity_compliance_test
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: Toxicity testing
     default_severity: high
     structural: true
@@ -293,6 +308,8 @@ mitigations:
       - "Attach the result to the Use Case risk assessment as evidence for this mitigation."
 
   - mitigation_type: agent_goal_accuracy_guard
+    applicable_entity: custom_model_version
+    applicable_target_types: [AgenticWorkflow]
     title: Agent goal-accuracy guard
     default_severity: medium
     structural: true
@@ -318,6 +335,8 @@ mitigations:
         redeploy."
 
   - mitigation_type: task_adherence_guard
+    applicable_entity: custom_model_version
+    applicable_target_types: [AgenticWorkflow]
     title: Task-adherence guard
     default_severity: medium
     structural: true
@@ -341,6 +360,8 @@ mitigations:
       - "Console alternative: Registry, model workshop, Evaluation and moderation, add the task-adherence guard, then redeploy."
 
   - mitigation_type: pii_detection_guard
+    applicable_entity: custom_model_version
+    applicable_target_types: [AgenticWorkflow, TextGeneration]
     title: Runtime PII-detection guard
     default_severity: high
     structural: true
@@ -365,6 +386,8 @@ mitigations:
       - "Console alternative: Registry, model workshop, Evaluation and moderation, add the PII-detection guard, then redeploy."
 
   - mitigation_type: rouge_1_guard
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: Output-quality guard (ROUGE-1)
     default_severity: medium
     structural: true
@@ -387,6 +410,8 @@ mitigations:
       - "Console alternative: Registry, model workshop, Evaluation and moderation, add the ROUGE-1 guard, then redeploy."
 
   - mitigation_type: faithfulness_guard
+    applicable_entity: custom_model_version
+    applicable_target_types: [TextGeneration]
     title: Faithfulness / groundedness guard
     default_severity: medium
     structural: true
@@ -409,6 +434,7 @@ mitigations:
       - "Console alternative: Registry, model workshop, Evaluation and moderation, add the faithfulness guard, then redeploy."
 
   - mitigation_type: resource_utilization_monitoring
+    applicable_entity: deployment
     title: Resource-utilization monitoring
     default_severity: medium
     structural: true
@@ -429,6 +455,7 @@ mitigations:
       - "Nothing else to configure; review it under the deployment's Resource monitoring tab in Console."
 
   - mitigation_type: service_health
+    applicable_entity: deployment
     title: Service-health monitoring
     default_severity: high
     structural: true
@@ -450,6 +477,8 @@ mitigations:
       - "Add a notification policy for service-health events so a human is alerted (see deployment_notification)."
 
   - mitigation_type: drift_tracking
+    applicable_entity: deployment
+    applicable_target_types: [Regression, Binary, Multiclass, MinInflated, Multilabel, GeoPoint]
     title: Data-drift monitoring
     default_severity: high
     structural: true
@@ -472,6 +501,8 @@ mitigations:
       - "Console alternative: deployment, Data drift, Settings."
 
   - mitigation_type: accuracy_tracking
+    applicable_entity: deployment
+    applicable_target_types: [Regression, Binary, Multiclass]
     title: Live accuracy monitoring
     default_severity: high
     structural: true
@@ -495,6 +526,8 @@ mitigations:
       - "Upload actuals on a schedule (Deployment actuals API or a batch job) so accuracy is computed against ground truth."
 
   - mitigation_type: bias_and_fairness_tracking
+    applicable_entity: deployment
+    applicable_target_types: [Binary]
     title: Live bias and fairness monitoring
     default_severity: high
     structural: true
