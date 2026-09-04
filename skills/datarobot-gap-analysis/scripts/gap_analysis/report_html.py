@@ -164,6 +164,11 @@ def render_html(
     stack = []
     if inv.get("template_sources"):
         stack.append("<b>Template:</b> " + _esc(", ".join(inv["template_sources"])))
+    if inv.get("datarobot_app"):
+        stack.append(
+            "<b>Deploys as:</b> DataRobot custom application "
+            f"(<code>{_esc(inv['datarobot_app']['file'])}</code>)"
+        )
     if inv.get("agent_frameworks"):
         stack.append(
             "<b>Agent framework:</b> "

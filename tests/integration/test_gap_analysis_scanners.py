@@ -26,6 +26,7 @@ from gap_analysis.inventory import (  # noqa: E402
     detect_agent_frameworks,
     detect_python_version,
     detect_python_versions,
+    detect_datarobot_app,
     detect_template_sources,
     evidence_files,
     extract_dependencies,
@@ -855,3 +856,36 @@ def test_policy_name_mismatch_lists_available_policies(monkeypatch):
     assert policy is None
     assert "'Custom framework'" in note
     assert "regulatory.policy_name" in note
+
+
+def test_trivy_skips_nested_virtualenvs():
+    from gap_analysis import scanners
+
+    parts = scanners._TRIVY_SKIP_DIRS.split(",")
+    assert ".venv" in parts
+    assert "**/.venv" in parts
+    assert "**/node_modules" in parts
+
+
+def test_datarobot_app_detection_and_prompt_context(tmp_path: Path) -> None:
+    from gap_analysis.detect import deployment_context
+
+    _write(tmp_path, "docs/notes.md", "we use ApplicationSource( in pulumi")
+    _write(
+        tmp_path,
+        "infra/infra/web.py",
+        "import pulumi_datarobot as dr\n"
+        "src = dr.ApplicationSource('web', dr.ApplicationSourceArgs())\n",
+    )
+    files = ["docs/notes.md", "infra/infra/web.py"]
+
+    app = detect_datarobot_app(tmp_path, files)
+    assert app == {"file": "infra/infra/web.py", "resource": "ApplicationSource"}
+
+    ctx = deployment_context({"datarobot_app": app})
+    assert "x-datarobot-api-key" in ctx
+    assert "x-user-id" in ctx
+    assert "infra/infra/web.py" in ctx
+    assert ctx.endswith("\n\n")
+    assert deployment_context({}) == ""
+    assert detect_datarobot_app(tmp_path, ["docs/notes.md"]) is None

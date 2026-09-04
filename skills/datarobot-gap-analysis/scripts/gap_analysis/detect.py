@@ -22,6 +22,7 @@ from .models import ConditionSkip, Finding
 from .taxonomy import Condition, Taxonomy
 
 _MAX_FILES = 12  # cap files fed per condition
+_DR_APP_CONTEXT_FILE = "prompts/_deployment_datarobot_app.md"
 NO_LLM_NOTE = (
     "Layers 2 and 4 (LLM) skipped: no model client. Install the DataRobot CLI "
     "(run the datarobot-setup skill) so checks run through `dr opencode`, or add "
@@ -147,6 +148,24 @@ def _result_to_findings(cond: Condition, result: dict[str, Any]) -> list[Finding
     return findings
 
 
+def deployment_context(inventory: dict[str, Any]) -> str:
+    """Runtime facts the code alone cannot show, as a prompt section, or ''.
+
+    A DataRobot custom application receives identity headers from the
+    platform proxy; without saying so, header reads look like trusting
+    unauthenticated client input.
+    """
+    app = inventory.get("datarobot_app")
+    if not app:
+        return ""
+    text = paths.resolve(_DR_APP_CONTEXT_FILE).read_text()
+    return (
+        "---\n"
+        + text.format(resource=app["resource"], file=app["file"]).rstrip()
+        + "\n\n"
+    )
+
+
 def run_condition(
     client: LLMClient,
     workspace: Path,
@@ -160,7 +179,8 @@ def run_condition(
         return [], ConditionSkip(cond.id, "no files matched this condition's globs")
     prompt = _load_prompt(cond.detector)
     system = (
-        f"{prompt}\n\n---\n# Output contract\n{contract}\n\n"
+        f"{prompt}\n\n{deployment_context(inventory)}---\n# Output contract\n"
+        f"{contract}\n\n"
         f"You are checking condition {cond.id}. Return ONLY the JSON object."
     )
     user = _build_user_message(files)

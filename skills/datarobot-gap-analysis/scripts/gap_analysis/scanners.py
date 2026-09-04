@@ -1058,6 +1058,13 @@ def _trivy_db_present() -> bool:
     return False
 
 
+# trivy matches skip patterns against the path from the scan root, so a bare
+# name only skips a top-level directory; the ** form covers nested venvs.
+_TRIVY_SKIP_DIRS = ",".join(
+    f"{d},**/{d}" for d in (".venv", "venv", "node_modules", "dist", "build")
+)
+
+
 def run_trivy(
     workspace: str | Path, taxonomy: Taxonomy, policy: dict[str, Any] | None = None
 ) -> tuple[list[Finding], list[str], bool]:
@@ -1100,7 +1107,7 @@ def run_trivy(
         "--quiet",
         "--skip-db-update",
         "--skip-dirs",
-        ".venv,node_modules,dist,build",
+        _TRIVY_SKIP_DIRS,
     ]
     rego = root / "trivy-ignore.rego"
     if rego.is_file():
