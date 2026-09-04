@@ -95,7 +95,22 @@ policy but reports its requirements as "required, not assessed" instead of judgi
 the code.
 
 The regulatory layer is a pre-deployment check: it never inspects deployed entities,
-it judges whether this repo would satisfy the org's policy if deployed. If DataRobot
+it judges whether this repo would satisfy the org's policy if deployed. Applicability
+mirrors the platform's own evaluator: a mitigation is "not applicable" only when the
+repo has no model or LLM path at all, or when its target type (AgenticWorkflow for an
+agent, TextGeneration for a plain LLM app, a predictive type for a scoring model) is
+outside the check's applicable target types, for example drift or accuracy tracking on
+an agent. A missing `datarobot.Deployment` never exempts a check, and calling the
+DataRobot LLM Gateway directly does not either: the gateway is the model provider, the
+deployment is the governed entity. For an agent or LLM app with no deployment, the
+remedy is an agentic deployment (a CustomModel with target type AgenticWorkflow behind a
+Deployment) that keeps using the gateway from inside. Only the active Pulumi configuration
+counts: templates that ship selectable variants under `configurations/` deploy just the one
+the symlink points at, and when an inactive variant already declares a Deployment the
+report says to select it rather than build new infrastructure. A program that only
+references a deployment owned elsewhere (`Deployment.get`) has those checks reported as
+"provided by an existing deployment, verify there", never as passed.
+If DataRobot
 risk-management isn't reachable (feature not enabled for the org, no matching
 policy), Layer 4 reports nothing and says why in the report's Engine Notes; tell the
 user plainly that regulatory coverage was not assessed rather than implying it

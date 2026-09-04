@@ -427,11 +427,15 @@ _STATUS_TEXT = {
     "gap": "gap",
     "pass": "evidence found",
     "not_assessed": "not assessed",
+    "not_applicable": "not applicable",
+    "referenced": "existing deployment",
     "unknown_type": "unknown",
 }
 _STATUS_PATH = {
     "gap": "M6 6l12 12M18 6L6 18",
     "pass": "M5 12.5l4.5 4.5L19 7",
+    "not_applicable": "M6 12h12",
+    "referenced": "M10 14a4 4 0 0 1 0-5.5l2-2a4 4 0 0 1 5.5 5.5l-1 1M14 10a4 4 0 0 1 0 5.5l-2 2A4 4 0 0 1 6.5 12l1-1",
     "not_assessed": "M9 9.5a3 3 0 1 1 4.3 2.7c-1 .5-1.3 1.2-1.3 2.3M12 18h.01",
 }
 
@@ -472,12 +476,19 @@ def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
         )
     gaps = [f for f in result.findings if f.pillar == "POL"]
     passed = [r for r in coverage if r["status"] == "pass"]
-    unassessed = [r for r in coverage if r["status"] not in ("pass", "gap")]
+    inapplicable = [r for r in coverage if r["status"] == "not_applicable"]
+    referenced = [r for r in coverage if r["status"] == "referenced"]
+    unassessed = [
+        r
+        for r in coverage
+        if r["status"] not in ("pass", "gap", "not_applicable", "referenced")
+    ]
     out = [
         head,
         f'<p class="sub">{len(coverage)} required mitigation(s): {len(gaps)} gap(s), '
-        f"{len(passed)} with evidence, {len(unassessed)} not assessed. "
-        "Expand a gap for its evidence and fix.</p>",
+        f"{len(passed)} with evidence, {len(referenced)} provided by an existing "
+        f"deployment, {len(inapplicable)} not applicable, {len(unassessed)} not "
+        "assessed. Expand a gap for its evidence and fix.</p>",
     ]
     for i, step in enumerate(compliance_path(result), start=1):
         out.append(
@@ -496,6 +507,32 @@ def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
         out.append('<h3 class="step">Evidence found</h3><ul class="mit-list">')
         out.extend(
             f"<li>{_status_html('pass')} {_esc(r['title'])}</li>" for r in passed
+        )
+        out.append("</ul>")
+    if referenced:
+        out.append(
+            '<h3 class="step">Provided by an existing deployment</h3>'
+            '<p class="path-lead">The active program references a deployment another '
+            "stack owns; verify these on that deployment in DataRobot.</p>"
+            '<ul class="mit-list">'
+        )
+        out.extend(
+            f"<li>{_status_html('referenced')} {_esc(r['title'])}"
+            f'<span class="muted"> · {_esc(r.get("reason", ""))}</span></li>'
+            for r in referenced
+        )
+        out.append("</ul>")
+    if inapplicable:
+        out.append(
+            '<h3 class="step">Not applicable to this repo</h3>'
+            '<p class="path-lead">The platform evaluates these only for certain target '
+            "types or entities; this repo is outside them.</p>"
+            '<ul class="mit-list">'
+        )
+        out.extend(
+            f"<li>{_status_html('not_applicable')} {_esc(r['title'])}"
+            f'<span class="muted"> · {_esc(r.get("reason", ""))}</span></li>'
+            for r in inapplicable
         )
         out.append("</ul>")
     if unassessed:

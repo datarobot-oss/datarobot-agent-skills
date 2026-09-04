@@ -41,6 +41,8 @@ COVERAGE_STATUS_LABEL = {
     "gap": "❌ gap",
     "pass": "✅ evidence found",
     "not_assessed": "❔ required, not assessed",
+    "not_applicable": "➖ not applicable",
+    "referenced": "🔗 provided by an existing deployment",
     "unknown_type": "⚠ unrecognized mitigation type",
 }
 
@@ -348,10 +350,17 @@ def _regulatory_section(result: AnalysisResult) -> str:
     coverage = result.regulatory_coverage
     gaps = [f for f in result.findings if f.pillar == "POL"]
     passed = [r for r in coverage if r["status"] == "pass"]
-    unassessed = [r for r in coverage if r["status"] not in ("pass", "gap")]
+    inapplicable = [r for r in coverage if r["status"] == "not_applicable"]
+    referenced = [r for r in coverage if r["status"] == "referenced"]
+    unassessed = [
+        r
+        for r in coverage
+        if r["status"] not in ("pass", "gap", "not_applicable", "referenced")
+    ]
     out = [
         f"{len(coverage)} required mitigation(s): {len(gaps)} gap(s), {len(passed)} with "
-        f"evidence, {len(unassessed)} not assessed."
+        f"evidence, {len(referenced)} provided by an existing deployment, "
+        f"{len(inapplicable)} not applicable, {len(unassessed)} not assessed."
     ]
     for i, step in enumerate(compliance_path(result), start=1):
         out.append(f"\n**{i}. {step['title']}.** {step['detail']}\n")
@@ -371,6 +380,12 @@ def _regulatory_section(result: AnalysisResult) -> str:
     if passed:
         out.append("\n**Evidence found**\n")
         out.extend(f"- ✅ {r['title']}" for r in passed)
+    if referenced:
+        out.append("\n**Provided by an existing deployment, verify there**\n")
+        out.extend(f"- 🔗 {r['title']}: {r.get('reason', '')}" for r in referenced)
+    if inapplicable:
+        out.append("\n**Not applicable to this repo**\n")
+        out.extend(f"- ➖ {r['title']}: {r.get('reason', '')}" for r in inapplicable)
     if unassessed:
         out.append("\n**Required, not assessed**\n")
         out.extend(

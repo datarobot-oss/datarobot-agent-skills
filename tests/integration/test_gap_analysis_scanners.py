@@ -27,6 +27,8 @@ from gap_analysis.inventory import (  # noqa: E402
     detect_python_version,
     detect_python_versions,
     detect_datarobot_app,
+    detect_llm_usage,
+    detect_model_code,
     detect_template_sources,
     evidence_files,
     extract_dependencies,
@@ -889,3 +891,244 @@ def test_datarobot_app_detection_and_prompt_context(tmp_path: Path) -> None:
     assert ctx.endswith("\n\n")
     assert deployment_context({}) == ""
     assert detect_datarobot_app(tmp_path, ["docs/notes.md"]) is None
+
+
+def test_llm_usage_and_model_code_detection(tmp_path: Path) -> None:
+    _write(tmp_path, "web/app/config.py", "url = f'{endpoint}/genai/llmgw'\n")
+    _write(tmp_path, "tests/test_gw.py", "assert 'llmgw' in url\n")
+    files = ["web/app/config.py", "tests/test_gw.py"]
+
+    usage = detect_llm_usage(tmp_path, files, ["fastapi", "openai"], [])
+    assert usage["present"] and usage["gateway"]
+    assert usage["gateway_evidence"] == "web/app/config.py"
+
+    usage = detect_llm_usage(tmp_path, ["tests/test_gw.py"], ["fastapi"], [])
+    assert usage == {
+        "present": False,
+        "gateway": False,
+        "evidence": None,
+        "gateway_evidence": None,
+    }
+
+    assert detect_model_code(tmp_path, files, ["fastapi"]) is None
+    _write(tmp_path, "model/custom.py", "def load_model(d):\n    pass\n")
+    assert detect_model_code(tmp_path, files + ["model/custom.py"], []) == {
+        "file": "model/custom.py"
+    }
+
+
+def test_layer4_applicability_follows_platform_target_types() -> None:
+    from gap_analysis.risk_management import applicability, load_mitigation_metadata
+
+    meta = load_mitigation_metadata()
+    app_only = {"file": "infra/__main__.py", "deployment": False, "custom_model": False}
+    agent = {"deploy_target": "AgenticWorkflow", "llm_usage": {"gateway": True}}
+    llm_app = {"deploy_target": "TextGeneration"}
+    scorer = {"deploy_target": "Predictive"}
+    nothing = {"deploy_target": None}
+
+    # A gateway-backed agent with no deployment is still on the hook.
+    for mt in (
+        "deployment_logs",
+        "service_health",
+        "prompt_injection_guard",
+        "task_adherence_guard",
+        "pii_detection_guard",
+        "rbac",
+    ):
+        assert applicability(meta[mt], app_only, agent) is None, mt
+    # Predictive-only and text-generation-only checks do not apply to an agent.
+    for mt in (
+        "drift_tracking",
+        "accuracy_tracking",
+        "bias_and_fairness_tracking",
+        "rouge_1_guard",
+        "faithfulness_guard",
+        "jailbreak_compliance_test",
+        "compliance_doc",
+    ):
+        reason = applicability(meta[mt], app_only, agent)
+        assert reason and "AgenticWorkflow" in reason, mt
+    # A plain LLM app gets the text-generation checks but not the agent guards.
+    assert applicability(meta["rouge_1_guard"], app_only, llm_app) is None
+    assert applicability(meta["task_adherence_guard"], app_only, llm_app)
+    # A scoring model gets monitoring, not guards or LLM tests.
+    assert applicability(meta["drift_tracking"], app_only, scorer) is None
+    assert applicability(meta["prompt_injection_guard"], app_only, scorer)
+    # No AI system at all: nothing entity-scoped applies, system checks still do.
+    assert "no model or LLM path" in applicability(
+        meta["deployment_logs"], None, nothing
+    )
+    assert applicability(meta["risk_description_filled"], None, nothing) is None
+    # A declared Pulumi target type wins over inference.
+    declared = {**app_only, "target_type": "TextGeneration"}
+    assert applicability(meta["rouge_1_guard"], declared, agent) is None
+
+
+def test_every_mitigation_declares_platform_applicability() -> None:
+    catalog = yaml.safe_load((SCRIPTS / "risk_management_mitigations.yaml").read_text())
+    entities = {
+        "system",
+        "organization",
+        "deployment",
+        "custom_model_version",
+        "registered_model_version",
+    }
+    targets = {
+        "AgenticWorkflow",
+        "TextGeneration",
+        "Regression",
+        "Binary",
+        "Multiclass",
+        "Multilabel",
+        "MinInflated",
+        "GeoPoint",
+    }
+    for m in catalog["mitigations"]:
+        assert m.get("applicable_entity") in entities, m["mitigation_type"]
+        assert set(m.get("applicable_target_types") or []) <= targets, m[
+            "mitigation_type"
+        ]
+
+
+def test_deploy_target_inference_and_declared_target_type(tmp_path: Path) -> None:
+    from gap_analysis.inventory import infer_deploy_target
+
+    assert infer_deploy_target([{"name": "LangGraph"}], {"present": True}, None) == (
+        "AgenticWorkflow"
+    )
+    assert infer_deploy_target([], {"present": True}, None) == "TextGeneration"
+    assert (
+        infer_deploy_target([], {"present": False}, {"file": "custom.py"})
+        == "Predictive"
+    )
+    assert infer_deploy_target([], {"present": False}, None) is None
+
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        "import pulumi_datarobot as dr\n"
+        "m = dr.CustomModel('agent', target_type=dr.CustomModelTargetType.AGENTIC_WORKFLOW)\n",
+    )
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+    assert iac["custom_model"] and iac["target_type"] == "AgenticWorkflow"
+
+
+def test_report_lists_not_applicable_mitigations() -> None:
+    result = AnalysisResult()
+    result.regulatory_coverage = [
+        {"mitigation_type": "rbac", "title": "Access control", "status": "pass"},
+        {
+            "mitigation_type": "drift_tracking",
+            "title": "Data-drift monitoring",
+            "status": "not_applicable",
+            "reason": "applies to Binary targets; this repo deploys as AgenticWorkflow",
+        },
+    ]
+    md = render_report(result, repo="/r")
+    assert "1 not applicable" in md
+    assert "Data-drift monitoring: applies to Binary targets" in md
+    assert "not assessed" in md
+
+
+def test_only_the_active_configuration_variant_counts(tmp_path: Path) -> None:
+    import os
+
+    from gap_analysis.risk_management import (
+        _prerequisite,
+        externally_provided,
+        shipped_deployment_variant,
+    )
+
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        '"""Set INFRA_ENABLE_LLM=<file> to pick a configurations/llm variant."""\n'
+        "import pulumi\nfrom datarobot_pulumi_utils.pulumi import finalize\n",
+    )
+    _write(
+        tmp_path,
+        "infra/infra/app.py",
+        "import pulumi_datarobot as dr\nsrc = dr.ApplicationSource('web')\n",
+    )
+    _write(
+        tmp_path,
+        "infra/configurations/llm/gateway_direct.py",
+        "import pulumi_datarobot as dr\nparams = [dr.ApplicationSourceRuntimeParameterValueArgs()]\n",
+    )
+    _write(
+        tmp_path,
+        "infra/configurations/llm/registered_model.py",
+        "import pulumi_datarobot as dr\nd = dr.Deployment('llm')\n"
+        "m = dr.CustomModel('llm', target_type='TextGeneration')\n",
+    )
+    _write(
+        tmp_path,
+        "infra/configurations/llm/blueprint_with_llm_gateway.py",
+        "import pulumi_datarobot as dr\nd = dr.Deployment('llm')\n",
+    )
+    os.symlink(
+        "../configurations/llm/gateway_direct.py", tmp_path / "infra/infra/llm.py"
+    )
+
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+
+    assert iac["application"] and not iac["deployment"] and not iac["custom_model"]
+    assert iac["target_type"] is None
+    assert iac["variants"] == {
+        "infra/infra/llm.py": "infra/configurations/llm/gateway_direct.py"
+    }
+    assert iac["inactive_variants"]["infra/configurations/llm/registered_model.py"] == {
+        "deployment": True,
+        "custom_model": True,
+        "target_type": "TextGeneration",
+    }
+    assert iac["variant_selector"] == "INFRA_ENABLE_LLM"
+    assert (
+        shipped_deployment_variant(iac)
+        == "infra/configurations/llm/blueprint_with_llm_gateway.py"
+    )
+    text = _prerequisite("deployment", "pulumi", iac)
+    assert "set INFRA_ENABLE_LLM=blueprint_with_llm_gateway.py" in text
+    assert externally_provided({"applicable_entity": "deployment"}, iac) is None
+
+
+def test_referenced_deployment_is_reported_not_passed(tmp_path: Path) -> None:
+    from gap_analysis.risk_management import externally_provided
+
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        "import pulumi_datarobot as dr\n"
+        "existing = dr.Deployment.get('llm', id='abc')\n"
+        "src = dr.ApplicationSource('web')\n",
+    )
+
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+
+    assert iac["referenced_deployment"] and not iac["deployment"]
+    assert iac["referenced_deployment_file"] == "infra/__main__.py"
+    reason = externally_provided({"applicable_entity": "deployment"}, iac)
+    assert reason and "infra/__main__.py" in reason and "verify" in reason
+    assert externally_provided({"applicable_entity": "system"}, iac) is None
+    assert (
+        externally_provided(
+            {"applicable_entity": "deployment"}, {**iac, "deployment": True}
+        )
+        is None
+    )
+
+    result = AnalysisResult()
+    result.regulatory_coverage = [
+        {
+            "mitigation_type": "service_health",
+            "title": "Service-health monitoring",
+            "status": "referenced",
+            "reason": reason,
+        },
+    ]
+    md = render_report(result, repo="/r")
+    assert "1 provided by an existing deployment" in md
+    assert (
+        "Service-health monitoring: provided by an existing DataRobot deployment" in md
+    )

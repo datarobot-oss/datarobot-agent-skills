@@ -192,6 +192,10 @@ def build_inventory(
             key["config"].append(rel)
 
     deps = extract_dependencies(root)
+    model_ids = extract_model_ids(root, exclude)
+    agent_frameworks = detect_agent_frameworks(deps)
+    llm_usage = detect_llm_usage(root, files, deps, model_ids)
+    model_code = detect_model_code(root, files, deps)
     return {
         "root": str(root),
         "file_count": len(files),
@@ -201,14 +205,17 @@ def build_inventory(
         "python_version": detect_python_version(root),
         "python_versions": detect_python_versions(root),
         "dependencies": deps,
-        "model_ids": extract_model_ids(root, exclude),
+        "model_ids": model_ids,
         "declared_licenses": extract_declared_licenses(root, exclude),
         "base_images": extract_base_images(root, exclude),
         "base_image_files": base_image_files(root, exclude),
         "template_sources": detect_template_sources(root),
         "datarobot_app": detect_datarobot_app(root, files),
+        "llm_usage": llm_usage,
+        "model_code": model_code,
+        "deploy_target": infer_deploy_target(agent_frameworks, llm_usage, model_code),
         "agent_template_choices": agent_template_choices(),
-        "agent_frameworks": detect_agent_frameworks(deps),
+        "agent_frameworks": agent_frameworks,
     }
 
 
@@ -581,6 +588,118 @@ def detect_datarobot_app(root: Path, files: list[str]) -> dict[str, str] | None:
         m = _DR_APP_RESOURCE_RE.search(text)
         if m:
             return {"file": rel, "resource": m.group(1)}
+    return None
+
+
+_LLM_CLIENT_PACKAGES = {
+    "openai",
+    "anthropic",
+    "litellm",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langchain-google-genai",
+    "google-generativeai",
+    "google-genai",
+    "cohere",
+    "mistralai",
+    "groq",
+    "together",
+    "ollama",
+    "instructor",
+    "dspy",
+    "dspy-ai",
+    "datarobot-genai",
+}
+_LLM_GATEWAY_RE = re.compile(
+    r"genai/llmgw|\bllmgw\b|llm[_-]gateway|USE_DATAROBOT_LLM_GATEWAY|LLMGateway",
+    re.IGNORECASE,
+)
+_LLM_GATEWAY_EXTS = (".py", ".ts", ".tsx", ".js", ".toml", ".yaml", ".yml", ".env")
+_TEST_PART_RE = re.compile(r"(^|/)(tests?|__tests__|fixtures)(/|$)|(^|/)test_[^/]*$")
+_MODEL_HOOK_RE = re.compile(r"^def (score|load_model|chat|transform|fit)\(", re.M)
+
+
+def detect_llm_usage(
+    root: Path, files: list[str], deps: list[str], model_ids: list[str]
+) -> dict[str, Any]:
+    """Whether the repo calls an LLM at all, and whether those calls go through
+    the DataRobot LLM Gateway.
+
+    {present, gateway, evidence, gateway_evidence}. `present` comes from agent
+    framework or LLM client packages among the declared dependencies, or model
+    ids in code; `gateway` from a gateway URL or flag anywhere outside tests.
+    """
+    norm = {d.lower().replace("_", "-") for d in deps}
+    evidence = next(
+        (d for d in sorted(norm) if d in _LLM_CLIENT_PACKAGES or d in _AGENT_PACKAGES),
+        None,
+    )
+    present = evidence is not None or bool(model_ids)
+    gateway_evidence = None
+    for rel in files:
+        name = rel.rsplit("/", 1)[-1]
+        if not (rel.endswith(_LLM_GATEWAY_EXTS) or name.startswith(".env")):
+            continue
+        if _TEST_PART_RE.search(rel):
+            continue
+        try:
+            text = (root / rel).read_text(errors="ignore")
+        except OSError:
+            continue
+        if _LLM_GATEWAY_RE.search(text):
+            gateway_evidence = rel
+            break
+    return {
+        "present": present or gateway_evidence is not None,
+        "gateway": gateway_evidence is not None,
+        "evidence": evidence or (model_ids[0] if model_ids else None),
+        "gateway_evidence": gateway_evidence,
+    }
+
+
+def detect_model_code(
+    root: Path, files: list[str], deps: list[str]
+) -> dict[str, str] | None:
+    """{file} when the repo carries a model meant to be served (a DRUM-style
+    custom.py with score/load_model/chat hooks, a model-metadata.yaml, or the
+    datarobot-drum package), else None."""
+    norm = {d.lower().replace("_", "-") for d in deps}
+    for rel in files:
+        if _TEST_PART_RE.search(rel):
+            continue
+        name = rel.rsplit("/", 1)[-1]
+        if name in ("model-metadata.yaml", "model-metadata.yml"):
+            return {"file": rel}
+        if name == "custom.py":
+            try:
+                text = (root / rel).read_text(errors="ignore")
+            except OSError:
+                continue
+            if _MODEL_HOOK_RE.search(text):
+                return {"file": rel}
+    if "datarobot-drum" in norm:
+        return {"file": "datarobot-drum dependency"}
+    return None
+
+
+PREDICTIVE_TARGET = "Predictive"
+
+
+def infer_deploy_target(
+    agent_frameworks: list[dict[str, Any]],
+    llm_usage: dict[str, Any],
+    model_code: dict[str, str] | None,
+) -> str | None:
+    """The DataRobot target type this repo's model or LLM path would deploy as:
+    AgenticWorkflow for an agent, TextGeneration for a plain LLM app, the
+    Predictive placeholder for a scoring model (the exact type is not knowable
+    from code), None when the repo has neither."""
+    if agent_frameworks:
+        return "AgenticWorkflow"
+    if llm_usage.get("present"):
+        return "TextGeneration"
+    if model_code:
+        return PREDICTIVE_TARGET
     return None
 
 

@@ -132,12 +132,20 @@ def migration_advice(inventory: dict[str, Any] | None) -> str:
     inv = inventory or {}
     sources = [s for s in inv.get("template_sources", []) if "af-component" in s]
     frameworks = inv.get("agent_frameworks") or []
+    llm = inv.get("llm_usage") or {}
     if sources:
         text = (
             f"This repo already builds on af-components ({', '.join(sources)}). Keep the "
-            "application and put the agent or LLM path behind a DataRobot agent deployment "
-            "(a CustomModel behind a datarobot.Deployment) so guards and monitoring attach."
+            "application and put the agent or LLM path behind an agentic deployment: a "
+            "datarobot.CustomModel with target type AgenticWorkflow behind a "
+            "datarobot.Deployment, so guards, tracing and monitoring attach."
         )
+        if llm.get("gateway"):
+            text += (
+                " The LLM calls can keep going through the DataRobot LLM Gateway from "
+                "inside that model; the gateway is the provider, the deployment is the "
+                "governed entity."
+            )
     else:
         text = (
             "Re-platform onto af-components with the datarobot-agent-assist skill: extract "
