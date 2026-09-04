@@ -25,7 +25,11 @@ Resolve once per session: `<skill_scripts_dir>` is the `scripts/` subdirectory n
 ```bash
 <python> -c "import sys; assert sys.version_info >= (3, 11)"
 <python> -c "import pydantic, yaml" 2>/dev/null || <python> -m pip install pydantic pyyaml
+<python> <skill_scripts_dir>/_bootstrap.py
 ```
+
+The last line locates the shared `datarobot-skills-utils` package (a repo checkout or an
+installed copy) and installs it from PyPI when neither is present.
 
 **OpenCode:**
 
