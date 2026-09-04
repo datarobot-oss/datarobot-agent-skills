@@ -207,6 +207,11 @@ def stack_line(inv: dict[str, Any]) -> str:
     parts = []
     if inv.get("template_sources"):
         parts.append("**Template:** " + ", ".join(inv["template_sources"]))
+    if inv.get("datarobot_app"):
+        parts.append(
+            "**Deploys as:** DataRobot custom application "
+            f"(`{inv['datarobot_app']['file']}`)"
+        )
     if inv.get("agent_frameworks"):
         parts.append(
             "**Agent framework:** "

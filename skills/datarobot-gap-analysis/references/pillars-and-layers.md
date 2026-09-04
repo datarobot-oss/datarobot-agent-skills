@@ -10,12 +10,12 @@ evaluated by exactly one layer.
 
 | Pillar | ID prefix | # conditions | What it evaluates |
 |---|---|---|---|
-| Security | `SEC` | 9 | Secret exposure, prompt-injection vectors, encryption, input validation |
+| Security | `SEC` | 13 | Secret exposure, prompt-injection vectors, encryption, input validation |
 | Identity | `IDN` | 4 | Human/shared identity, credential rotation, RBAC, over-permissioning |
 | AI Governance | `AIG` | 8 | Guardrails, model pinning, approved models, evals, human-in-loop, cost controls, grounding, prompt versioning |
 | Reliability | `REL` | 6 | Tests, CI, lint gates, lockfiles, retry logic, resilience, fallback paths |
 | Ops | `OPS` | 3 | Structured logging, tracing, health checks |
-| IT Conformance | `ITA` | 5 | Python version floor, library allow/deny, approved models, licenses, base images |
+| IT Conformance | `ITA` | 7 | Python version floor, library allow/deny, approved models, licenses, base images |
 | Regulatory & Policy | `POL` | dynamic | Whatever mitigations the org's DataRobot risk-management policy requires (EU AI Act by default). Not defined in `taxonomy.yaml`; finding ids look like `POL-DR-<MITIGATION-TYPE>`. |
 
 ## Four evaluation layers
@@ -23,7 +23,7 @@ evaluated by exactly one layer.
 | Layer | Mechanism | # conditions | Degrades to |
 |---|---|---|---|
 | 1 - Deterministic | A built-in secret scanner, `trivy` (dependency CVEs, secrets, IaC misconfiguration, dependency licenses) with `pip-audit` and `npm audit` as the fallback, `gitleaks` for secrets in git history, `hadolint` for Dockerfiles, `semgrep`, plus presence checks: tests, CI, lint/type-check gate, lockfiles, dependency updates, vulnerability scanning, CODEOWNERS, action pinning | 15 | Optional scanners that aren't installed are skipped and named in the report. Layer 1 always runs. |
-| 2 - LLM reasoning | A per-condition prompt template (under `scripts/prompts/`) reads the condition's `files_glob` and reasons about the code. Relational checks (`SEC-001`, `IDN-003`) require *both* file groups involved, or are marked skipped-with-reason, never guessed. | 20 | Skipped, with a stated reason, if no LLM client is configured. |
+| 2 - LLM reasoning | A per-condition prompt template (under `scripts/prompts/`) reads the condition's `files_glob` and reasons about the code. Relational checks (`SEC-001`, `IDN-003`) require *both* file groups involved, or are marked skipped-with-reason, never guessed. When the Pulumi program deploys the repo as a DataRobot custom application, every prompt is told that identity headers (`x-user-id`, `x-datarobot-api-key`, ...) are set by the platform proxy, so reading them is not flagged as trusting client input. | 20 | Skipped, with a stated reason, if no LLM client is configured. |
 | 3 - Conformance | Compares the repo's declared Python version, dependencies/imports, model ids, licenses, and base images against the merged policy. | 6 | Runs fully offline; no LLM needed. |
 | 4 - Regulatory | Fetches the org's DataRobot risk-management policy (named by `regulatory.policy_name`, default "EU AI Act"); for each required mitigation, the LLM judges whether the repo shows evidence it is implemented, or configured to be provided by DataRobot at deployment time. Unsatisfied mitigations become findings. Needs `DATAROBOT_API_TOKEN`/`DATAROBOT_ENDPOINT`. | dynamic | Skipped, with a stated reason, if DataRobot risk-management isn't reachable (no local fallback checklist). With `--no-llm`, required mitigations are reported as "required, not assessed" instead of judged. |
 

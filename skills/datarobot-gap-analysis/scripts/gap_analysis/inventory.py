@@ -206,6 +206,7 @@ def build_inventory(
         "base_images": extract_base_images(root, exclude),
         "base_image_files": base_image_files(root, exclude),
         "template_sources": detect_template_sources(root),
+        "datarobot_app": detect_datarobot_app(root, files),
         "agent_template_choices": agent_template_choices(),
         "agent_frameworks": detect_agent_frameworks(deps),
     }
@@ -556,6 +557,31 @@ def agent_template_choices() -> dict[str, str]:
             choices = {}
     _agent_template_choices_cache = choices or dict(_AGENT_TEMPLATE_CHOICES_FALLBACK)
     return _agent_template_choices_cache
+
+
+_DR_APP_RESOURCE_RE = re.compile(r"\b(ApplicationSource|CustomApplication)(?:Args)?\(")
+_PULUMI_IMPORT_RE = re.compile(
+    r"pulumi_datarobot|pulumi-datarobot|datarobot_pulumi_utils"
+)
+
+
+def detect_datarobot_app(root: Path, files: list[str]) -> dict[str, str] | None:
+    """{file, resource} when a Pulumi program deploys this repo as a DataRobot
+    custom application, else None. Only .py files that import the DataRobot
+    Pulumi provider count, so a docs mention does not qualify."""
+    for rel in files:
+        if not rel.endswith(".py"):
+            continue
+        try:
+            text = (root / rel).read_text(errors="ignore")
+        except OSError:
+            continue
+        if not _PULUMI_IMPORT_RE.search(text):
+            continue
+        m = _DR_APP_RESOURCE_RE.search(text)
+        if m:
+            return {"file": rel, "resource": m.group(1)}
+    return None
 
 
 def detect_template_sources(root: Path) -> list[str]:
