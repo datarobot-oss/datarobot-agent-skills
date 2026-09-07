@@ -80,6 +80,10 @@ def assess_posture(
         # taxonomy entry, driven by the org's live DataRobot risk-management
         # policy (see risk_management.py) and carry the flag on the Finding
         # itself instead.
+        # A verification pass that saw the actual remediation shape wins over
+        # the condition template.
+        if f.shape in ("patch", "structural"):
+            return f.shape == "structural"
         c = tax.get(f.condition_id)
         if c is not None:
             return bool(c.structural)
@@ -106,7 +110,7 @@ def assess_posture(
         rec = HYBRID
 
     drivers = _drivers(structural, int(cfg["max_drivers"]))
-    advice = migration_advice(result.inventory)
+    advice = migration_advice(result.inventory, result.iac)
     return {
         "recommendation": rec,
         "score": score,
@@ -120,25 +124,38 @@ def assess_posture(
     }
 
 
-def migration_advice(inventory: dict[str, Any] | None) -> str:
+def migration_advice(
+    inventory: dict[str, Any] | None, iac: dict[str, Any] | None = None
+) -> str:
     """What "re-platform" means for this repo.
 
     A repo already generated from af-components keeps its application; the
-    structural fix is to put the agent or LLM path behind a DataRobot agent
-    deployment so guards and monitoring can attach. The agent framework is
-    never changed unless the user asks: frameworks without a native DataRobot
-    template deploy through the generic Base flavor.
+    structural fix is to put the model or LLM path behind a DataRobot
+    deployment of the right target type so guards and monitoring can attach.
+    When the Pulumi program already ships a variant that declares one, the fix
+    is to select it. The agent framework is never changed unless the user asks:
+    frameworks without a native DataRobot template deploy through the generic
+    Base flavor.
     """
+    from .risk_management import _select_variant_text, shipped_deployment_variant
+
     inv = inventory or {}
+    iac = iac or {}
     sources = [s for s in inv.get("template_sources", []) if "af-component" in s]
     frameworks = inv.get("agent_frameworks") or []
     llm = inv.get("llm_usage") or {}
-    if sources:
+    target = iac.get("target_type") or inv.get("deploy_target")
+    variant = shipped_deployment_variant(iac)
+    if variant:
+        text = (
+            "The active Pulumi configuration deploys no datarobot.Deployment, but the "
+            "repo already ships one. " + _select_variant_text(iac, variant)
+        )
+    elif sources:
         text = (
             f"This repo already builds on af-components ({', '.join(sources)}). Keep the "
-            "application and put the agent or LLM path behind an agentic deployment: a "
-            "datarobot.CustomModel with target type AgenticWorkflow behind a "
-            "datarobot.Deployment, so guards, tracing and monitoring attach."
+            f"application and put the {_path_name(target)} behind {_deployment_shape(target)}, "
+            "so guards, tracing and monitoring attach."
         )
         if llm.get("gateway"):
             text += (
@@ -167,6 +184,28 @@ def migration_advice(inventory: dict[str, Any] | None) -> str:
         elif native:
             text += f" The agent uses {', '.join(native)}, which has a native DataRobot agent template."
     return text
+
+
+def _path_name(target: str | None) -> str:
+    if target == "TextGeneration":
+        return "LLM path"
+    if target and target not in ("AgenticWorkflow",):
+        return "model"
+    return "agent or LLM path"
+
+
+def _deployment_shape(target: str | None) -> str:
+    if target == "TextGeneration":
+        return (
+            "an LLM deployment: an LLM blueprint or a datarobot.CustomModel with target "
+            "type TextGeneration behind a datarobot.Deployment"
+        )
+    if target and target not in ("AgenticWorkflow",):
+        return "a registered model behind a datarobot.Deployment"
+    return (
+        "an agentic deployment: a datarobot.CustomModel with target type "
+        "AgenticWorkflow behind a datarobot.Deployment"
+    )
 
 
 def _drivers(structural, limit: int) -> list[dict[str, str]]:

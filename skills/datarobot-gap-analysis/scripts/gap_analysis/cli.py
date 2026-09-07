@@ -276,6 +276,14 @@ def main(argv: list[str] | None = None) -> int:
             "\nNote: --fix patches the repo IN PLACE — it does not adopt the af-component "
             "stack. Re-platforming onto af-components is the migration path (RE-PLATFORM)."
         )
+        if summary.get("unverified"):
+            _status(
+                "\nNot applied (LLM findings that did not pass the verification pass; "
+                "re-run the analysis with verification on, or fix by hand): "
+                + ", ".join(
+                    f"{u['condition_id']} ({u['file']})" for u in summary["unverified"]
+                )
+            )
         if summary.get("unfixable_selected"):
             print(
                 "Selected but advisory-only (no automated fix exists; follow the report's "

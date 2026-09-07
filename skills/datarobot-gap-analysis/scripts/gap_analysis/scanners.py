@@ -23,7 +23,7 @@ from typing import Any
 
 from .inventory import _DEF_EXCLUDE, _iter_files, glob_match
 from .llm import brief_error
-from .models import Finding
+from .models import Finding, Severity
 from .taxonomy import Taxonomy
 
 # Vendor + generic credential patterns. Group 'val' is the secret (never emitted).
@@ -423,6 +423,25 @@ def run_sca(
     return findings, notes
 
 
+def _npm_dev_paths(lock: Path) -> set[str]:
+    """node_modules paths that package-lock.json marks as dev-only."""
+    try:
+        packages = json.loads(lock.read_text()).get("packages", {}) or {}
+    except (OSError, ValueError):
+        return set()
+    return {
+        p for p, meta in packages.items() if isinstance(meta, dict) and meta.get("dev")
+    }
+
+
+_SEVERITY_STEPS = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW]
+
+
+def _lower(sev: Severity) -> Severity:
+    i = _SEVERITY_STEPS.index(sev)
+    return _SEVERITY_STEPS[min(i + 1, len(_SEVERITY_STEPS) - 1)]
+
+
 def run_sca_npm(
     workspace: str | Path, taxonomy: Taxonomy
 ) -> tuple[list[Finding], list[str]]:
@@ -467,6 +486,7 @@ def run_sca_npm(
             )
             data = json.loads(proc.stdout or "{}")
             vulns = data.get("vulnerabilities", {}) or {}
+            dev_paths = _npm_dev_paths(lock)
             for name, info in vulns.items():
                 advisories = [
                     v for v in info.get("via", []) or [] if isinstance(v, dict)
@@ -474,6 +494,8 @@ def run_sca_npm(
                 if not advisories:
                     continue  # transitive echo of another reported package
                 titles = "; ".join(a.get("title", "") for a in advisories[:3])
+                nodes = [n for n in info.get("nodes", []) or [] if isinstance(n, str)]
+                dev_only = bool(nodes) and all(n in dev_paths for n in nodes)
                 fix = info.get("fixAvailable")
                 fix_txt = (
                     f"fix available via {fix['name']}@{fix['version']}"
@@ -484,17 +506,26 @@ def run_sca_npm(
                         else "no fix released yet"
                     )
                 )
+                scope = " (dev-only, build-time)" if dev_only else ""
                 f = _mk(
                     cond,
                     rel,
                     None,
-                    f"{name}@{info.get('range', '?')} — {info.get('severity', '?')}",
-                    f"Known npm vulnerability: {titles}; {fix_txt}.",
+                    f"{name}@{info.get('range', '?')}: {info.get('severity', '?')}{scope}",
+                    f"Known npm vulnerability: {titles}; {fix_txt}."
+                    + (
+                        " Only reachable from devDependencies, so it runs at build "
+                        "time, not in the shipped application."
+                        if dev_only
+                        else ""
+                    ),
                 )
                 f.detector = "npm-audit"
                 f.fix_type = "advisory"
                 f.fix_strategy = None
                 f.fix_risk = "none"
+                if dev_only:
+                    f.severity = _lower(f.severity)
                 findings.append(f)
         except (
             subprocess.TimeoutExpired,
@@ -520,7 +551,35 @@ def _classify_semgrep(check_id: str) -> tuple[str, str] | None:
         return None
     if "logging" in cid and _CREDENTIAL_RULE.search(cid):
         return "SEC-004", "medium"
+    if "non-literal-regexp" in cid or "redos" in cid:
+        return "SEC-012", "low"
     return "SEC-011", ("medium" if ".audit." in cid else "high")
+
+
+_RELEASE_AGE_RE = re.compile(r"^\s*min-release-age\s*=\s*(\d+)", re.M)
+_RECOMMENDED_RELEASE_AGE_DAYS = 7
+
+
+def _release_age_wording(
+    root: Path, rel: str, check_id: str, evidence: str, message: str
+) -> tuple[str, str]:
+    """A release-age setting that exists but is short is a partial gap; say
+    the value instead of echoing the rule's 'missing' framing."""
+    if "release-age" not in check_id or not rel.endswith(".npmrc"):
+        return evidence, message
+    try:
+        m = _RELEASE_AGE_RE.search((root / rel).read_text(errors="ignore"))
+    except OSError:
+        return evidence, message
+    if not m:
+        return evidence, message
+    days = int(m.group(1))
+    return (
+        f"min-release-age set to {days} day(s) in {rel}; recommended "
+        f"{_RECOMMENDED_RELEASE_AGE_DAYS} or more",
+        f"A minimum release age of {days} day(s) gives little time for a compromised "
+        f"npm release to be pulled; raise it to {_RECOMMENDED_RELEASE_AGE_DAYS}+.",
+    )
 
 
 def run_sast(
@@ -580,6 +639,10 @@ def run_sast(
             f.confidence = confidence
             f.layer = 1
             f.detector = "semgrep"
+            if ".audit." in check_id.lower():
+                # Audit rules flag patterns (exec, formatted SQL) that are often
+                # deliberate; they need a human look before counting as HIGH.
+                f.severity = _lower(f.severity)
             findings.append(f)
         cond14 = taxonomy.get("SEC-014")
         if cond14:
@@ -591,13 +654,14 @@ def run_sast(
                 shown = ", ".join(paths[:5])
                 if len(paths) > 5:
                     shown += f", +{len(paths) - 5} more"
-                f = _mk(
-                    cond14,
-                    paths[0],
-                    None,
-                    f"{check_id.rsplit('.', 1)[-1]}: {hits} occurrence(s) in {shown}",
-                    grouped_msg[(check_id, paths[0])],
+                evidence = (
+                    f"{check_id.rsplit('.', 1)[-1]}: {hits} occurrence(s) in {shown}"
                 )
+                message = grouped_msg[(check_id, paths[0])]
+                evidence, message = _release_age_wording(
+                    root, paths[0], check_id, evidence, message
+                )
+                f = _mk(cond14, paths[0], None, evidence, message)
                 f.detector = "semgrep"
                 findings.append(f)
         if dropped:
@@ -1073,7 +1137,7 @@ def run_trivy(
     notes: list[str] = []
     if not shutil.which("trivy"):
         notes.append(
-            "trivy not installed: dependency CVEs come from pip-audit/npm audit; IaC misconfiguration and dependency licenses were not scanned."
+            "No IaC-misconfiguration or dependency-license scanner detected, so those checks were not run (trivy is the supported one); dependency CVEs came from pip-audit/npm audit."
         )
         return [], notes, False
     # The vulnerability DB is a one-off download that can stall for minutes on a
@@ -1199,7 +1263,7 @@ def run_gitleaks(
     notes: list[str] = []
     if not shutil.which("gitleaks"):
         notes.append(
-            "gitleaks not installed: git history was not scanned for secrets (the working tree was)."
+            "No git-history secret scanner detected, so only the working tree was scanned for secrets (gitleaks is the supported one)."
         )
         return [], notes
     if not (root / ".git").exists():
@@ -1285,7 +1349,7 @@ def run_hadolint(
         return [], notes
     if not shutil.which("hadolint"):
         notes.append(
-            f"hadolint not installed: {len(dockerfiles)} Dockerfile(s) were not linted."
+            f"No Dockerfile linter detected, so {len(dockerfiles)} Dockerfile(s) were not linted (hadolint is the supported one)."
         )
         return [], notes
     cmd = ["hadolint", "--format", "json", "--no-fail"]

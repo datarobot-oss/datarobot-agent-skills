@@ -202,10 +202,29 @@ def check_conformance(
     return findings, notes
 
 
+_PY_FLOOR_FILES = (
+    ".python-version",
+    "runtime.txt",
+    "pyproject.toml",
+    "setup.cfg",
+    "setup.py",
+)
+
+
 def _py_source(inv):
-    env = inv.get("key_files", {}).get("env", [])
+    """The file that declares the lowest Python floor: the manifest in the
+    component directory the inventory attributed that floor to."""
+    versions = inv.get("python_versions") or {}
+    floor = inv.get("python_version")
+    files = set(inv.get("files", []))
+    dirs = sorted(d for d, v in versions.items() if v == floor) or sorted(versions)
+    for d in dirs:
+        for name in _PY_FLOOR_FILES:
+            rel = name if d in (".", "") else f"{d}/{name}"
+            if rel in files:
+                return rel
     man = inv.get("key_files", {}).get("manifests", [])
-    return (env or man or [None])[0]
+    return (man or [None])[0]
 
 
 def _manifest(inv):

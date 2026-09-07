@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,12 @@ class Condition:
     # Runtime-behaviour checks skip IaC, migrations and CI files: a Pulumi
     # program never has OTel spans and should not be told it lacks them.
     runtime_only: bool = False
+    # Regexes grepped across the whole repo; hits are shown to the model as
+    # evidence its file selection may have missed (a health endpoint registered
+    # one call away from main.py, a JSON log formatter in a telemetry module).
+    hint_patterns: list[str] = field(default_factory=list)
+    # Extra runtime context to attach to the prompt, e.g. "llm_gateway_catalog".
+    context: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Condition":
@@ -86,6 +92,8 @@ class Condition:
             structural=structural,
             scope=str(d.get("scope", "file")),
             runtime_only=bool(d.get("runtime_only", False)),
+            hint_patterns=list(d.get("hint_patterns", []) or []),
+            context=str(d.get("context", "") or ""),
         )
 
 

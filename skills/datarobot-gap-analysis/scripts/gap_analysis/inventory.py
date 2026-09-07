@@ -92,6 +92,12 @@ _DOCKER_VAR_RE = re.compile(
     r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)"
 )
 # Model ids like provider/model-name-with-versions, conservative.
+# A MIME type such as application/vnd.llamagraphics.life-balance.desktop matches
+# the provider/model shape but is never a model id.
+_MIME_LIKE_RE = re.compile(
+    r"^(application|text|image|audio|video|font|multipart|message|model|chemical)/",
+    re.IGNORECASE,
+)
 _MODEL_RE = re.compile(
     r"['\"]([a-z0-9_.\-]+/[a-z0-9_.\-/@:]*(?:gpt|claude|gemini|llama|mistral|sonnet|opus|haiku)[a-z0-9_.\-/@:]*)['\"]",
     re.IGNORECASE,
@@ -366,7 +372,8 @@ def extract_model_ids(root: Path, exclude: list[str]) -> list[str]:
         except Exception:
             continue
         for m in _MODEL_RE.finditer(text):
-            ids.add(m.group(1))
+            if not _MIME_LIKE_RE.match(m.group(1)) and "/vnd." not in m.group(1):
+                ids.add(m.group(1))
     return sorted(ids)
 
 

@@ -53,6 +53,13 @@ class Finding:
     layer: int = 0
     detector: str = ""
     structural: bool = False  # only meaningful for findings with no taxonomy.yaml
+    # Layer 2 provenance: the root cause the model grouped locations under, whether
+    # a second verification pass confirmed the finding, and the remediation shape
+    # that pass saw ("patch" | "structural"; empty defers to the taxonomy flag).
+    root_cause: str = ""
+    verified: bool = False
+    verification: str = ""
+    shape: str = ""
     # entry (dynamically-generated Layer 4 findings); posture.py falls back to
     # this when a taxonomy lookup by condition_id finds nothing.
     # Structured remediation (Layer 4): ordered steps, the docs page for the

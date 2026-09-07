@@ -1132,3 +1132,354 @@ def test_referenced_deployment_is_reported_not_passed(tmp_path: Path) -> None:
     assert (
         "Service-health monitoring: provided by an existing DataRobot deployment" in md
     )
+
+
+class _ScriptedClient:
+    """Returns canned JSON per call, in order."""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    def complete(self, system, user):
+        self.calls.append((system, user))
+        return self.replies.pop(0)
+
+
+def test_layer2_numbers_lines_snaps_evidence_and_verifies(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(
+        tmp_path,
+        "app/client.py",
+        "import httpx\n\n\ndef fetch(url):\n    try:\n        return httpx.get(url)\n"
+        "    except Exception:\n        return None\n",
+    )
+    tax = Taxonomy.load()
+    cond = tax.get("REL-003")
+    detect_reply = json.dumps(
+        {
+            "condition_id": "REL-003",
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/client.py",
+                    "line": 2,
+                    "evidence": "return httpx.get(url)",
+                    "explanation": "no timeout",
+                    "confidence": "high",
+                    "root_cause": "unguarded http",
+                }
+            ],
+        }
+    )
+    verify_reply = json.dumps(
+        {
+            "verdict": "weakened",
+            "reason": "wrapped in try/except",
+            "line": 6,
+            "remediation_shape": "patch",
+        }
+    )
+    client = _ScriptedClient([detect_reply, verify_reply])
+    monkeypatch.setenv("GAP_VERIFY", "on")
+
+    findings, skip, notes = run_condition(
+        client, tmp_path, build_inventory(tmp_path), cond, "contract", 200_000
+    )
+
+    assert skip is None and len(findings) == 1
+    f = findings[0]
+    assert f.line == 6, "evidence snapped onto the line that holds it"
+    assert f.verified and f.shape == "patch"
+    assert f.severity == Severity.MEDIUM, "weakened alone keeps the default severity"
+    assert f.confidence == "medium"
+    assert f.verification == "wrapped in try/except"
+    detect_user = client.calls[0][1]
+    assert "1| import httpx" in detect_user
+    assert "REPO-WIDE EVIDENCE HINTS" not in detect_user or "timeout" in detect_user
+    assert "=== FINDING ===" in client.calls[1][1]
+
+
+def test_layer2_refuted_findings_are_dropped_with_a_note(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(tmp_path, "app/main.py", "from app import create_app\napp = create_app()\n")
+    cond = Taxonomy.load().get("OPS-003")
+    detect = json.dumps(
+        {
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/main.py",
+                    "line": 1,
+                    "evidence": "no /health route visible",
+                    "explanation": "x",
+                    "confidence": "low",
+                }
+            ],
+        }
+    )
+    verify = json.dumps(
+        {"verdict": "refuted", "reason": "health endpoint registered in create_app"}
+    )
+    monkeypatch.setenv("GAP_VERIFY", "on")
+
+    findings, skip, notes = run_condition(
+        _ScriptedClient([detect, verify]),
+        tmp_path,
+        build_inventory(tmp_path),
+        cond,
+        "c",
+        200_000,
+    )
+
+    assert findings == [] and skip is None
+    assert notes and "dropped on verification" in notes[0]
+
+
+def test_hint_hits_show_evidence_outside_selected_files(tmp_path: Path) -> None:
+    from gap_analysis.detect import hint_hits, snap_line
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(
+        tmp_path,
+        "app/__init__.py",
+        "app.add_middleware(M, health_endpoint='/health')\n",
+    )
+    _write(tmp_path, "tests/test_x.py", "assert '/health'\n")
+    cond = Taxonomy.load().get("OPS-003")
+
+    hits = hint_hits(tmp_path, build_inventory(tmp_path), cond)
+
+    assert hits == [
+        "app/__init__.py:1: app.add_middleware(M, health_endpoint='/health')"
+    ]
+    item = {"evidence": "12| health_endpoint='/health')", "line": 99}
+    assert (
+        snap_line("x = 1\napp.add_middleware(M, health_endpoint='/health')\n", item)
+        is True
+    )
+    assert item["line"] == 2
+    assert snap_line("x = 1\n", {"evidence": "no logging anywhere"}) is None
+    assert snap_line("x = 1\n", {"evidence": "logger.info('missing')"}) is False
+
+
+def test_root_cause_grouping_and_severity_lowering() -> None:
+    from gap_analysis.taxonomy import Taxonomy
+
+    cond = Taxonomy.load().get("SEC-011")
+    result = {
+        "findings": [
+            {
+                "file": "a.py",
+                "line": 1,
+                "evidence": "e1",
+                "root_cause": "no escaping",
+                "confidence": "high",
+            },
+            {
+                "file": "b.py",
+                "line": 2,
+                "evidence": "e2",
+                "root_cause": "No Escaping",
+                "confidence": "high",
+            },
+            {
+                "file": "c.py",
+                "line": 3,
+                "evidence": "e3",
+                "root_cause": "ssrf",
+                "severity_adjustment": "lower",
+                "severity_reason": "kernel recomputes",
+            },
+        ]
+    }
+
+    findings = _result_to_findings(cond, result)
+
+    assert len(findings) == 2
+    assert findings[0].evidence.startswith("2 location(s): a.py:1, b.py:2")
+    assert findings[0].severity == Severity.HIGH
+    assert findings[1].severity == Severity.MEDIUM
+    assert "Severity lowered: kernel recomputes" in findings[1].explanation
+
+
+def test_structural_flags_follow_remediation_shape() -> None:
+    from gap_analysis.taxonomy import Taxonomy
+
+    tax = Taxonomy.load()
+    assert not tax.get("OPS-001").structural
+    assert not tax.get("REL-003").structural
+    assert tax.get("AIG-004").structural
+    assert tax.get("AIG-002").fix_type == "assisted"
+    assert (
+        tax.get("OPS-003").hint_patterns
+        and tax.get("AIG-002").context == "llm_gateway_catalog"
+    )
+
+
+def test_remediate_holds_back_unverified_layer2_findings(tmp_path: Path) -> None:
+    from gap_analysis.remediate import remediate
+
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    f = Finding(
+        "AIG-002",
+        "AIG",
+        Severity.MEDIUM,
+        "t",
+        file="a.py",
+        line=1,
+        fix_type="assisted",
+        fix_strategy="prompts/fix-aig-002-model-pinning.md",
+        fix_risk="plumbing",
+        layer=2,
+        verified=False,
+    )
+
+    summary = remediate(tmp_path, [f], {}, "ts", client=None)
+
+    assert summary["attempted"] == 0
+    assert summary["unverified"] == [{"condition_id": "AIG-002", "file": "a.py"}]
+
+
+def test_ita001_anchors_on_the_declaring_manifest(tmp_path: Path) -> None:
+    from gap_analysis.conformance import _py_source
+
+    _write(tmp_path, ".env.template", "X=1\n")
+    _write(tmp_path, "core/pyproject.toml", '[project]\nrequires-python = ">=3.10"\n')
+    _write(tmp_path, "web/pyproject.toml", '[project]\nrequires-python = ">=3.12"\n')
+
+    assert _py_source(build_inventory(tmp_path)) == "core/pyproject.toml"
+
+
+def test_npm_dev_only_paths_and_release_age_wording(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.scanners import _npm_dev_paths, _release_age_wording
+
+    lock = tmp_path / "package-lock.json"
+    lock.write_text(
+        json.dumps(
+            {
+                "packages": {
+                    "node_modules/postcss": {"dev": True},
+                    "node_modules/react": {},
+                }
+            }
+        )
+    )
+    assert _npm_dev_paths(lock) == {"node_modules/postcss"}
+
+    _write(tmp_path, "web/.npmrc", "min-release-age=3\n")
+    ev, msg = _release_age_wording(
+        tmp_path, "web/.npmrc", "npm-missing-minimum-release-age", "old", "old msg"
+    )
+    assert ev.startswith("min-release-age set to 3 day(s)")
+    assert "raise it to 7+" in msg
+    assert _release_age_wording(tmp_path, "a.py", "other", "e", "m") == ("e", "m")
+
+
+def test_layer4_http_hints_and_coverage_callout() -> None:
+    from gap_analysis.report import coverage_lines
+    from gap_analysis.risk_management import _http_hint
+
+    assert "ask a DataRobot admin" in _http_hint(403)
+    assert "dr auth login" in _http_hint(401)
+    assert "try again later" in _http_hint(503)
+    assert _http_hint(200) == ""
+
+    result = AnalysisResult()
+    result.notes = [
+        "No Dockerfile linter detected, so 2 Dockerfile(s) were not linted (hadolint is the supported one).",
+        "Layer 2: 5 finding(s) confirmed by a second verification pass, 2 dropped as refuted (GAP_VERIFY=off disables the pass).",
+        "AIG-003/ITA-003: 62 model id(s) served by the DataRobot LLM Gateway are treated as approved.",
+        "Layer 4 (DataRobot risk-management) skipped, policy 'EU AI Act' could not be loaded from x: request failed: HTTP 403 FORBIDDEN from y; risk management is not enabled for this org",
+    ]
+    lines = coverage_lines(result)
+    assert lines[0].endswith("1 optional scanner(s) missing, see Engine Notes")
+    assert (
+        lines[1]
+        == "Layer 2 (LLM reasoning): ran; 5 finding(s) confirmed by a second verification pass, 2 dropped as refuted"
+    )
+    assert "treats LLM Gateway-served ids as approved" in lines[2]
+    assert lines[3].startswith(
+        "Layer 4 (risk management): NOT ASSESSED; policy 'EU AI Act' could not be loaded"
+    )
+    md = render_report(result, repo="/r")
+    assert "**Coverage of this run**" in md
+    assert "| ✅ pass (gateway-served ids treated as approved) |" in md
+
+
+def test_model_id_extraction_ignores_mime_types(tmp_path: Path) -> None:
+    from gap_analysis.inventory import extract_model_ids
+
+    _write(
+        tmp_path,
+        "app/mime.py",
+        'TYPES = ["application/vnd.llamagraphics.life-balance.desktop", "text/x-llama"]\n'
+        'MODEL = "datarobot/azure/gpt-5-mini-2025-08-07"\n',
+    )
+    assert extract_model_ids(tmp_path, []) == ["datarobot/azure/gpt-5-mini-2025-08-07"]
+
+
+def test_semgrep_audit_rules_are_downgraded_and_redos_is_input_validation() -> None:
+    from gap_analysis.scanners import _classify_semgrep
+
+    assert _classify_semgrep(
+        "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp"
+    ) == ("SEC-012", "low")
+    assert _classify_semgrep(
+        "python.lang.security.audit.exec-detected.exec-detected"
+    ) == (
+        "SEC-011",
+        "medium",
+    )
+    assert _classify_semgrep("python.django.security.injection.sql.sql-injection") == (
+        "SEC-011",
+        "high",
+    )
+
+
+def test_migration_advice_follows_target_type_and_shipped_variant() -> None:
+    inv = {
+        "template_sources": ["af-component-datarobot-recipe"],
+        "agent_frameworks": [],
+        "llm_usage": {"present": True, "gateway": True},
+        "deploy_target": "TextGeneration",
+    }
+    text = migration_advice(inv, {"deployment": False})
+    assert "an LLM deployment" in text and "TextGeneration" in text
+    assert "AgenticWorkflow" not in text
+    assert "LLM Gateway from inside" in text
+
+    agent = {**inv, "deploy_target": "AgenticWorkflow"}
+    assert "agentic deployment" in migration_advice(agent, {"deployment": False})
+
+    with_variant = {
+        "deployment": False,
+        "variant_selector": "INFRA_ENABLE_LLM",
+        "inactive_variants": {
+            "infra/configurations/llm/blueprint_with_llm_gateway.py": {
+                "deployment": True
+            }
+        },
+    }
+    text = migration_advice(inv, with_variant)
+    assert "set INFRA_ENABLE_LLM=blueprint_with_llm_gateway.py" in text
+    assert (
+        "no new infrastructure" in text.lower()
+        or "instead of writing new infrastructure" in text
+    )
