@@ -83,7 +83,10 @@ Ask for:
 The LLM checks — the 20 Layer-2 code-reasoning conditions and Layer-4's
 per-mitigation judging — run in parallel (default 4 workers, `--workers N`) through
 a private `dr opencode` server the engine starts and stops automatically,
-authenticated by the CLI's own login. `GAP_LLM_MODEL` overrides the model.
+authenticated by the CLI's own login. Every Layer-2 finding is re-checked by a
+second verification call against the cited code region; refuted findings are dropped
+and listed in Engine Notes, and `--fix` refuses LLM findings that were not verified
+(`GAP_VERIFY=off` skips the pass for a faster, less trustworthy run). `GAP_LLM_MODEL` overrides the model.
 Layer 4's policy fetch from DataRobot risk-management uses
 `DATAROBOT_API_TOKEN` + `DATAROBOT_ENDPOINT` when set, falling back to the dr
 CLI's own config (written by `dr auth login`), so a logged-in machine needs no

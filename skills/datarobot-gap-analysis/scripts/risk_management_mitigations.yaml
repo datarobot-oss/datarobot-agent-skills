@@ -127,8 +127,8 @@ mitigations:
   - mitigation_type: risk_description_filled
     applicable_entity: system
     title: Risk classification documented
-    default_severity: high
-    structural: true
+    default_severity: medium
+    structural: false
     datarobot_feature: The risk-management RiskAssessment record itself
     remediation: Create and complete a RiskAssessment for this system in DataRobot risk-management, documenting its risk description
       and classification.

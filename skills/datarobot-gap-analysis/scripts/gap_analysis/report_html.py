@@ -23,6 +23,8 @@ from .report import (
     _short_title,
     compliance_path,
     python_label,
+    coverage_lines,
+    approval_caveat,
 )
 
 _SEV_LABEL = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
@@ -228,6 +230,11 @@ def render_html(
         "Plumbing fixes are safe to sweep; business-logic fixes are applied only when "
         "selected by id.</p>"
     )
+    body.append('<div class="coverage"><b>Coverage of this run</b><ul>')
+    for c in coverage_lines(result):
+        cls = ' class="warn"' if "NOT ASSESSED" in c or "skipped" in c else ""
+        body.append(f"<li{cls}>{_esc(c)}</li>")
+    body.append("</ul></div>")
     body.append("</section>")
 
     # Findings grouped by pillar
@@ -266,7 +273,7 @@ def render_html(
 
     # Scorecards
     found_ids = {f.condition_id for f in result.findings}
-    body.append(_conformance_section(found_ids))
+    body.append(_conformance_section(found_ids, approval_caveat(result)))
     body.append(_regulatory_section(result, repo))
 
     # Skips & notes
@@ -347,6 +354,11 @@ def _finding_card(f: Finding, repo: str = "") -> str:
         if f.confidence == "high"
         else f'<span class="conf">confidence: {_esc(f.confidence)}</span>'
     )
+    verify_html = (
+        f'<div class="kv"><span class="k">Verification</span><span class="v">{_esc(f.verification)}</span></div>'
+        if f.verification
+        else ""
+    )
     return (
         f'<article class="card sev-{sev}" data-sev="{sev}">'
         f'<div class="card-head">'
@@ -359,6 +371,7 @@ def _finding_card(f: Finding, repo: str = "") -> str:
         f'<div class="kv"><span class="k">Evidence</span><span class="v">{_esc(f.evidence) or "—"}</span></div>'
         f'<div class="kv"><span class="k">Why it matters</span><span class="v">{_esc(f.explanation) or "—"}</span></div>'
         f'<div class="kv"><span class="k">Fix</span><span class="v">{_esc(f.remediation) or "—"}</span></div>'
+        f"{verify_html}"
         f"{_fix_details_html(f)}"
         f"{_fix_action(f, repo)}"
         f"</article>"
@@ -408,11 +421,16 @@ def _fix_action(f: Finding, repo: str) -> str:
     )
 
 
-def _conformance_section(found_ids: set[str]) -> str:
+def _conformance_section(found_ids: set[str], caveat: bool = False) -> str:
     rows = []
     for cid, label in CONFORMANCE_ROWS:
         gap = cid in found_ids
-        status = _status_html("gap") if gap else _status_html("pass", "pass")
+        pass_label = (
+            "pass (gateway-served ids treated as approved)"
+            if caveat and cid in ("ITA-003", "AIG-003")
+            else "pass"
+        )
+        status = _status_html("gap") if gap else _status_html("pass", pass_label)
         rows.append(f"<tr><td>{_esc(cid)} — {_esc(label)}</td><td>{status}</td></tr>")
     return (
         '<section class="scorecard"><h2>IT Conformance Scorecard</h2>'
@@ -693,6 +711,10 @@ details.pillar>summary::-webkit-details-marker{display:none}
   letter-spacing:.3px;padding-top:1px}
 .kv .v{flex:1} .kv code{background:var(--bg);padding:1px 5px;border-radius:4px}
 .empty{color:var(--muted)}
+.coverage{margin-top:10px;font-size:13px}
+.coverage ul{margin:4px 0 0;padding-left:18px}
+.coverage li{margin:2px 0}
+.coverage li.warn{font-weight:600}
 /* scorecards */
 table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);
   border-radius:8px;overflow:hidden}

@@ -100,6 +100,9 @@ def render_report(
         f"Run with `--fix` to remediate on a `gap-fixes/*` branch."
     )
 
+    lines.append("\n**Coverage of this run**\n")
+    lines.extend(f"- {c}" for c in coverage_lines(result))
+
     # Remediation posture — patch in place vs. re-platform onto af-components
     if result.posture:
         lines.append(_posture_section(result.posture))
@@ -125,6 +128,8 @@ def render_report(
                 f"  - **Why it matters:** {f.explanation or '—'}\n"
                 f"  - **Fix:** {f.remediation or '—'}"
             )
+            if f.verification:
+                lines.append(f"  - **Verification:** {f.verification}")
             lines.extend(_fix_details(f))
 
     # Conformance scorecard (Layer 3)
@@ -181,11 +186,80 @@ def _posture_section(posture: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
+_LAYER4_SKIP_PREFIX = "Layer 4 (DataRobot risk-management) skipped"
+_APPROVAL_CAVEAT = "treated as approved"
+
+
+def coverage_lines(result: AnalysisResult) -> list[str]:
+    """What this run did and did not check, one line per layer, so a reader
+    sees the caveats before the findings rather than after them."""
+    notes = result.notes
+    out: list[str] = []
+    missing = [
+        n
+        for n in notes
+        if "scanner detected" in n or "linter detected" in n or "not installed" in n
+    ]
+    out.append(
+        "Layer 1 (scanners): ran"
+        + (
+            f"; {len(missing)} optional scanner(s) missing, see Engine Notes"
+            if missing
+            else ""
+        )
+    )
+    l2 = next(
+        (n for n in notes if n.startswith("Layer 2:") and "verification pass" in n),
+        None,
+    )
+    if any("Layers 2 and 4 (LLM) skipped" in n for n in notes):
+        out.append("Layer 2 (LLM reasoning): skipped, no model client")
+    elif l2:
+        out.append(
+            "Layer 2 (LLM reasoning): ran; "
+            + l2[len("Layer 2: ") :].split(" (GAP_VERIFY")[0]
+        )
+    else:
+        out.append("Layer 2 (LLM reasoning): ran")
+    approval = next((n for n in notes if _APPROVAL_CAVEAT in n), None)
+    out.append(
+        "Layer 3 (conformance): ran"
+        + (
+            "; approved-model check treats LLM Gateway-served ids as approved, no org allowlist was configured"
+            if approval
+            else ""
+        )
+    )
+    if result.regulatory_coverage:
+        out.append(
+            f"Layer 4 (risk management): ran; {len(result.regulatory_coverage)} required "
+            "mitigation(s) assessed, see DataRobot Risk-Management Coverage"
+        )
+    else:
+        skip = next((n for n in notes if n.startswith(_LAYER4_SKIP_PREFIX)), None)
+        out.append(
+            "Layer 4 (risk management): NOT ASSESSED; "
+            + (
+                skip[len(_LAYER4_SKIP_PREFIX) + 2 :]
+                if skip
+                else "no policy pack enabled"
+            )
+        )
+    return out
+
+
+def approval_caveat(result: AnalysisResult) -> bool:
+    return any(_APPROVAL_CAVEAT in n for n in result.notes)
+
+
 def _conformance_table(result: AnalysisResult, policy: dict[str, Any]) -> str:
     found_ids = {f.condition_id for f in result.findings}
     out = ["| Control | Status |", "|---|---|"]
+    caveat = approval_caveat(result)
     for cid, label in CONFORMANCE_ROWS:
         status = "❌ gap" if cid in found_ids else "✅ pass"
+        if status == "✅ pass" and caveat and cid in ("ITA-003", "AIG-003"):
+            status += " (gateway-served ids treated as approved)"
         out.append(f"| {cid} — {label} | {status} |")
     return "\n".join(out)
 
@@ -282,7 +356,7 @@ def compliance_path(result: AnalysisResult) -> list[dict[str, Any]]:
                 "detail": (
                     f"Add {' and '.join(resources)} to the Pulumi program (a RegisteredModel "
                     "or CustomModel deployed through a datarobot.Deployment). "
-                    f"{migration_advice(result.inventory)} "
+                    f"{migration_advice(result.inventory, result.iac)} "
                     f"Unlocks {len(blocked)} mitigation(s): {len(automatic)} come with the "
                     f"deployment, {len(configure)} then need a settings block."
                 ),

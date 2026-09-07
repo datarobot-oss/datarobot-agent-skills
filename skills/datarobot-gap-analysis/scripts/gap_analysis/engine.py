@@ -15,7 +15,7 @@ from .detect import NO_LLM_NOTE, run_layer2
 from .inventory import build_inventory
 from .llm import get_client
 from .migrate import extract_spec, scaffold_from_spec
-from .models import AnalysisResult
+from .models import ConditionSkip, AnalysisResult
 from .policy import load_policy
 from .posture import assess_posture
 from .remediate import remediate
@@ -137,6 +137,17 @@ def analyze(
     result.skipped += s2
     result.regulatory_coverage += coverage4
     result.iac = iac4
+    if not coverage4:
+        skip = next(
+            (
+                n
+                for n in n4
+                if n.startswith("Layer 4 (DataRobot risk-management) skipped")
+            ),
+            None,
+        )
+        if skip:
+            result.skipped.append(ConditionSkip("POL-DR-* (Layer 4)", skip))
 
     result.findings = _dedup(result.findings)
     _tick("Scoring remediation posture…")

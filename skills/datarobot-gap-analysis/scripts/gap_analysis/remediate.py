@@ -433,9 +433,11 @@ def remediate(
         and (selected_ids is None or f.condition_id in selected_ids)
     ]
     # When no ids were named, hold back fixes whose risk class isn't auto-applyable.
-    targets, held_back = [], []
+    targets, held_back, unverified = [], [], []
     for f in candidates:
-        if selected_ids is None and f.fix_risk not in auto_apply_risk:
+        if f.layer == 2 and not f.verified:
+            unverified.append(f)
+        elif selected_ids is None and f.fix_risk not in auto_apply_risk:
             held_back.append(f)
         else:
             targets.append(f)
@@ -479,6 +481,9 @@ def remediate(
         "applied": len(applied),
         "results": results,
         "held_back": skipped_risky,
+        "unverified": [
+            {"condition_id": f.condition_id, "file": f.file} for f in unverified
+        ],
         "unfixable_selected": unfixable_selected,
         "diff_stat": git_diff_stat(workspace) if branch else "",
         "followups": followups,

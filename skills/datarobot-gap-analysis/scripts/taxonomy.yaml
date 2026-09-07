@@ -226,6 +226,8 @@ conditions:
     remediation: Use short-lived tokens with automatic refresh/rotation.
     fix_type: advisory
     fix_strategy: null
+    hint_patterns:
+      - 'expires|ttl|refresh_token|rotate|session_max_age'
 
   - id: IDN-003
     pillar: IDN
@@ -336,8 +338,9 @@ conditions:
     relational: false
     detector: prompts/aig-002-model-pinning.md
     remediation: Pin the model to a dated/versioned id.
-    fix_type: auto
-    fix_strategy: pin_model_version
+    fix_type: assisted
+    fix_strategy: prompts/fix-aig-002-model-pinning.md
+    context: llm_gateway_catalog
 
   - id: AIG-003
     pillar: AIG
@@ -369,6 +372,9 @@ conditions:
     remediation: Add an eval/regression suite for prompts and agent trajectories.
     fix_type: advisory
     fix_strategy: null
+    structural: true # an eval harness is a workstream, not a patch
+    hint_patterns:
+      - 'deepeval|ragas|promptfoo|langsmith.*evaluate|trajectory|golden'
 
   - id: AIG-005
     pillar: AIG
@@ -401,6 +407,8 @@ conditions:
     remediation: Set max-token limits, budgets, and rate limiting on model calls.
     fix_type: assisted
     fix_strategy: prompts/fix-aig-006-cost-controls.md
+    hint_patterns:
+      - 'max_tokens|max_output_tokens|max_completion_tokens|token_budget|budget'
 
   - id: AIG-007
     pillar: AIG
@@ -450,7 +458,10 @@ conditions:
     remediation: Add structured logging with an audit trail of tool calls/decisions.
     fix_type: assisted
     fix_strategy: prompts/fix-ops-001-logging.md
-    structural: true # observability is cross-cutting; favors re-platform when absent
+    hint_patterns:
+      - 'logging\.getLogger|structlog|JSONFormatter|json_format|log_format|jsonlogger'
+      - 'logger\.(info|warning|error|debug)\(.*extra='
+      - 'instrument\(|OTLPLogExporter|LoggingHandler'
 
   - id: OPS-002
     pillar: OPS
@@ -468,6 +479,8 @@ conditions:
     fix_type: assisted
     fix_strategy: prompts/fix-ops-002-tracing.md
     structural: true # tracing/telemetry is cross-cutting; favors re-platform when absent
+    hint_patterns:
+      - 'opentelemetry|instrument\(|start_as_current_span|tracer'
 
   - id: OPS-003
     pillar: OPS
@@ -484,6 +497,9 @@ conditions:
     remediation: Add health/readiness and metrics endpoints.
     fix_type: advisory
     fix_strategy: null
+    hint_patterns:
+      - '/health|/healthz|/livez|/readyz|/ready\b|/metrics'
+      - 'health_endpoint|DataRobotASGIMiddleware|HealthCheck'
 
   - id: REL-001
     pillar: REL
@@ -528,7 +544,9 @@ conditions:
     remediation: Add timeouts, bounded retries with backoff, and error handling on external calls.
     fix_type: assisted
     fix_strategy: prompts/fix-rel-003-resilience.md
-    structural: true # resilience (retries/timeouts/fallback) is an architecture concern
+    hint_patterns:
+      - 'timeout\s*=|request_timeout|Timeout\('
+      - 'tenacity|@retry|backoff|max_retries|Retry\('
 
   - id: REL-004
     pillar: REL

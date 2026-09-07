@@ -39,3 +39,6 @@ Decision rules:
   system-prompt instruction where a runtime guard is required) is still a gap,
   but report it with `confidence: "medium"`, point `file`/`line` at that
   partial defense, and say in `explanation` what it covers and what it does not.
+
+Files are shown with each line prefixed `N| `; report that N as `line` and quote the
+code of that line (without the prefix) in `evidence`.

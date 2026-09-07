@@ -60,6 +60,7 @@ from typing import Any
 import yaml
 
 from . import paths
+from .detect import number_lines
 from .docs import resolve_docs
 from .inventory import PREDICTIVE_TARGET, evidence_files, files_matching
 from .llm import LLMClient, brief_error, parse_json
@@ -72,6 +73,22 @@ _MAX_FILES = 12  # cap files fed per mitigation, mirrors Layer 2's cap
 _PROMPT_FILE = "prompts/risk-management-mitigation.md"
 _DEFAULT_MAX_WORKERS = 4
 _SUBMIT_STAGGER_SECONDS = 0.25
+
+
+_HTTP_HINTS = {
+    401: "the token was rejected: run `dr auth login` and retry",
+    403: "risk management is not enabled for this org, or this token lacks the "
+    "permission; ask a DataRobot admin to enable Risk Management for the account",
+    404: "the risk-management API is not available on this DataRobot instance",
+}
+
+
+def _http_hint(code: int) -> str:
+    if code in _HTTP_HINTS:
+        return f"; {_HTTP_HINTS[code]}"
+    if code >= 500:
+        return "; server error after one retry, try again later"
+    return ""
 
 
 class RiskManagementClient:
@@ -102,7 +119,9 @@ class RiskManagementClient:
                 with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
-                self.last_error = f"HTTP {e.code} {e.reason} from {url}"
+                self.last_error = (
+                    f"HTTP {e.code} {e.reason} from {url}{_http_hint(e.code)}"
+                )
                 if e.code < 500:
                     return None
             except (TimeoutError, socket.timeout):
@@ -670,7 +689,9 @@ def _assess_mitigation(
         f"You are checking condition {_condition_id(mitigation_type)}. "
         "Return ONLY the JSON object."
     )
-    user = "\n\n".join(f"=== FILE: {rel} ===\n{content}" for rel, content in files)
+    user = "\n\n".join(
+        f"=== FILE: {rel} ===\n{number_lines(content)}" for rel, content in files
+    )
     try:
         result = parse_json(llm.complete(system, user))
     except Exception as e:  # noqa: BLE001
