@@ -45,6 +45,7 @@ class LiteLLMClient:
         self.reasoning_effort = _resolve_effort(
             self.model, os.environ.get("GAP_LLM_EFFORT", "max")
         )
+        self.usage = _meter(self.model, self.reasoning_effort)
 
     def complete(self, system: str, user: str) -> str:
         kwargs: dict[str, Any] = {
@@ -61,6 +62,7 @@ class LiteLLMClient:
                 resp = self._litellm.completion(
                     **kwargs, reasoning_effort=self.reasoning_effort
                 )
+                self._record(resp)
                 return resp["choices"][0]["message"]["content"]
             except Exception as e:  # noqa: BLE001
                 if not _is_effort_rejection(e):
@@ -68,7 +70,52 @@ class LiteLLMClient:
                 # The provider does not take this effort; stop asking for it.
                 self.reasoning_effort = None
         resp = self._litellm.completion(**kwargs)
+        self._record(resp)
         return resp["choices"][0]["message"]["content"]
+
+    def _record(self, resp: Any) -> None:
+        if self.usage is None:
+            return
+        usage = (
+            resp.get("usage")
+            if isinstance(resp, dict)
+            else getattr(resp, "usage", None)
+        )
+        if not usage:
+            return
+        get = (
+            usage.get
+            if isinstance(usage, dict)
+            else lambda k, d=None: getattr(usage, k, d)
+        )
+        details = get("completion_tokens_details") or {}
+        dget = (
+            details.get
+            if isinstance(details, dict)
+            else lambda k, d=None: getattr(details, k, d)
+        )
+        pdetails = get("prompt_tokens_details") or {}
+        pget = (
+            pdetails.get
+            if isinstance(pdetails, dict)
+            else lambda k, d=None: getattr(pdetails, k, d)
+        )
+        self.usage.record(
+            {
+                "input_tokens": get("prompt_tokens", 0) or 0,
+                "output_tokens": get("completion_tokens", 0) or 0,
+                "reasoning_tokens": dget("reasoning_tokens", 0) or 0,
+                "cache_read_tokens": pget("cached_tokens", 0) or 0,
+            }
+        )
+
+
+def _meter(model: str, effort: str | None):
+    try:
+        from datarobot_skills_utils.opencode import UsageMeter
+    except ImportError:
+        return None
+    return UsageMeter(model, effort)
 
 
 def _resolve_effort(model: str, setting: str | None) -> str | None:

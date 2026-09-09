@@ -131,6 +131,15 @@ def render_report(
             if f.verification:
                 lines.append(f"  - **Verification:** {f.verification}")
             lines.extend(_fix_details(f))
+            if f.fix_type == "auto":
+                lines.append(
+                    f"  - **Apply:** `--fix --select {f.condition_id} --from gap-findings.json`"
+                )
+            elif f.fix_type == "assisted":
+                lines.append(
+                    "  - **Agent prompt:** hand this finding to your coding agent; the HTML "
+                    "report carries a copy-ready prompt."
+                )
 
     # Conformance scorecard (Layer 3)
     lines.append("\n## IT Conformance Scorecard\n")
@@ -149,6 +158,9 @@ def render_report(
         lines.append("\n## Engine Notes\n")
         for n in result.notes:
             lines.append(f"- {n}")
+    if result.usage.get("total", {}).get("calls"):
+        lines.append("\n## LLM Gateway Usage\n")
+        lines.append(_usage_table(result.usage))
 
     lines.append(
         "\n---\n_Secret values are never shown. DataRobot risk-management "
@@ -221,6 +233,9 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
         )
     else:
         out.append("Layer 2 (LLM reasoning): ran")
+    summary = usage_summary(result.usage)
+    if summary:
+        out.append("LLM Gateway usage: " + summary + ", see LLM Gateway Usage")
     approval = next((n for n in notes if _APPROVAL_CAVEAT in n), None)
     out.append(
         "Layer 3 (conformance): ran"
@@ -250,6 +265,58 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
 
 def approval_caveat(result: AnalysisResult) -> bool:
     return any(_APPROVAL_CAVEAT in n for n in result.notes)
+
+
+def _fmt_tokens(n: int) -> str:
+    return f"{n:,}"
+
+
+def usage_rows(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """(label, row) per phase in run order, then the total."""
+    rows = [(name, row) for name, row in (usage.get("phases") or {}).items()]
+    rows.append(("Total", usage.get("total") or {}))
+    return rows
+
+
+def usage_summary(usage: dict[str, Any]) -> str:
+    """One line for the coverage block and the CLI: calls, tokens in and out."""
+    total = usage.get("total") or {}
+    if not total.get("calls"):
+        return ""
+    text = (
+        f"{total['calls']} LLM call(s), {_fmt_tokens(total['input_tokens'])} tokens in, "
+        f"{_fmt_tokens(total['output_tokens'])} out"
+    )
+    if total.get("reasoning_tokens"):
+        text += f" ({_fmt_tokens(total['reasoning_tokens'])} reasoning)"
+    if total.get("cache_read_tokens"):
+        text += f", {_fmt_tokens(total['cache_read_tokens'])} of the input served from cache"
+    return text
+
+
+def _usage_table(usage: dict[str, Any]) -> str:
+    model = usage.get("model") or "?"
+    effort = usage.get("reasoning_effort")
+    head = f"Model `{model}`" + (
+        f", reasoning effort `{effort}`" if effort else ", no reasoning mode requested"
+    )
+    out = [
+        head + ". Tokens are as reported by the DataRobot LLM Gateway per call. Cached "
+        "tokens are already inside Input and reasoning tokens inside Output; those "
+        "columns break the totals down, they do not add to them.",
+        "",
+        "| Phase | Calls | Input | of which cached | Output | of which reasoning |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for label, row in usage_rows(usage):
+        name = f"**{label}**" if label == "Total" else label
+        out.append(
+            f"| {name} | {row.get('calls', 0)} | {_fmt_tokens(row.get('input_tokens', 0))} | "
+            f"{_fmt_tokens(row.get('cache_read_tokens', 0))} | "
+            f"{_fmt_tokens(row.get('output_tokens', 0))} | "
+            f"{_fmt_tokens(row.get('reasoning_tokens', 0))} |"
+        )
+    return "\n".join(out)
 
 
 def _conformance_table(result: AnalysisResult, policy: dict[str, Any]) -> str:

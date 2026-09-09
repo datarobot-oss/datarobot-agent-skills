@@ -88,6 +88,7 @@ def analyze(
         client = get_client(llm_client) if use_llm else None
         if use_llm and client is None:
             _tick(NO_LLM_NOTE)
+        _set_phase(client, "Layer 2 (code reasoning + verification)")
         f2, s2, n2 = run_layer2(
             client,
             workspace,
@@ -110,6 +111,7 @@ def analyze(
             policy_name = policy.get("regulatory", {}).get(
                 "policy_name", EU_AI_ACT_POLICY_NAME
             )
+            _set_phase(client, "Layer 4 (risk-management judging)")
             f4, coverage4, n4, iac4 = run_dynamic_layer4(
                 client,
                 workspace,
@@ -120,7 +122,7 @@ def analyze(
                 max_workers=max_workers,
             )
             _phase("Layer 4 (regulatory)", started, f"{len(f4)} finding(s)")
-        return f2, s2, n2, f4, coverage4, n4, iac4
+        return f2, s2, n2, f4, coverage4, n4, iac4, usage_snapshot(client)
 
     with ThreadPoolExecutor(max_workers=3) as lanes:
         fut1 = lanes.submit(_lane_layer1)
@@ -128,7 +130,7 @@ def analyze(
         fut_llm = lanes.submit(_lane_llm)
         f1, n1 = fut1.result()
         f3, n3 = fut3.result()
-        f2, s2, n2, f4, coverage4, n4, iac4 = fut_llm.result()
+        f2, s2, n2, f4, coverage4, n4, iac4, usage = fut_llm.result()
 
     # Aggregate in a fixed order so reports stay deterministic regardless of
     # which lane finished first.
@@ -137,6 +139,7 @@ def analyze(
     result.skipped += s2
     result.regulatory_coverage += coverage4
     result.iac = iac4
+    result.usage = usage
     if not coverage4:
         skip = next(
             (
@@ -153,6 +156,18 @@ def analyze(
     _tick("Scoring remediation posture…")
     result.posture = assess_posture(result, policy, taxonomy)
     return result, policy
+
+
+def _set_phase(client, phase: str) -> None:
+    meter = getattr(client, "usage", None)
+    if meter is not None:
+        meter.phase = phase
+
+
+def usage_snapshot(client) -> dict[str, Any]:
+    """Token usage the client has metered so far; {} for clients without a meter."""
+    meter = getattr(client, "usage", None)
+    return meter.snapshot() if meter is not None else {}
 
 
 def _dedup(findings):
@@ -178,10 +193,8 @@ def fix(
     selected_ids: set[str] | None = None,
     use_llm: bool = True,
 ) -> dict[str, Any]:
-    client = get_client(llm_client) if use_llm else None
-    return remediate(
-        workspace, result.findings, policy, timestamp, client, selected_ids
-    )
+    del llm_client, use_llm  # codemods are deterministic; no model call
+    return remediate(workspace, result.findings, policy, timestamp, None, selected_ids)
 
 
 def migrate_extract(

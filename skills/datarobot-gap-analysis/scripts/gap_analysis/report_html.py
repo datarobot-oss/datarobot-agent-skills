@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import AnalysisResult, Finding, PILLARS
+from .agent_prompt import agent_prompt
 from .report import (
     CONFORMANCE_ROWS,
     _clip,
@@ -25,6 +26,7 @@ from .report import (
     python_label,
     coverage_lines,
     approval_caveat,
+    usage_rows,
 )
 
 _SEV_LABEL = {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"}
@@ -67,19 +69,33 @@ def _cmd_target(repo: str) -> str:
 
 
 def _fix_cmd(repo: str, finding: Finding) -> str:
-    """The exact terminal command that remediates this single finding."""
-    return f"{_cli_prog()} {_cmd_target(repo)} --fix --select {finding.condition_id}"
+    """The terminal command for one deterministic codemod, reusing the saved
+    findings so nothing is re-analyzed."""
+    return (
+        f"{_cli_prog()} {_cmd_target(repo)} --fix --select {finding.condition_id} "
+        "--from gap-findings.json"
+    )
 
 
 def _fix_all_cmd(repo: str) -> str:
-    """Blanket fix — the engine applies only plumbing fixes without explicit ids."""
-    return f"{_cli_prog()} {_cmd_target(repo)} --fix"
+    """Every deterministic plumbing codemod at once, from the saved findings."""
+    return f"{_cli_prog()} {_cmd_target(repo)} --fix --from gap-findings.json"
 
 
 def _migrate_cmd(repo: str, advice: str = "") -> str:
     """Re-platforming has no CLI flag; it is a request to the coding agent."""
     target = repo or "<repo>"
     return f"For {target}: {advice} Do not change the agent framework unless I ask."
+
+
+def _meta_row(items: list[str]) -> str:
+    """Header facts as flex items with a divider per item, so a wrapped line
+    breaks between items instead of stranding a separator at the edge."""
+    return (
+        '<p class="meta">'
+        + "".join(f'<span class="meta-item">{item}</span>' for item in items)
+        + "</p>"
+    )
 
 
 def _verification_banner(v: dict[str, Any]) -> str:
@@ -162,7 +178,7 @@ def render_html(
         meta.append(f"<b>Files scanned:</b> {inv.get('file_count', 0)}")
         meta.append(f"<b>Python:</b> {_esc(python_label(inv))}")
     if meta:
-        body.append('<p class="meta">' + " &nbsp;|&nbsp; ".join(meta) + "</p>")
+        body.append(_meta_row(meta))
     stack = []
     if inv.get("template_sources"):
         stack.append("<b>Template:</b> " + _esc(", ".join(inv["template_sources"])))
@@ -180,7 +196,7 @@ def render_html(
             )
         )
     if stack:
-        body.append('<p class="meta">' + " &nbsp;|&nbsp; ".join(stack) + "</p>")
+        body.append(_meta_row(stack))
     body.append("</header>")
 
     # Post-fix verification banner (deploy-readiness), when this is an "after" report.
@@ -189,21 +205,14 @@ def render_html(
 
     # Prerequisites note — the fix buttons copy a terminal command; nothing is
     # executed from this page.
-    if any(f.fix_type in ("auto", "assisted") for f in result.findings):
-        if _cli_prog().startswith("uv run"):
-            body.append(
-                '<p class="prereq">ℹ️ The fix buttons copy a terminal command for you to '
-                "run — nothing is executed from this page. Commands launch the engine via "
-                "<code>uv run</code> with an absolute script path, so they work from any "
-                "directory; fixes land on a <code>gap-fixes/*</code> branch for review.</p>"
-            )
-        else:
-            body.append(
-                '<p class="prereq">ℹ️ The fix buttons copy a terminal command for you to run. '
-                "If you get <code>gap-analysis: command not found</code>, the CLI isn't on your "
-                "PATH — activate its virtualenv (<code>source .venv/bin/activate</code>) or install "
-                "it (<code>pipx install</code> / <code>pip install -e .</code>).</p>"
-            )
+    if result.findings:
+        body.append(
+            '<p class="prereq">ℹ️ Nothing runs from this page. Deterministic fixes copy a '
+            "terminal command that reuses <code>gap-findings.json</code> from this run, so "
+            "nothing is re-analyzed, and land on a <code>gap-fixes/*</code> branch. Every other "
+            "finding copies a prompt for your own coding agent, which can read the repo, "
+            "edit and run the tests.</p>"
+        )
 
     # Posture banner
     if result.posture:
@@ -292,6 +301,8 @@ def render_html(
         for n in result.notes:
             body.append(f"<li>{_esc(n)}</li>")
         body.append("</ul></section>")
+    if result.usage.get("total", {}).get("calls"):
+        body.append(_usage_section(result.usage))
 
     body.append(
         "<footer>Secret values are never shown. DataRobot risk-management "
@@ -398,26 +409,77 @@ def _fix_details_html(f: Finding) -> str:
 
 
 def _fix_action(f: Finding, repo: str) -> str:
-    """The actionable footer of a card: a copy-the-command button (or manual note)."""
-    if f.fix_type not in ("auto", "assisted"):
+    """The actionable footer of a card.
+
+    Deterministic codemods get a terminal command that reuses the saved
+    findings. Everything else gets a prompt for the user's own coding agent,
+    which can read the repo, edit and run tests where a one-shot edit cannot.
+    """
+    if f.fix_type == "auto":
+        cmd = _fix_cmd(repo, f)
         return (
-            '<div class="card-action"><span class="manual">📝 Manual remediation — '
-            "advisory only; follow the guidance above.</span></div>"
+            '<div class="card-action">'
+            f'<button class="fixbtn" data-cmd="{_esc(cmd)}" onclick="copyCmd(this)" '
+            'title="Copy the terminal command that applies this codemod">'
+            "⧉ Copy fix command</button>"
+            f'<code class="cmd">{_esc(cmd)}</code><span class="ok">deterministic fix</span>'
+            "</div>"
         )
-    cmd = _fix_cmd(repo, f)
+    prompt = agent_prompt(f, repo)
     if f.fix_risk == "business_logic":
-        warn = (
-            '<span class="warn">⚠ touches business logic — review the diff on the '
-            "branch before merging</span>"
+        note = (
+            '<span class="warn">⚠ touches business logic: the prompt asks the agent to '
+            "add a test and stop before pushing</span>"
         )
+    elif f.fix_type == "assisted":
+        note = '<span class="ok">paste into Claude Code, Cursor, opencode or any coding agent</span>'
     else:
-        warn = '<span class="ok">safe plumbing fix</span>'
+        note = (
+            '<span class="manual">📝 advisory: the prompt carries the guidance for a '
+            "human or agent to act on</span>"
+        )
     return (
         '<div class="card-action">'
-        f'<button class="fixbtn" data-cmd="{_esc(cmd)}" onclick="copyCmd(this)" '
-        'title="Copy the terminal command that applies this fix">⧉ Copy fix command</button>'
-        f'<code class="cmd">{_esc(cmd)}</code>{warn}'
+        f'<button class="fixbtn" data-cmd="{_esc(prompt)}" data-kind="prompt" '
+        'onclick="copyCmd(this)" title="Copy a prompt for your coding agent">'
+        "⧉ Copy agent prompt</button>"
+        f"{note}"
+        f'<details class="prompt-preview"><summary>show prompt</summary>'
+        f"<pre>{_esc(prompt)}</pre></details>"
         "</div>"
+    )
+
+
+def _usage_section(usage: dict[str, Any]) -> str:
+    model = usage.get("model") or "?"
+    effort = usage.get("reasoning_effort")
+    lead = (
+        f"Model <code>{_esc(model)}</code>"
+        + (
+            f", reasoning effort <code>{_esc(effort)}</code>"
+            if effort
+            else ", no reasoning mode requested"
+        )
+        + ". Tokens as reported by the DataRobot LLM Gateway per call. Cached tokens "
+        "are already inside Input and reasoning tokens inside Output; the columns "
+        "break those totals down, they do not add to them."
+    )
+    rows = []
+    for label, row in usage_rows(usage):
+        cls = ' class="total"' if label == "Total" else ""
+        rows.append(
+            f"<tr{cls}><td>{_esc(label)}</td><td>{row.get('calls', 0)}</td>"
+            f"<td>{row.get('input_tokens', 0):,}</td><td>{row.get('cache_read_tokens', 0):,}</td>"
+            f"<td>{row.get('output_tokens', 0):,}</td>"
+            f"<td>{row.get('reasoning_tokens', 0):,}</td></tr>"
+        )
+    return (
+        '<section class="scorecard usage"><h2>LLM Gateway Usage</h2>'
+        f'<p class="sub">{lead}</p>'
+        "<table><thead><tr><th>Phase</th><th>Calls</th><th>Input</th><th>of which cached</th>"
+        "<th>Output</th><th>of which reasoning</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table></section>"
     )
 
 
@@ -634,7 +696,9 @@ code,.mono{font-family:"Roboto Mono",ui-monospace,Menlo,monospace}
 .themebtn:hover{color:var(--ink)}
 .themebtn:focus{outline:none} .themebtn:focus-visible{border-color:var(--accent);color:var(--ink)}
 h1{font-size:22px;margin:0 0 6px} h2{font-size:16px;margin:26px 0 12px}
-.meta,.sub{color:var(--muted)} .meta{margin:4px 0 0}
+.meta,.sub{color:var(--muted)} .meta{margin:4px 0 0;display:flex;flex-wrap:wrap;row-gap:2px}
+.meta-item{padding-right:10px;margin-right:10px;border-right:1px solid var(--line);white-space:normal}
+.meta-item:last-child{border-right:0;padding-right:0;margin-right:0}
 .prereq{margin:14px 0 0;padding:9px 12px;background:var(--warn-bg);border:1px solid var(--warn-line);
   border-radius:8px;color:var(--warn-ink);font-size:13px}
 .prereq code{background:var(--code-bg);color:var(--code-ink);padding:1px 6px;border-radius:4px;font-size:12px}
@@ -715,6 +779,8 @@ details.pillar>summary::-webkit-details-marker{display:none}
 .coverage ul{margin:4px 0 0;padding-left:18px}
 .coverage li{margin:2px 0}
 .coverage li.warn{font-weight:600}
+.usage td:not(:first-child),.usage th:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.usage tr.total td{font-weight:600;border-top:2px solid var(--line)}
 /* scorecards */
 table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);
   border-radius:8px;overflow:hidden}
@@ -734,6 +800,8 @@ footer{margin-top:30px;color:var(--muted);font-size:12px;border-top:1px solid va
   border-radius:6px;padding:4px 11px;font-size:12px;font-weight:700;white-space:nowrap}
 .fixbtn:hover{background:var(--accent);color:var(--card)}
 .fixbtn.fixall{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
+.prompt-preview{flex-basis:100%;margin-top:6px} .prompt-preview summary{cursor:pointer;font-size:12px;color:var(--muted)}
+.prompt-preview pre{white-space:pre-wrap;font-size:12px;line-height:1.45;background:var(--bg);padding:10px 12px;border-radius:4px;margin:6px 0 0}
 .fixbtn.fixall:hover{background:var(--ok);color:var(--card)}
 .fixbtn.migrate{margin-top:10px;border-color:#fff;background:rgba(255,255,255,.18);color:#fff}
 .fixbtn.migrate:hover{background:#fff;color:var(--bad-fill)}
@@ -766,8 +834,11 @@ function showToast(html){
 }
 function copyCmd(btn){
   var cmd=btn.dataset.cmd;
-  function done(){ showToast('Copied — paste in your terminal:<br><code>'+
-    cmd.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</code>'); }
+  var isPrompt=btn.dataset.kind==='prompt';
+  function done(){
+    if(isPrompt){ showToast('Copied. Paste it into your coding agent (Claude Code, Cursor, opencode).'); return; }
+    showToast('Copied. Paste in your terminal:<br><code>'+cmd.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</code>');
+  }
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(cmd).then(done, function(){ fallback(cmd); done(); });
   } else { fallback(cmd); done(); }

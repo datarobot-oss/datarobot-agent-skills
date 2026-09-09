@@ -17,7 +17,7 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
     died or answered exclusively with tool calls).
     """
     parts: list[str] = []
-    input_tokens = output_tokens = cache_read = cache_write = 0
+    input_tokens = output_tokens = cache_read = cache_write = reasoning = 0
     cost = 0.0
     for line in stdout.splitlines():
         line = line.strip()
@@ -38,6 +38,7 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
             output_tokens += tokens.get("output", 0)
             cache_read += tokens.get("cache", {}).get("read", 0)
             cache_write += tokens.get("cache", {}).get("write", 0)
+            reasoning += tokens.get("reasoning", 0) or 0
             cost += part.get("cost", 0.0) or 0.0
 
     meta: dict[str, object] = {
@@ -45,6 +46,7 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
         "output_tokens": output_tokens,
         "cache_read_tokens": cache_read,
         "cache_write_tokens": cache_write,
+        "reasoning_tokens": reasoning,
         "cost": round(cost, 6),
     }
     text = "".join(parts).strip()

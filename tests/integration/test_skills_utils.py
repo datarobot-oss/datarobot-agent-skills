@@ -175,3 +175,66 @@ def test_worker_env_injects_reasoning_effort_into_opencode_config():
     assert none == {} and untouched == {"A": "1"}
     off, _ = worker_env(["datarobot/anthropic/claude-opus-4-8"], "off", {"A": "1"})
     assert "OPENCODE_CONFIG_CONTENT" not in off
+
+
+def test_usage_meter_sums_per_phase_and_total():
+    from datarobot_skills_utils.opencode import UsageMeter
+
+    meter = UsageMeter("datarobot/bedrock/anthropic.claude-sonnet-4-6", "max")
+    meter.phase = "Layer 2"
+    meter.record(
+        {
+            "input_tokens": 1000,
+            "output_tokens": 50,
+            "reasoning_tokens": 20,
+            "cost": 0.001,
+        }
+    )
+    meter.record({"input_tokens": 500, "output_tokens": 10, "cache_read_tokens": 300})
+    meter.phase = "Layer 4"
+    meter.record({"input_tokens": 200, "output_tokens": 5})
+    meter.record(None)
+
+    snap = meter.snapshot()
+    assert (
+        snap["model"].endswith("claude-sonnet-4-6")
+        and snap["reasoning_effort"] == "max"
+    )
+    assert list(snap["phases"]) == ["Layer 2", "Layer 4"]
+    assert snap["phases"]["Layer 2"] == {
+        "calls": 2,
+        "input_tokens": 1500,
+        "output_tokens": 60,
+        "cache_read_tokens": 300,
+        "cache_write_tokens": 0,
+        "reasoning_tokens": 20,
+        "cost": 0.001,
+    }
+    assert snap["total"]["calls"] == 3 and snap["total"]["input_tokens"] == 1700
+    assert snap["total"]["reasoning_tokens"] == 20
+
+
+def test_parse_events_reports_reasoning_tokens():
+    stream = "\n".join(
+        [
+            json.dumps({"type": "text", "part": {"text": "391"}}),
+            json.dumps(
+                {
+                    "type": "step_finish",
+                    "part": {
+                        "tokens": {
+                            "input": 12,
+                            "output": 30,
+                            "reasoning": 25,
+                            "cache": {"read": 0, "write": 0},
+                        },
+                        "cost": 0,
+                    },
+                }
+            ),
+        ]
+    )
+    text, meta = parse_events(stream)
+    assert (
+        text == "391" and meta["reasoning_tokens"] == 25 and meta["output_tokens"] == 30
+    )
