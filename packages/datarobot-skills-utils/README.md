@@ -20,6 +20,10 @@ LLM execution through the DataRobot CLI's opencode runtime, extracted from the
   (merged over any existing value), so opencode sends `reasoning_effort` without
   the user's `opencode.json` being edited. "max" resolves to the highest value
   each provider accepts; models without a reasoning mode are left untouched.
+- `UsageMeter(model, reasoning_effort)`: thread-safe token accounting across a
+  run; set `phase` before a batch of calls and `record(meta)` after each, then
+  `snapshot()` gives per-phase and total calls, input, output, reasoning and
+  cache tokens. `parse_events` now reports `reasoning_tokens`.
 - `run_worker(...)` — one `dr opencode run` completion attached to a shared
   server (or in an isolated directory), with the anti-tool worker preamble,
   NUL/argv-size sanitization, and retry on empty output.

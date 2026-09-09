@@ -18,8 +18,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from . import paths
-from .llm import LLMClient, parse_json
+from .llm import LLMClient
 from .models import Finding
 from .scanners import _SECRET_PATTERNS, _PLACEHOLDER
 
@@ -339,54 +338,6 @@ _AUTO = {
 # ───────────────────────── assisted (LLM) fixes ─────────────────────────
 
 
-def _fix_assisted(
-    workspace: Path, f: Finding, client: LLMClient | None
-) -> dict[str, Any]:
-    if client is None:
-        return _cannot(f, "assisted fix needs an LLM client (none configured)")
-    if not f.fix_strategy or not f.file:
-        return _cannot(f, "no fix prompt or file for this finding")
-    prompt = paths.resolve(f.fix_strategy).read_text()
-    contract = (paths.prompts_dir() / "_fix_contract.md").read_text()
-    path = workspace / f.file
-    try:
-        content = path.read_text(errors="ignore")
-    except Exception as e:  # noqa: BLE001
-        return _cannot(f, f"cannot read {f.file}: {e}")
-    system = f"{prompt}\n\n---\n# Output contract\n{contract}"
-    user = (
-        f"Finding: {f.condition_id} at {f.file}:{f.line}\n"
-        f"Evidence: {f.evidence}\n\n=== FILE: {f.file} ===\n{content}"
-    )
-    try:
-        result = parse_json(client.complete(system, user))
-    except Exception as e:  # noqa: BLE001
-        return _cannot(f, f"LLM/parse error: {e}")
-    if not result.get("can_fix"):
-        return _cannot(f, result.get("explanation", "model declined to fix"))
-
-    applied = []
-    for edit in result.get("edits", []) or []:
-        old, new = edit.get("old_string"), edit.get("new_string")
-        if old and old in content and content.count(old) == 1:
-            content = content.replace(old, new)
-            applied.append("edit")
-        else:
-            return _cannot(f, "edit old_string not unique/found — skipped for safety")
-    if applied:
-        path.write_text(content)
-    for nf in result.get("new_files", []) or []:
-        p = workspace / nf["path"]
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(nf["content"])
-        applied.append(f"new:{nf['path']}")
-    return _ok(
-        f,
-        result.get("explanation", "applied assisted fix"),
-        manual=result.get("manual_followup", ""),
-    )
-
-
 # ───────────────────────── orchestration ─────────────────────────
 
 
@@ -406,7 +357,10 @@ def apply_fix(
         except Exception as e:  # noqa: BLE001
             return _cannot(finding, f"codemod error: {e}")
     if finding.fix_type == "assisted":
-        return _fix_assisted(workspace, finding, client)
+        return _cannot(
+            finding,
+            "assisted fix: hand the report's agent prompt to your coding agent",
+        )
     return _cannot(finding, "advisory finding — manual remediation only")
 
 
@@ -420,7 +374,9 @@ def remediate(
 ) -> dict[str, Any]:
     workspace = Path(workspace)
     rem = policy.get("remediation", {})
-    allow = set(rem.get("allow_fix_types", ["auto", "assisted"]))
+    # Only deterministic codemods run here; "assisted" findings carry an agent
+    # prompt in the report instead of a blind one-shot edit.
+    allow = set(rem.get("allow_fix_types", ["auto"])) & {"auto"}
     # Risk classes that may be applied without an explicit per-finding selection.
     # Business-logic-touching fixes are never swept into a blanket "fix all" — they
     # must be named by condition id so a human consciously opts into the blast radius.

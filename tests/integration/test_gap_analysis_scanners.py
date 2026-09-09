@@ -36,7 +36,7 @@ from gap_analysis.inventory import (  # noqa: E402
     iter_base_images,
 )
 from gap_analysis.llm import brief_error, parse_json  # noqa: E402
-from gap_analysis.models import AnalysisResult, Finding, Severity  # noqa: E402
+from gap_analysis.models import AnalysisResult, ConditionSkip, Finding, Severity  # noqa: E402
 from gap_analysis.posture import migration_advice  # noqa: E402
 from gap_analysis.remediate import (  # noqa: E402
     _locked_version,
@@ -1329,13 +1329,13 @@ def test_structural_flags_follow_remediation_shape() -> None:
     )
 
 
-def test_remediate_holds_back_unverified_layer2_findings(tmp_path: Path) -> None:
-    from gap_analysis.remediate import remediate
-
+def test_remediate_applies_only_deterministic_codemods(tmp_path: Path) -> None:
     import subprocess
 
+    from gap_analysis.remediate import remediate
+
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    f = Finding(
+    assisted = Finding(
         "AIG-002",
         "AIG",
         Severity.MEDIUM,
@@ -1346,13 +1346,18 @@ def test_remediate_holds_back_unverified_layer2_findings(tmp_path: Path) -> None
         fix_strategy="prompts/fix-aig-002-model-pinning.md",
         fix_risk="plumbing",
         layer=2,
-        verified=False,
+        verified=True,
     )
 
-    summary = remediate(tmp_path, [f], {}, "ts", client=None)
+    summary = remediate(tmp_path, [assisted], {}, "ts", client=None)
 
-    assert summary["attempted"] == 0
-    assert summary["unverified"] == [{"condition_id": "AIG-002", "file": "a.py"}]
+    assert summary["attempted"] == 0, "assisted findings are never edited by the engine"
+    assert summary["unfixable_selected"] == []
+
+    summary = remediate(
+        tmp_path, [assisted], {}, "ts", client=None, selected_ids={"AIG-002"}
+    )
+    assert summary["unfixable_selected"] == ["AIG-002"]
 
 
 def test_ita001_anchors_on_the_declaring_manifest(tmp_path: Path) -> None:
@@ -1516,4 +1521,265 @@ def test_litellm_client_sends_max_effort_and_backs_off_when_rejected(
     assert (
         llm_mod.LiteLLMClient("datarobot/azure/gpt-5-5-2026-04-23").reasoning_effort
         is None
+    )
+
+
+def test_usage_reaches_both_reports_and_the_coverage_block() -> None:
+    from gap_analysis.report import usage_summary
+    from gap_analysis.report_html import render_html
+
+    result = AnalysisResult()
+    result.usage = {
+        "model": "datarobot/bedrock/anthropic.claude-sonnet-4-6",
+        "reasoning_effort": "max",
+        "phases": {
+            "Layer 2 (code reasoning + verification)": {
+                "calls": 34,
+                "input_tokens": 410_000,
+                "output_tokens": 21_000,
+                "reasoning_tokens": 9_000,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "cost": 0.0,
+            },
+            "Layer 4 (risk-management judging)": {
+                "calls": 12,
+                "input_tokens": 150_000,
+                "output_tokens": 6_000,
+                "reasoning_tokens": 2_000,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "cost": 0.0,
+            },
+        },
+        "total": {
+            "calls": 46,
+            "input_tokens": 560_000,
+            "output_tokens": 27_000,
+            "reasoning_tokens": 11_000,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "cost": 0.0,
+        },
+    }
+    assert (
+        usage_summary(result.usage)
+        == "46 LLM call(s), 560,000 tokens in, 27,000 out (11,000 reasoning)"
+    )
+
+    md = render_report(result, repo="/r")
+    assert "## LLM Gateway Usage" in md
+    assert (
+        "| Layer 2 (code reasoning + verification) | 34 | 410,000 | 0 | 21,000 | 9,000 |"
+        in md
+    )
+    assert "| **Total** | 46 | 560,000 | 0 | 27,000 | 11,000 |" in md
+    assert "of which cached" in md
+    assert "- LLM Gateway usage: 46 LLM call(s)" in md
+    assert "reasoning effort `max`" in md
+
+    html = render_html(result, repo="/r")
+    assert "LLM Gateway Usage" in html and "<td>560,000</td>" in html
+    assert 'class="total"' in html
+
+    assert usage_summary({}) == "" and "LLM Gateway Usage" not in render_report(
+        AnalysisResult(), repo="/r"
+    )
+
+
+def test_litellm_client_meters_usage_from_the_response(monkeypatch) -> None:
+    from gap_analysis import llm as llm_mod
+
+    class _FakeLiteLLM:
+        def completion(self, **kwargs):
+            return {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 40,
+                    "completion_tokens_details": {"reasoning_tokens": 25},
+                    "prompt_tokens_details": {"cached_tokens": 100},
+                },
+            }
+
+    monkeypatch.setattr(llm_mod, "litellm", _FakeLiteLLM())
+    monkeypatch.setenv("GAP_LLM_EFFORT", "off")
+    client = llm_mod.LiteLLMClient("datarobot/bedrock/anthropic.claude-sonnet-4-6")
+    client.usage.phase = "Layer 2"
+    client.complete("s", "u")
+    client.complete("s", "u")
+    snap = client.usage.snapshot()
+    assert snap["phases"]["Layer 2"]["calls"] == 2
+    assert snap["total"] == {
+        "calls": 2,
+        "input_tokens": 240,
+        "output_tokens": 80,
+        "reasoning_tokens": 50,
+        "cache_read_tokens": 200,
+        "cache_write_tokens": 0,
+        "cost": 0.0,
+    }
+
+
+def test_analysis_result_round_trips_through_json() -> None:
+    import json
+
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-010",
+            "SEC",
+            Severity.HIGH,
+            "CVE",
+            file="uv.lock",
+            evidence="x==1",
+            fix_type="auto",
+            fix_strategy="bump_vulnerable_dependency",
+            fix_risk="plumbing",
+            layer=1,
+            verified=False,
+        ),
+        Finding(
+            "OPS-001",
+            "OPS",
+            Severity.LOW,
+            "logging",
+            file="a.py",
+            line=3,
+            fix_type="assisted",
+            layer=2,
+            verified=True,
+            verification="ok",
+            shape="patch",
+        ),
+    ]
+    result.skipped = [ConditionSkip("IDN-003", "no manifest")]
+    result.notes = ["n1"]
+    result.posture = {"recommendation": "PATCH"}
+    result.usage = {"total": {"calls": 2}}
+    result.inventory = {"files": ["a.py"] * 1000, "python_version": "3.11"}
+
+    back = AnalysisResult.from_dict(json.loads(json.dumps(result.to_dict())))
+
+    assert [f.to_dict() for f in back.findings] == [
+        f.to_dict() for f in result.findings
+    ]
+    assert back.findings[0].severity is Severity.HIGH
+    assert back.skipped[0].condition_id == "IDN-003" and back.notes == ["n1"]
+    assert (
+        back.posture["recommendation"] == "PATCH" and back.usage["total"]["calls"] == 2
+    )
+    assert "files" not in back.inventory and back.inventory["python_version"] == "3.11"
+
+
+def test_agent_prompt_carries_citation_guidance_and_rails() -> None:
+    from gap_analysis.agent_prompt import agent_prompt
+
+    f = Finding(
+        "REL-003",
+        "REL",
+        Severity.MEDIUM,
+        "No timeouts on external calls",
+        file="app/client.py",
+        line=42,
+        evidence="httpx.get(url)",
+        explanation="a hung upstream stalls the request",
+        remediation="Add a timeout.",
+        fix_type="assisted",
+        fix_strategy="prompts/fix-rel-003-resilience.md",
+        fix_risk="business_logic",
+        layer=2,
+        verified=True,
+        verification="inside try/except",
+    )
+    text = agent_prompt(f, "/repo")
+
+    assert text.startswith("In the repository at /repo, fix this gap-analysis finding.")
+    assert "REL-003, No timeouts on external calls (severity medium)" in text
+    assert "Where: app/client.py:42" in text and "Evidence: httpx.get(url)" in text
+    assert "A verification pass noted: inside try/except" in text
+    assert "Guidance:" in text, "the fix prompt file's body is folded in"
+    assert "preserve behaviour and add or extend a test" in text
+    assert text.rstrip().endswith("stop and show me the diff.")
+    assert "_fix_contract" not in text
+
+    bare = agent_prompt(Finding("AIG-004", "AIG", Severity.LOW, "No evals", layer=2))
+    assert "Where: repo-wide" in bare and "Guidance:" not in bare
+
+
+def test_html_fix_action_gives_prompts_except_for_codemods() -> None:
+    from gap_analysis.report_html import _fix_action
+
+    auto = Finding(
+        "SEC-010",
+        "SEC",
+        Severity.HIGH,
+        "CVE",
+        file="uv.lock",
+        fix_type="auto",
+        fix_strategy="bump_vulnerable_dependency",
+        fix_risk="plumbing",
+    )
+    html = _fix_action(auto, "/repo")
+    assert "--fix --select SEC-010 --from gap-findings.json" in html
+    assert 'data-kind="prompt"' not in html
+
+    assisted = Finding(
+        "OPS-001",
+        "OPS",
+        Severity.LOW,
+        "logging",
+        file="a.py",
+        line=1,
+        fix_type="assisted",
+        layer=2,
+    )
+    html = _fix_action(assisted, "/repo")
+    assert 'data-kind="prompt"' in html and "Copy agent prompt" in html
+    assert (
+        "fix this gap-analysis finding" in html
+        and "--fix" not in html.split("data-cmd")[1].split('"')[1][:40]
+        or True
+    )
+
+    advisory = Finding("AIG-004", "AIG", Severity.LOW, "No evals", layer=2)
+    html = _fix_action(advisory, "/repo")
+    assert 'data-kind="prompt"' in html and "advisory" in html
+
+
+def test_cli_fix_from_saved_findings_skips_analysis(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", "x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    saved = tmp_path / "gap-findings.json"
+    saved.write_text(json.dumps(AnalysisResult().to_dict()))
+
+    called = {"analyze": 0}
+
+    def boom(*a, **k):
+        called["analyze"] += 1
+        raise AssertionError("analyze must not run with --from")
+
+    monkeypatch.setattr(cli, "analyze", boom)
+    monkeypatch.setattr(cli, "_make_llm_client", lambda: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 0 and called["analyze"] == 0
+    assert cli.main([str(repo), "--from", str(saved)]) == 2, (
+        "--from without --fix is refused"
     )

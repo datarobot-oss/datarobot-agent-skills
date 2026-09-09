@@ -175,6 +175,11 @@ opened automatically), then read the written report back and summarize for the u
   evidence — never invent a finding; if a condition was skipped (e.g. a relational
   check missing one of its file groups), say so rather than guessing.
 
+- The **LLM Gateway Usage** section at the end of the report shows calls and input,
+  output and reasoning tokens per phase (Layer 2 with its verification pass, Layer 4,
+  fixes) for the model and reasoning effort used. Mention the total when the user
+  asks about cost or run time; the coverage block under the Summary carries a one-line
+  version.
 - Any regulatory (`POL-DR-*`) findings deserve their own framing: they come from the
   org's own DataRobot risk-management policy, and each one names the DataRobot
   platform feature that satisfies it plus how to enable it (Pulumi settings block,
@@ -199,17 +204,28 @@ topic up there yourself before advising; do not quote a page from memory.
 State the posture and let it drive the offer — the unit of decision is the *gap*, not
 the whole agent:
 
-- **PATCH** → offer to re-run with `--fix`. Plumbing fixes (secrets → env vars, model
-  pins, CI/logging scaffolding) are surgical and safe.
-- **HYBRID** → offer `--fix` for the plumbing now; flag which findings are structural
-  and will need a targeted human review or a Re-platform pass later.
+- **PATCH** → the fixes are surgical. Deterministic plumbing (dependency pins, secrets
+  to env vars, model and Python pins, CI and test scaffolds) is applied by `--fix`; every
+  other finding carries a prompt for the developer's own coding agent.
+- **HYBRID** → apply the deterministic fixes now; hand the agent prompts for the rest to
+  the developer and flag which findings are structural.
 - **RE-PLATFORM** → too many structural gaps to patch safely in place. Read the
   posture text before recommending anything: it says whether the repo already builds
   on af-components and which agent framework it uses (also in the report header).
 
-Ask **which** findings to fix: all auto-fixable, a selected subset (`--select
-SEC-002,ITA-003`), or none. A blanket "fix everything" only ever applies
-plumbing-classified fixes; business-logic fixes must be named explicitly.
+Two remediation surfaces, and the report says which applies to each finding:
+
+- **Deterministic fixes** (`auto`): the report's "Copy fix command" gives
+  `--fix --select <id> --from gap-findings.json`. The analysis writes
+  `gap-findings.json` next to the report, and `--from` reuses it, so the fix runs in
+  seconds without re-analyzing. A bare `--fix` applies every plumbing codemod; a
+  business-logic codemod runs only when named with `--select`.
+- **Agent prompts** (`assisted` and `advisory`): the report's "Copy agent prompt" is a
+  self-contained request carrying the citation, evidence, verification note, fix
+  guidance and safety rails. The developer pastes it into Claude Code, Cursor, opencode
+  or whatever agent is open. That agent can read call sites, edit and run tests, which
+  a one-shot edit cannot, so the engine never edits these itself. When you are that
+  agent, act on the prompt directly instead of re-running the analysis.
 
 **Safety rails, never skip these:**
 - Fixes land on a new `gap-fixes/<timestamp>` branch, never the default branch. A

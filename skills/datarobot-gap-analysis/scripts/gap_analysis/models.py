@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from typing import Any
 
@@ -78,6 +78,13 @@ class Finding:
         d["severity"] = self.severity.value
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Finding":
+        data = dict(d)
+        data["severity"] = Severity(data.get("severity", "medium"))
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
+
 
 @dataclass
 class ConditionSkip:
@@ -105,6 +112,34 @@ class AnalysisResult:
     # The repo's pulumi-datarobot footprint as seen by Layer 4 (see
     # risk_management._detect_iac); empty when no Pulumi program was found.
     iac: dict[str, Any] = field(default_factory=dict)
+    # LLM Gateway token usage for this run, per phase and in total (see
+    # datarobot_skills_utils.opencode.UsageMeter); empty when no LLM ran.
+    usage: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "findings": [f.to_dict() for f in self.findings],
+            "skipped": [asdict(s) for s in self.skipped],
+            "notes": list(self.notes),
+            "posture": self.posture,
+            "regulatory_coverage": self.regulatory_coverage,
+            "iac": self.iac,
+            "usage": self.usage,
+            "inventory": {k: v for k, v in self.inventory.items() if k != "files"},
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "AnalysisResult":
+        result = cls()
+        result.findings = [Finding.from_dict(f) for f in d.get("findings", [])]
+        result.skipped = [ConditionSkip(**s) for s in d.get("skipped", [])]
+        result.notes = list(d.get("notes", []))
+        result.posture = d.get("posture") or {}
+        result.regulatory_coverage = d.get("regulatory_coverage") or []
+        result.iac = d.get("iac") or {}
+        result.usage = d.get("usage") or {}
+        result.inventory = d.get("inventory") or {}
+        return result
 
     def by_severity(self) -> list[Finding]:
         return sorted(

@@ -113,10 +113,10 @@ report:
     - "high"
 
 remediation:
-  # Fix tiers the agent is permitted to apply automatically once the user approves
+  # Fix tiers the engine applies itself. Only deterministic codemods ("auto") run;
+  # "assisted" findings ship an agent prompt in the report instead.
   allow_fix_types:
     - "auto"
-    - "assisted"
   # Risk classes that may be applied in a blanket "fix all" (no explicit ids). Business-
   # logic-touching fixes are intentionally excluded so they are only applied when a human
   # names the condition id — protecting business logic in someone else's agent.

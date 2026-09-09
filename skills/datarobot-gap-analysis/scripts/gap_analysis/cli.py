@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import atexit
 import os
 import signal
@@ -18,7 +19,9 @@ from pathlib import Path
 from .engine import analyze, fix
 from .ingest import clone_repo
 from .opencode import _DEFAULT_MODEL, OpenCodeServer, OpenCodeWorkerClient, dr_available
-from .report import render_report
+from .models import AnalysisResult
+from .policy import load_policy
+from .report import render_report, usage_summary
 from .report_html import render_html
 
 
@@ -99,8 +102,10 @@ def _make_llm_client():
     # private server outlives the run.
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda signum, _frame: sys.exit(128 + signum))
-    client = OpenCodeWorkerClient(url, model=model, cwd=server.workdir)
     effort = server.efforts.get(model)
+    client = OpenCodeWorkerClient(
+        url, model=model, cwd=server.workdir, reasoning_effort=effort
+    )
     effort_note = (
         f"reasoning effort {effort}"
         if effort
@@ -112,6 +117,125 @@ def _make_llm_client():
     )
     _status(f"→ LLM checks run through dr opencode ({client.model}, {effort_note}).")
     return client
+
+
+def _run_fix(
+    args, workspace, result, policy, ts, llm_client=None, html_path: str | None = None
+) -> dict:
+    """Apply deterministic codemods, print the summary, optionally re-verify.
+
+    Returns {"final_findings": [...]} so the caller can compute the exit code.
+    """
+
+    def progress(msg: str) -> None:
+        _status(f"  … {msg}")
+
+    html_path = html_path or "gap-report.html"
+    final_findings = result.findings
+    selected = set(s.strip() for s in args.select.split(",")) if args.select else None
+    _status(
+        f"→ Applying fixes ({'selected: ' + ','.join(sorted(selected)) if selected else 'all auto-fixable'}) "
+        "on a gap-fixes/* branch …"
+    )
+    summary = fix(workspace, result, policy, ts, selected_ids=selected)
+    print("\n" + "=" * 60)
+    print(
+        f"Remediation: applied {summary['applied']}/{summary['attempted']} fixes "
+        f"on branch {summary['branch']}"
+    )
+    for r in summary["results"]:
+        mark = "✓" if r["status"] == "applied" else "•"
+        risk = f" [{r['fix_risk']}]" if r.get("fix_risk") else ""
+        print(f"  {mark} {r['condition_id']}{risk}: {r['message']}")
+    if summary.get("held_back"):
+        print(
+            "\nHeld back (business-logic fixes; re-run with --select naming these "
+            "ids to apply):"
+        )
+        for h in summary["held_back"]:
+            print(f"  - {h['condition_id']} ({h.get('file') or 'repo-wide'})")
+    if summary["followups"]:
+        print("\nManual follow-ups:")
+        for fu in summary["followups"]:
+            print(f"  - {fu}")
+    if summary["diff_stat"]:
+        print("\n" + summary["diff_stat"])
+    print(
+        f"\nThe branch '{summary['branch']}' lives in the cloned workspace:\n  {workspace}"
+    )
+    print(f"  Inspect it with:  git -C {workspace} diff main")
+    print(
+        "\nNote: --fix patches the repo IN PLACE; it does not adopt the af-component "
+        "stack. Re-platforming onto af-components is the migration path (RE-PLATFORM)."
+    )
+    if summary.get("unverified"):
+        _status(
+            "\nNot applied (LLM findings that did not pass the verification pass; "
+            "re-run the analysis with verification on, or fix by hand): "
+            + ", ".join(
+                f"{u['condition_id']} ({u['file']})" for u in summary["unverified"]
+            )
+        )
+    if summary.get("unfixable_selected"):
+        print(
+            "Selected but advisory-only (no automated fix exists; follow the report's "
+            "guidance): " + ", ".join(summary["unfixable_selected"])
+        )
+    print("Review the branch and, if good, push / open a PR (not done automatically).")
+
+    if getattr(args, "verify", False):
+        _status("→ Re-analyzing the fixed branch to score deploy-readiness …")
+        after, _ = analyze(
+            workspace,
+            args.policy,
+            llm_client=llm_client,
+            use_llm=not args.no_llm,
+            progress=progress,
+            max_workers=args.workers,
+        )
+        before_keys = {(f.condition_id, f.file, f.line) for f in result.findings}
+        after_keys = {(f.condition_id, f.file, f.line) for f in after.findings}
+        final_findings = after.findings
+        fail_on_list = policy.get("report", {}).get("fail_on", ["critical", "high"])
+        remaining = sum(1 for f in after.findings if f.severity.value in fail_on_list)
+        ready = remaining == 0
+        verification = {
+            "ready": ready,
+            "fail_on": fail_on_list,
+            "remaining_blocking": remaining,
+            "before": {
+                "total": len(result.findings),
+                "counts": result.counts(),
+                "posture": result.posture.get("recommendation", "?"),
+            },
+            "after": {
+                "total": len(after.findings),
+                "counts": after.counts(),
+                "posture": after.posture.get("recommendation", "?"),
+            },
+            "closed": len(before_keys - after_keys),
+            "branch": summary["branch"],
+            "workspace": str(workspace),
+        }
+        after_out = Path(_after_path(html_path)).resolve()
+        after_out.write_text(
+            render_html(after, repo=args.repo, policy=policy, verification=verification)
+        )
+        print(f"✓ Post-fix report: {after_out.as_uri()}")
+        if args.open:
+            webbrowser.open(after_out.as_uri())
+        verdict = (
+            "READY to deploy"
+            if ready
+            else f"NOT READY: {remaining} {'/'.join(fail_on_list)} gap(s) remain"
+        )
+        _status(
+            f"→ Deploy-readiness: {verdict}. {len(before_keys - after_keys)} gaps closed "
+            f"({len(result.findings)} → {len(after.findings)})."
+        )
+
+    # Exit non-zero if any fail_on-severity gaps exist (CI-friendly).
+    return {"final_findings": final_findings}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -164,7 +288,17 @@ def main(argv: list[str] | None = None) -> int:
         help="parallel workers for Layer 2/4 LLM checks (default: 4, or $GAP_WORKERS)",
     )
     ap.add_argument(
-        "--fix", action="store_true", help="apply fixes on a gap-fixes/* branch"
+        "--fix",
+        action="store_true",
+        help="apply the deterministic fixes (dependency pins, secrets to env vars, "
+        "scaffolds) on a gap-fixes/* branch",
+    )
+    ap.add_argument(
+        "--from",
+        dest="from_json",
+        metavar="PATH",
+        help="reuse the findings of a previous run (gap-findings.json written next to "
+        "the report) instead of analyzing again; pairs with --fix",
     )
     ap.add_argument(
         "--select", help="comma-separated condition ids to fix (default: all fixable)"
@@ -201,6 +335,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
+    if args.from_json:
+        # Fixing from a saved run: no model, no re-analysis, straight to codemods.
+        try:
+            result = AnalysisResult.from_dict(
+                json.loads(Path(args.from_json).read_text())
+            )
+        except (OSError, ValueError, KeyError) as e:
+            print(
+                f"error: cannot load findings from {args.from_json}: {e}",
+                file=sys.stderr,
+            )
+            return 2
+        policy = load_policy(args.policy)
+        _status(f"→ Loaded {len(result.findings)} finding(s) from {args.from_json}.")
+        if not args.fix:
+            print(
+                "nothing to do: --from is only useful together with --fix",
+                file=sys.stderr,
+            )
+            return 2
+        final = _run_fix(args, workspace, result, policy, ts)["final_findings"]
+        fail_on = set(policy.get("report", {}).get("fail_on", []))
+        return 1 if any(f.severity.value in fail_on for f in final) else 0
+
     llm_client = _make_llm_client() if not args.no_llm else None
 
     _status(
@@ -218,6 +376,8 @@ def main(argv: list[str] | None = None) -> int:
         f"→ Analysis complete — {len(result.findings)} gaps "
         f"({result.posture.get('recommendation', '')})."
     )
+    if usage_summary(result.usage):
+        _status(f"→ LLM Gateway usage: {usage_summary(result.usage)}.")
     report = render_report(result, repo=args.repo, policy=policy)
 
     out_path: Path | None = None
@@ -238,129 +398,17 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(html_path).resolve()
     out.write_text(render_html(result, repo=args.repo, policy=policy))
     print(f"✓ HTML report: {out.as_uri()}")
+    findings_path = out.with_name("gap-findings.json")
+    findings_path.write_text(json.dumps(result.to_dict(), indent=1, default=str))
+    print(f"✓ Findings: {findings_path} (reuse with --fix --from)")
     if args.open:
         webbrowser.open(out.as_uri())
 
     if args.fix:
-        selected = (
-            set(s.strip() for s in args.select.split(",")) if args.select else None
-        )
-        _status(
-            f"→ Applying fixes ({'selected: ' + ','.join(sorted(selected)) if selected else 'all auto-fixable'}) "
-            "on a gap-fixes/* branch …"
-        )
-        summary = fix(
-            workspace,
-            result,
-            policy,
-            ts,
-            llm_client=llm_client,
-            selected_ids=selected,
-            use_llm=not args.no_llm,
-        )
-        print("\n" + "=" * 60)
-        print(
-            f"Remediation: applied {summary['applied']}/{summary['attempted']} fixes "
-            f"on branch {summary['branch']}"
-        )
-        for r in summary["results"]:
-            mark = "✓" if r["status"] == "applied" else "•"
-            risk = f" [{r['fix_risk']}]" if r.get("fix_risk") else ""
-            print(f"  {mark} {r['condition_id']}{risk}: {r['message']}")
-        if summary.get("held_back"):
-            print(
-                "\nHeld back (business-logic fixes — re-run with --select naming these "
-                "ids to apply):"
-            )
-            for h in summary["held_back"]:
-                print(f"  - {h['condition_id']} ({h.get('file') or 'repo-wide'})")
-        if summary["followups"]:
-            print("\nManual follow-ups:")
-            for fu in summary["followups"]:
-                print(f"  - {fu}")
-        if summary["diff_stat"]:
-            print("\n" + summary["diff_stat"])
-        print(
-            f"\nThe branch '{summary['branch']}' lives in the cloned workspace:\n  {workspace}"
-        )
-        print(f"  Inspect it with:  git -C {workspace} diff main")
-        print(
-            "\nNote: --fix patches the repo IN PLACE — it does not adopt the af-component "
-            "stack. Re-platforming onto af-components is the migration path (RE-PLATFORM)."
-        )
-        if summary.get("unverified"):
-            _status(
-                "\nNot applied (LLM findings that did not pass the verification pass; "
-                "re-run the analysis with verification on, or fix by hand): "
-                + ", ".join(
-                    f"{u['condition_id']} ({u['file']})" for u in summary["unverified"]
-                )
-            )
-        if summary.get("unfixable_selected"):
-            print(
-                "Selected but advisory-only (no automated fix exists; follow the report's "
-                "guidance): " + ", ".join(summary["unfixable_selected"])
-            )
-        print(
-            "Review the branch and, if good, push / open a PR (not done automatically)."
-        )
+        final_findings = _run_fix(
+            args, workspace, result, policy, ts, llm_client, html_path
+        )["final_findings"]
 
-        if args.verify:
-            _status("→ Re-analyzing the fixed branch to score deploy-readiness …")
-            after, _ = analyze(
-                workspace,
-                args.policy,
-                llm_client=llm_client,
-                use_llm=not args.no_llm,
-                progress=progress,
-                max_workers=args.workers,
-            )
-            before_keys = {(f.condition_id, f.file, f.line) for f in result.findings}
-            after_keys = {(f.condition_id, f.file, f.line) for f in after.findings}
-            final_findings = after.findings
-            fail_on_list = policy.get("report", {}).get("fail_on", ["critical", "high"])
-            remaining = sum(
-                1 for f in after.findings if f.severity.value in fail_on_list
-            )
-            ready = remaining == 0
-            verification = {
-                "ready": ready,
-                "fail_on": fail_on_list,
-                "remaining_blocking": remaining,
-                "before": {
-                    "total": len(result.findings),
-                    "counts": result.counts(),
-                    "posture": result.posture.get("recommendation", "?"),
-                },
-                "after": {
-                    "total": len(after.findings),
-                    "counts": after.counts(),
-                    "posture": after.posture.get("recommendation", "?"),
-                },
-                "closed": len(before_keys - after_keys),
-                "branch": summary["branch"],
-                "workspace": str(workspace),
-            }
-            after_out = Path(_after_path(html_path)).resolve()
-            after_out.write_text(
-                render_html(
-                    after, repo=args.repo, policy=policy, verification=verification
-                )
-            )
-            print(f"✓ Post-fix report: {after_out.as_uri()}")
-            if args.open:
-                webbrowser.open(after_out.as_uri())
-            verdict = (
-                "READY to deploy"
-                if ready
-                else f"NOT READY — {remaining} {'/'.join(fail_on_list)} gap(s) remain"
-            )
-            _status(
-                f"→ Deploy-readiness: {verdict}. {len(before_keys - after_keys)} gaps closed "
-                f"({len(result.findings)} → {len(after.findings)})."
-            )
-
-    # Exit non-zero if any fail_on-severity gaps exist (CI-friendly).
     fail_on = set(policy.get("report", {}).get("fail_on", []))
     if any(f.severity.value in fail_on for f in final_findings):
         return 1

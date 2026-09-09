@@ -41,8 +41,7 @@ offers:
 
 - **auto**: a deterministic codemod (secret → env var + `.gitignore` entry, model
   pin, dependency bump, Python version pin, CI/test/logging scaffold).
-- **assisted**: an LLM-generated patch shown as a reviewable diff (narrowing a tool's
-  scope, adding validation, adding retries, adding guardrails).
+- **assisted**: the report carries a self-contained prompt for the developer's own coding agent (citation, evidence, verification note, fix guidance, safety rails); the engine never applies these itself, because an agent with the repo open can read call sites and run tests where a one-shot edit cannot
 - **advisory**: written guidance only; no automated fix exists (these are also the
   findings most likely to be flagged `structural`, see
   [remediation-paths.md](remediation-paths.md)). Layer 4 findings are advisory by
@@ -51,7 +50,7 @@ offers:
   RBAC, Model Registry documentation), not patching the repo in place. The
   exception: on a repo that already carries a pulumi-datarobot program, the
   mitigations enabled by IaC (deployment drift/accuracy/fairness settings,
-  notification policies, guard configurations) become **assisted** fixes that
+  notification policies, guard configurations) become **assisted** fixes, offered as agent prompts, that
   propose the missing settings block into the existing Pulumi resources, and stop
   counting as structural.
 
