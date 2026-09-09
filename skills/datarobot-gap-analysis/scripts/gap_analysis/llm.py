@@ -42,18 +42,48 @@ class LiteLLMClient:
         self.model = model or os.environ.get(
             "GAP_LLM_MODEL", "datarobot/anthropic/claude-sonnet-4-6"
         )
+        self.reasoning_effort = _resolve_effort(
+            self.model, os.environ.get("GAP_LLM_EFFORT", "max")
+        )
 
     def complete(self, system: str, user: str) -> str:
-        resp = self._litellm.completion(
-            model=self.model,
-            messages=[
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0,
-            max_tokens=2000,
-        )
+            "temperature": 0,
+            "max_tokens": 8000,
+        }
+        if self.reasoning_effort:
+            try:
+                resp = self._litellm.completion(
+                    **kwargs, reasoning_effort=self.reasoning_effort
+                )
+                return resp["choices"][0]["message"]["content"]
+            except Exception as e:  # noqa: BLE001
+                if not _is_effort_rejection(e):
+                    raise
+                # The provider does not take this effort; stop asking for it.
+                self.reasoning_effort = None
+        resp = self._litellm.completion(**kwargs)
         return resp["choices"][0]["message"]["content"]
+
+
+def _resolve_effort(model: str, setting: str | None) -> str | None:
+    try:
+        from datarobot_skills_utils.opencode import resolve_effort
+    except ImportError:
+        return None if not setting or setting.lower() in ("off", "max") else setting
+    return resolve_effort(model, setting)
+
+
+def _is_effort_rejection(e: BaseException) -> bool:
+    text = str(e).lower()
+    return any(
+        k in text for k in ("reasoning_effort", "effort", "thinking", "reasoning")
+    )
 
 
 class InjectedClient:
