@@ -13,6 +13,13 @@ LLM execution through the DataRobot CLI's opencode runtime, extracted from the
   port, git-initialized isolated temp workdir (attached sessions take their
   project context from the server's cwd, and opencode's snapshotting needs a
   git repo), bounded health check, context-manager cleanup.
+- `worker_env(models, setting)`, `resolve_effort(model, setting)`,
+  `max_reasoning_effort(model)`: reasoning effort for gateway-served models.
+  `OpenCodeServer(models=[...], reasoning="max")` injects
+  `options.reasoningEffort` for those models through `OPENCODE_CONFIG_CONTENT`
+  (merged over any existing value), so opencode sends `reasoning_effort` without
+  the user's `opencode.json` being edited. "max" resolves to the highest value
+  each provider accepts; models without a reasoning mode are left untouched.
 - `run_worker(...)` — one `dr opencode run` completion attached to a shared
   server (or in an isolated directory), with the anti-tool worker preamble,
   NUL/argv-size sanitization, and retry on empty output.

@@ -1483,3 +1483,37 @@ def test_migration_advice_follows_target_type_and_shipped_variant() -> None:
         "no new infrastructure" in text.lower()
         or "instead of writing new infrastructure" in text
     )
+
+
+def test_litellm_client_sends_max_effort_and_backs_off_when_rejected(
+    monkeypatch,
+) -> None:
+    from gap_analysis import llm as llm_mod
+
+    calls = []
+
+    class _FakeLiteLLM:
+        def completion(self, **kwargs):
+            calls.append(kwargs)
+            if "reasoning_effort" in kwargs and len(calls) == 1:
+                raise RuntimeError("BadRequest: reasoning_effort is not supported")
+            return {"choices": [{"message": {"content": "ok"}}]}
+
+    monkeypatch.setattr(llm_mod, "litellm", _FakeLiteLLM())
+    monkeypatch.setenv("GAP_LLM_EFFORT", "max")
+    client = llm_mod.LiteLLMClient("datarobot/bedrock/anthropic.claude-sonnet-4-6")
+    assert client.reasoning_effort == "max"
+
+    assert client.complete("s", "u") == "ok"
+    assert calls[0]["reasoning_effort"] == "max" and "reasoning_effort" not in calls[1]
+    assert client.reasoning_effort is None, (
+        "a rejected effort is not retried on later calls"
+    )
+    client.complete("s", "u")
+    assert "reasoning_effort" not in calls[2]
+
+    monkeypatch.setenv("GAP_LLM_EFFORT", "off")
+    assert (
+        llm_mod.LiteLLMClient("datarobot/azure/gpt-5-5-2026-04-23").reasoning_effort
+        is None
+    )

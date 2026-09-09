@@ -109,3 +109,69 @@ def test_terminate_process_tree_kills_grandchildren() -> None:
 
     with pytest.raises(ProcessLookupError):
         os.killpg(pgid, 0)
+
+
+def test_max_reasoning_effort_follows_gateway_accepted_values():
+    from datarobot_skills_utils.opencode import max_reasoning_effort, resolve_effort
+
+    assert (
+        max_reasoning_effort("datarobot/bedrock/anthropic.claude-sonnet-4-6") == "max"
+    )
+    assert max_reasoning_effort("datarobot/anthropic/claude-opus-4-8") == "max"
+    assert (
+        max_reasoning_effort("datarobot/anthropic/claude-haiku-4-5-20251001") == "high"
+    )
+    assert max_reasoning_effort("datarobot/azure/gpt-5-4-mini-2026-03-17") == "xhigh"
+    assert max_reasoning_effort("datarobot/azure/gpt-5-codex-2025-09-15") is None
+    assert max_reasoning_effort("datarobot/bedrock/openai.gpt-oss-20b-1:0") == "high"
+    assert max_reasoning_effort("datarobot/vertex_ai/gemini-3.5-flash") == "high"
+    assert (
+        max_reasoning_effort("datarobot/bedrock/meta.llama3-3-70b-instruct-v1:0")
+        is None
+    )
+    assert max_reasoning_effort("datarobot/bedrock/deepseek.r1-v1:0") is None
+
+    model = "datarobot/bedrock/anthropic.claude-sonnet-4-6"
+    assert resolve_effort(model, "max") == "max"
+    assert resolve_effort(model, "off") is None
+    assert resolve_effort(model, None) is None
+    assert resolve_effort(model, "low") == "low"
+    assert (
+        resolve_effort("datarobot/bedrock/meta.llama3-8b-instruct-v1:0", "max") is None
+    )
+
+
+def test_worker_env_injects_reasoning_effort_into_opencode_config():
+    from datarobot_skills_utils.opencode import worker_env
+
+    base = {
+        "PATH": "/bin",
+        "OPENCODE_CONFIG_CONTENT": json.dumps(
+            {"provider": {"datarobot": {"options": {"baseURL": "http://x"}}}}
+        ),
+    }
+    env, efforts = worker_env(
+        [
+            "datarobot/bedrock/anthropic.claude-sonnet-4-6",
+            "datarobot/bedrock/meta.llama3-8b-instruct-v1:0",
+        ],
+        "max",
+        base,
+    )
+    assert efforts == {"datarobot/bedrock/anthropic.claude-sonnet-4-6": "max"}
+    cfg = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+    assert cfg["provider"]["datarobot"]["options"]["baseURL"] == "http://x", (
+        "existing content is merged, not replaced"
+    )
+    assert cfg["provider"]["datarobot"]["models"][
+        "bedrock/anthropic.claude-sonnet-4-6"
+    ]["options"] == {"reasoningEffort": "max"}
+    assert "meta.llama3-8b-instruct-v1:0" not in json.dumps(cfg)
+    assert env["PATH"] == "/bin" and base.get("PATH") == "/bin"
+
+    untouched, none = worker_env(
+        ["datarobot/bedrock/meta.llama3-8b-instruct-v1:0"], "max", {"A": "1"}
+    )
+    assert none == {} and untouched == {"A": "1"}
+    off, _ = worker_env(["datarobot/anthropic/claude-opus-4-8"], "off", {"A": "1"})
+    assert "OPENCODE_CONFIG_CONTENT" not in off

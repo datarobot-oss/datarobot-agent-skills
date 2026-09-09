@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import subprocess
 
+from .reasoning import worker_env
+
 from .events import parse_events
 
 _MAX_MESSAGE_BYTES = 600_000  # stay under the OS argv limit (1 MiB on macOS)
@@ -74,11 +76,14 @@ def run_worker(
     cwd: str | None = None,
     timeout: int = 120,
     attempts: int = 2,
+    reasoning: str | None = None,
 ) -> tuple[str, dict[str, object]]:
     """Run one worker completion; returns (text, token_meta).
 
     Raises RuntimeError on a non-zero exit; retries an empty event stream up
     to `attempts` times (a transient session death) before raising ValueError.
+    `reasoning` ("max", "off", or a literal effort) applies only to standalone
+    runs; a shared server carries its own setting (see OpenCodeServer).
     """
     cmd = build_run_command(
         sanitize_message(f"{WORKER_PREAMBLE}{message}"),
@@ -86,11 +91,14 @@ def run_worker(
         server_url=server_url,
         isolated_dir=isolated_dir,
     )
+    env = None
+    if isolated_dir and reasoning:
+        env, _ = worker_env([model], reasoning)
     last_error: Exception | None = None
     for _ in range(max(1, attempts)):
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd
+                cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env
             )
         except subprocess.TimeoutExpired as e:
             # TimeoutExpired's message repeats argv, which carries the prompt.

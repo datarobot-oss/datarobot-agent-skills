@@ -86,7 +86,12 @@ a private `dr opencode` server the engine starts and stops automatically,
 authenticated by the CLI's own login. Every Layer-2 finding is re-checked by a
 second verification call against the cited code region; refuted findings are dropped
 and listed in Engine Notes, and `--fix` refuses LLM findings that were not verified
-(`GAP_VERIFY=off` skips the pass for a faster, less trustworthy run). `GAP_LLM_MODEL` overrides the model.
+(`GAP_VERIFY=off` skips the pass for a faster, less trustworthy run). `GAP_LLM_MODEL` overrides the model. Reasoning effort defaults to the highest
+value the model's provider accepts through the LLM Gateway (`max` for Claude Sonnet
+and Opus, `xhigh` for GPT-5, `high` for Haiku, Gemini and gpt-oss, nothing for
+models without a reasoning mode); `GAP_LLM_EFFORT=off` disables it and a literal
+value such as `GAP_LLM_EFFORT=low` is sent as given. The setting is injected into
+the run's own opencode environment, never written to the user's opencode config.
 Layer 4's policy fetch from DataRobot risk-management uses
 `DATAROBOT_API_TOKEN` + `DATAROBOT_ENDPOINT` when set, falling back to the dr
 CLI's own config (written by `dr auth login`), so a logged-in machine needs no

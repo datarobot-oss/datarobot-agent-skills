@@ -10,10 +10,13 @@ import shutil
 import signal
 import socket
 import subprocess
+from collections.abc import Iterable
 import tempfile
 import time
 import urllib.error
 import urllib.request
+
+from .reasoning import worker_env
 
 _SERVE_STARTUP_SECONDS = 30
 
@@ -76,10 +79,15 @@ class OpenCodeServer:
     snapshotting silently kills sessions in a git-less directory.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self, models: Iterable[str] = (), reasoning: str | None = None
+    ) -> None:
         self._proc: subprocess.Popen[str] | None = None
         self.workdir: str | None = None
         self.url: str | None = None
+        # Attached sessions inherit the server's config, so reasoning effort
+        # for the models workers will use is injected into the server env.
+        self.env, self.efforts = worker_env(models, reasoning)
 
     def start(self) -> str:
         port = _free_port()
@@ -96,6 +104,7 @@ class OpenCodeServer:
             text=True,
             cwd=self.workdir,
             start_new_session=True,
+            env=self.env,
         )
         url = f"http://127.0.0.1:{port}"
         deadline = time.monotonic() + _SERVE_STARTUP_SECONDS

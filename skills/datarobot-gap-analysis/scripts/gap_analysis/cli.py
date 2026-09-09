@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .engine import analyze, fix
 from .ingest import clone_repo
-from .opencode import OpenCodeServer, OpenCodeWorkerClient, dr_available
+from .opencode import _DEFAULT_MODEL, OpenCodeServer, OpenCodeWorkerClient, dr_available
 from .report import render_report
 from .report_html import render_html
 
@@ -83,7 +83,9 @@ def _make_llm_client():
             "→ dr CLI not found; LLM checks fall back to direct API calls (litellm)."
         )
         return None
-    server = OpenCodeServer()
+    model = os.environ.get("GAP_LLM_MODEL", _DEFAULT_MODEL)
+    effort_setting = os.environ.get("GAP_LLM_EFFORT", "max")
+    server = OpenCodeServer(models=[model], reasoning=effort_setting)
     try:
         url = server.start()
     except Exception as e:  # noqa: BLE001
@@ -97,8 +99,18 @@ def _make_llm_client():
     # private server outlives the run.
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda signum, _frame: sys.exit(128 + signum))
-    client = OpenCodeWorkerClient(url, cwd=server.workdir)
-    _status(f"→ LLM checks run through dr opencode ({client.model}).")
+    client = OpenCodeWorkerClient(url, model=model, cwd=server.workdir)
+    effort = server.efforts.get(model)
+    effort_note = (
+        f"reasoning effort {effort}"
+        if effort
+        else (
+            "reasoning effort off"
+            if effort_setting.lower() == "off"
+            else "no reasoning mode for this model"
+        )
+    )
+    _status(f"→ LLM checks run through dr opencode ({client.model}, {effort_note}).")
     return client
 
 
