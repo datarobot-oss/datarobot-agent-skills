@@ -68,18 +68,26 @@ def _cmd_target(repo: str) -> str:
     return f'"{target}"' if " " in target else target
 
 
-def _fix_cmd(repo: str, finding: Finding) -> str:
+def _quote(path: str) -> str:
+    return f'"{path}"' if " " in path else path
+
+
+def _fix_cmd(repo: str, finding: Finding, findings_path: str = "") -> str:
     """The terminal command for one deterministic codemod, reusing the saved
-    findings so nothing is re-analyzed."""
+    findings so nothing is re-analyzed. The findings file is named by absolute
+    path because the report is often written far from the shell's cwd."""
     return (
         f"{_cli_prog()} {_cmd_target(repo)} --fix --select {finding.condition_id} "
-        "--from gap-findings.json"
+        f"--from {_quote(findings_path or 'gap-findings.json')}"
     )
 
 
-def _fix_all_cmd(repo: str) -> str:
+def _fix_all_cmd(repo: str, findings_path: str = "") -> str:
     """Every deterministic plumbing codemod at once, from the saved findings."""
-    return f"{_cli_prog()} {_cmd_target(repo)} --fix --from gap-findings.json"
+    return (
+        f"{_cli_prog()} {_cmd_target(repo)} --fix "
+        f"--from {_quote(findings_path or 'gap-findings.json')}"
+    )
 
 
 def _migrate_cmd(repo: str, advice: str = "") -> str:
@@ -157,6 +165,7 @@ def render_html(
     repo: str = "",
     policy: dict[str, Any] | None = None,
     verification: dict[str, Any] | None = None,
+    findings_path: str = "",
 ) -> str:
     counts = result.counts()
     total = len(result.findings)
@@ -168,7 +177,8 @@ def render_html(
     body.append('<header class="hdr">')
     body.append(
         '<button id="themebtn" class="themebtn" onclick="cycleTheme()" '
-        'title="Switch theme: auto (system) / light / dark">◐ Auto</button>'
+        'title="Switch theme: auto (system) / light / dark">'
+        '<span class="glyph">◐</span><span class="lbl">Auto</span></button>'
     )
     body.append("<h1>Enterprise-Readiness Gap Report</h1>")
     meta = []
@@ -208,7 +218,8 @@ def render_html(
     if result.findings:
         body.append(
             '<p class="prereq">ℹ️ Nothing runs from this page. Deterministic fixes copy a '
-            "terminal command that reuses <code>gap-findings.json</code> from this run, so "
+            "terminal command that reuses this run's <code>gap-findings.json</code> by its "
+            "full path, so "
             "nothing is re-analyzed, and land on a <code>gap-fixes/*</code> branch. Every other "
             "finding copies a prompt for your own coding agent, which can read the repo, "
             "edit and run the tests.</p>"
@@ -252,7 +263,7 @@ def render_html(
     fixall_btn = ""
     if has_auto:
         fixall_btn = (
-            f'<button class="fixbtn fixall" data-cmd="{_esc(_fix_all_cmd(repo))}" '
+            f'<button class="fixbtn fixall" data-cmd="{_esc(_fix_all_cmd(repo, findings_path))}" '
             'onclick="copyCmd(this)" title="Copies a terminal command that applies '
             'all auto-fixable (plumbing) fixes on a gap-fixes/* branch">'
             "⧉ Fix all auto-fixable</button>"
@@ -276,14 +287,14 @@ def render_html(
             f'<span class="count">{len(items)}</span></summary>'
         )
         for f in items:
-            body.append(_finding_card(f, repo))
+            body.append(_finding_card(f, repo, findings_path))
         body.append("</details>")
     body.append("</section>")
 
     # Scorecards
     found_ids = {f.condition_id for f in result.findings}
     body.append(_conformance_section(found_ids, approval_caveat(result)))
-    body.append(_regulatory_section(result, repo))
+    body.append(_regulatory_section(result, repo, findings_path))
 
     # Skips & notes
     if result.skipped:
@@ -350,7 +361,7 @@ def _posture_banner(posture: dict[str, Any], repo: str = "") -> str:
     return "\n".join(out)
 
 
-def _finding_card(f: Finding, repo: str = "") -> str:
+def _finding_card(f: Finding, repo: str = "", findings_path: str = "") -> str:
     sev = f.severity.value
     loc = (
         "repo-wide" if not f.file else (_esc(f.file) + (f":{f.line}" if f.line else ""))
@@ -384,7 +395,7 @@ def _finding_card(f: Finding, repo: str = "") -> str:
         f'<div class="kv"><span class="k">Fix</span><span class="v">{_esc(f.remediation) or "—"}</span></div>'
         f"{verify_html}"
         f"{_fix_details_html(f)}"
-        f"{_fix_action(f, repo)}"
+        f"{_fix_action(f, repo, findings_path)}"
         f"</article>"
     )
 
@@ -408,7 +419,7 @@ def _fix_details_html(f: Finding) -> str:
     return "".join(out)
 
 
-def _fix_action(f: Finding, repo: str) -> str:
+def _fix_action(f: Finding, repo: str, findings_path: str = "") -> str:
     """The actionable footer of a card.
 
     Deterministic codemods get a terminal command that reuses the saved
@@ -416,7 +427,7 @@ def _fix_action(f: Finding, repo: str) -> str:
     which can read the repo, edit and run tests where a one-shot edit cannot.
     """
     if f.fix_type == "auto":
-        cmd = _fix_cmd(repo, f)
+        cmd = _fix_cmd(repo, f, findings_path)
         return (
             '<div class="card-action">'
             f'<button class="fixbtn" data-cmd="{_esc(cmd)}" onclick="copyCmd(this)" '
@@ -541,7 +552,9 @@ def _docs_link(f: Finding, label: str | None = None) -> str:
     return ""
 
 
-def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
+def _regulatory_section(
+    result: AnalysisResult, repo: str = "", findings_path: str = ""
+) -> str:
     """Layer 4 in one place: every required mitigation grouped by the step that
     closes it, each gap expandable to its evidence and fix; then what passed and
     what could not be assessed."""
@@ -581,7 +594,7 @@ def _regulatory_section(result: AnalysisResult, repo: str = "") -> str:
                 f"{_status_html('gap')}"
                 f'<span class="mit-title">{_esc(_short_title(f))}</span>'
                 f"<code>{_esc(f.condition_id)}</code>{_docs_link(f, 'docs')}</summary>"
-                f"{_finding_card(f, repo)}</details>"
+                f"{_finding_card(f, repo, findings_path)}</details>"
             )
     if passed:
         out.append('<h3 class="step">Evidence found</h3><ul class="mit-list">')
@@ -656,7 +669,8 @@ if(_t==='light'||_t==='dark')document.documentElement.setAttribute('data-theme',
   --crit:var(--bad); --high:oklch(0.6702 0.1689 52.07); --med:var(--warn); --med-ink:var(--warn); --low:var(--muted);
   --ok-bg:color-mix(in oklch, var(--ok) 12%, var(--card)); --bad-bg:color-mix(in oklch, var(--bad) 12%, var(--card));
   --warn-bg:color-mix(in oklch, var(--warn) 12%, var(--card)); --warn-line:color-mix(in oklch, var(--warn) 35%, var(--card));
-  --warn-ink:var(--warn); --code-bg:oklch(0.2274 0.0108 242.21); --code-ink:oklch(0.9383 0.0042 236.5);
+  --warn-ink:var(--warn); --code-bg:oklch(0.9634 0.0115 264.51); --code-ink:oklch(0.2352 0.0059 271.16);
+  --code-line:oklch(0.8486 0.0248 259.82);
   /* saturated fills for banners carry white text in both themes */
   --ok-fill:oklch(0.5553 0.1431 152.95); --high-fill:oklch(0.6702 0.1689 52.07); --bad-fill:oklch(0.5585 0.1652 24.19);
   --med-fill:oklch(0.5533 0.1149 79.08); --low-fill:oklch(0.5533 0.0224 260.15);
@@ -668,6 +682,8 @@ if(_t==='light'||_t==='dark')document.documentElement.setAttribute('data-theme',
     --ink:oklch(0.9383 0.0042 236.5); --muted:oklch(0.6731 0.0174 253.95);
     --primary:oklch(1 0 0); --primary-ink:oklch(0.2274 0.0108 242.21);
     --accent:oklch(0.7179 0.1312 277.26); --accent-bg:oklch(0.3871 0.0165 251.76);
+    --code-bg:oklch(0.2274 0.0108 242.21); --code-ink:oklch(0.9383 0.0042 236.5);
+    --code-line:oklch(0.3871 0.0165 251.76);
     --link:oklch(0.7024 0.1524 240.74);
     --ok:oklch(0.7242 0.1737 153.06); --warn:oklch(0.8659 0.1555 103.53); --bad:oklch(0.6952 0.1538 21.86);
     --high:oklch(0.7828 0.1141 61.47); --low-fill:oklch(0.5784 0.0175 248.13);
@@ -679,6 +695,8 @@ if(_t==='light'||_t==='dark')document.documentElement.setAttribute('data-theme',
   --ink:oklch(0.9383 0.0042 236.5); --muted:oklch(0.6731 0.0174 253.95);
   --primary:oklch(1 0 0); --primary-ink:oklch(0.2274 0.0108 242.21);
   --accent:oklch(0.7179 0.1312 277.26); --accent-bg:oklch(0.3871 0.0165 251.76);
+  --code-bg:oklch(0.2274 0.0108 242.21); --code-ink:oklch(0.9383 0.0042 236.5);
+  --code-line:oklch(0.3871 0.0165 251.76);
   --link:oklch(0.7024 0.1524 240.74);
   --ok:oklch(0.7242 0.1737 153.06); --warn:oklch(0.8659 0.1555 103.53); --bad:oklch(0.6952 0.1538 21.86);
   --high:oklch(0.7828 0.1141 61.47); --low-fill:oklch(0.5784 0.0175 248.13);
@@ -693,6 +711,8 @@ code,.mono{font-family:"Roboto Mono",ui-monospace,Menlo,monospace}
 .themebtn{position:absolute;top:0;right:0;cursor:pointer;border:1px solid var(--line);width:96px;height:30px;text-align:center;
   background:var(--card);color:var(--muted);border-radius:var(--dr-radius);padding:0 12px;line-height:28px;
   font-size:12px;font-weight:600}
+.themebtn .glyph{display:inline-block;width:1.15em;text-align:center;margin-right:4px}
+.themebtn .lbl{display:inline-block}
 .themebtn:hover{color:var(--ink)}
 .themebtn:focus{outline:none} .themebtn:focus-visible{border-color:var(--accent);color:var(--ink)}
 h1{font-size:22px;margin:0 0 6px} h2{font-size:16px;margin:26px 0 12px}
@@ -779,8 +799,11 @@ details.pillar>summary::-webkit-details-marker{display:none}
 .coverage ul{margin:4px 0 0;padding-left:18px}
 .coverage li{margin:2px 0}
 .coverage li.warn{font-weight:600}
+.usage table{font-size:13px}
+.usage td{padding:6px 12px;color:var(--muted)}
+.usage td:first-child{color:var(--ink)}
 .usage td:not(:first-child),.usage th:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
-.usage tr.total td{font-weight:600;border-top:2px solid var(--line)}
+.usage tr.total td{font-weight:500;color:var(--ink);border-top:1px solid var(--line);background:var(--bg)}
 /* scorecards */
 table{border-collapse:collapse;width:100%;background:var(--card);border:1px solid var(--line);
   border-radius:8px;overflow:hidden}
@@ -801,14 +824,14 @@ footer{margin-top:30px;color:var(--muted);font-size:12px;border-top:1px solid va
 .fixbtn:hover{background:var(--accent);color:var(--card)}
 .fixbtn.fixall{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
 .prompt-preview{flex-basis:100%;margin-top:6px} .prompt-preview summary{cursor:pointer;font-size:12px;color:var(--muted)}
-.prompt-preview pre{white-space:pre-wrap;font-size:12px;line-height:1.45;background:var(--bg);padding:10px 12px;border-radius:4px;margin:6px 0 0}
+.prompt-preview pre{white-space:pre-wrap;font-size:12px;line-height:1.45;background:var(--code-bg);color:var(--code-ink);border:1px solid var(--code-line);padding:10px 12px;border-radius:4px;margin:6px 0 0}
 .fixbtn.fixall:hover{background:var(--ok);color:var(--card)}
 .fixbtn.migrate{margin-top:10px;border-color:#fff;background:rgba(255,255,255,.18);color:#fff}
 .fixbtn.migrate:hover{background:#fff;color:var(--bad-fill)}
 .card-action{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;
   padding-top:9px;border-top:1px dashed var(--line)}
 .card-action .cmd{font-family:"Roboto Mono",ui-monospace,Menlo,monospace;font-size:12px;background:var(--code-bg);
-  color:var(--code-ink);padding:3px 8px;border-radius:5px;user-select:all}
+  color:var(--code-ink);border:1px solid var(--code-line);padding:3px 8px;border-radius:5px;user-select:all}
 .card-action .warn{font-size:12px;color:var(--crit);font-weight:600}
 .card-action .ok{font-size:12px;color:var(--ok);font-weight:600}
 .card-action .manual{font-size:12px;color:var(--muted)}
@@ -871,7 +894,11 @@ function applyTheme(t){
   if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}
   else{document.documentElement.removeAttribute('data-theme');t='auto';}
   var b=document.getElementById('themebtn');
-  if(b) b.textContent=(t==='auto'?'\u25d0 Auto':(t==='light'?'\u2600 Light':'\u263e Dark'));
+  if(b){
+    var g=t==='auto'?'\u25d0':(t==='light'?'\u2600':'\u263e');
+    var l=t==='auto'?'Auto':(t==='light'?'Light':'Dark');
+    b.innerHTML='<span class="glyph">'+g+'</span><span class="lbl">'+l+'</span>';
+  }
   try{localStorage.setItem('gap-theme',t);}catch(e){}
 }
 function cycleTheme(){
