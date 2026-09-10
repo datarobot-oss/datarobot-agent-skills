@@ -19,7 +19,7 @@ from typing import Any
 DEFAULT_MODEL = "datarobot/anthropic/claude-sonnet-4-6"
 DEFAULT_EFFORT = "max"
 DEFAULT_WORKERS = 4
-DEFAULT_WORKER_TIMEOUT = 120
+DEFAULT_WORKER_TIMEOUT = 600
 
 
 def _flag(name: str, default: bool) -> bool:

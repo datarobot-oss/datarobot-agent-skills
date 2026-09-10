@@ -32,26 +32,72 @@ def _git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=workspace, capture_output=True, text=True)
 
 
-def ensure_clean_worktree(workspace: str | Path) -> None:
+# The run's own report files, plus desktop metadata no codemod ever touches.
+_REPORT_FILE_RE = re.compile(
+    r"^(gap-(report(-after)?\.(md|html)|findings(-after)?\.json)|\.DS_Store|Thumbs\.db)$"
+)
+
+
+def _dirty_paths(status_stdout: str) -> list[str]:
+    """Paths from `git status --porcelain`; a rename reports its new name."""
+    paths = []
+    for line in status_stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        paths.append(path.strip('"'))
+    return paths
+
+
+def _is_report_artifact(workspace: Path, rel: str, report_dir: Path | None) -> bool:
+    if _REPORT_FILE_RE.match(Path(rel).name):
+        return True
+    if report_dir is None:
+        return False
+    target = (workspace / rel).resolve()
+    return target == report_dir or report_dir in target.parents
+
+
+def ensure_clean_worktree(
+    workspace: str | Path, report_dir: str | Path | None = None
+) -> None:
     """Raise if `workspace` isn't a git repo, or has uncommitted changes.
 
     A local path is used in place (never cloned), so any pre-existing
     uncommitted work would otherwise land on the fix branch indistinguishable
     from the fixes themselves, and would follow the branch back if
     `create_fix_branch` ever failed (git carries a dirty tree across
-    `checkout`).
+    `checkout`). The analysis's own report files do not count: they are
+    written into the repo when the caller points `--out` there, no codemod
+    touches them, and nothing is committed here anyway. `report_dir` is where
+    this run's reports live; the standard report names are recognised anywhere.
     """
     workspace = Path(workspace)
-    status = _git(workspace, "status", "--porcelain")
+    status = _git(workspace, "status", "--porcelain", "--untracked-files=all")
     if status.returncode != 0:
         raise RuntimeError(
             f"'{workspace}' is not a git repository; --fix requires one so fixes "
             "can land on a dedicated branch."
         )
-    if status.stdout.strip():
+    # A report directory outside the checkout (a scratch dir above it) would
+    # otherwise cover the whole repository.
+    reports = Path(report_dir).resolve() if report_dir else None
+    if reports is not None and workspace.resolve() not in reports.parents:
+        reports = None
+    dirty = [
+        rel
+        for rel in _dirty_paths(status.stdout)
+        if not _is_report_artifact(workspace, rel, reports)
+    ]
+    if dirty:
+        shown = ", ".join(dirty[:5]) + (
+            f" and {len(dirty) - 5} more" if len(dirty) > 5 else ""
+        )
         raise RuntimeError(
-            f"'{workspace}' has uncommitted changes; commit or stash them before "
-            "running --fix so its edits aren't mixed with yours."
+            f"'{workspace}' has uncommitted changes ({shown}); commit or stash them "
+            "before running --fix so its edits aren't mixed with yours."
         )
 
 
@@ -370,6 +416,7 @@ def remediate(
     timestamp: str,
     client: LLMClient | None = None,
     selected_ids: set[str] | None = None,
+    report_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     workspace = Path(workspace)
     rem = policy.get("remediation", {})
@@ -390,7 +437,9 @@ def remediate(
     # When no ids were named, hold back fixes whose risk class isn't auto-applyable.
     targets, held_back, unverified = [], [], []
     for f in candidates:
-        if f.layer == 2 and not f.verified:
+        # A Layer 1 finding carries a verification note only when the second
+        # look ran; without an LLM it stays fixable as before.
+        if not f.verified and (f.layer == 2 or f.verification):
             unverified.append(f)
         elif selected_ids is None and f.fix_risk not in auto_apply_risk:
             held_back.append(f)
@@ -405,7 +454,7 @@ def remediate(
     )
     branch = None
     if targets:
-        ensure_clean_worktree(workspace)
+        ensure_clean_worktree(workspace, report_dir)
         branch = create_fix_branch(workspace, timestamp)
     results = []
     for f in targets:

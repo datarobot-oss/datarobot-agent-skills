@@ -237,6 +237,20 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
         )
     else:
         out.append("Layer 2 (LLM reasoning): ran")
+    timed_out = [s.condition_id for s in result.skipped if "timed out" in s.reason]
+    if timed_out:
+        ids = ",".join(timed_out)
+        out.append(
+            f"Layer 2: {len(timed_out)} check(s) timed out and are NOT ASSESSED "
+            f"({', '.join(timed_out)}); rerun them with "
+            f"`--select {ids} --llm-timeout 1200`"
+        )
+    l1 = next(
+        (n for n in notes if n.startswith("Layer 1:") and "verification pass" in n),
+        None,
+    )
+    if l1:
+        out.append("Layer 1 (secret scan): " + l1[len("Layer 1: ") :])
     summary = usage_summary(result.usage)
     if summary:
         out.append("LLM Gateway usage: " + summary + ", see LLM Gateway Usage")

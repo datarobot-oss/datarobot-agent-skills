@@ -33,6 +33,7 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
     parts: list[str] = []
     input_tokens = output_tokens = cache_read = cache_write = reasoning = 0
     cost = 0.0
+    finish = ""
     for line in stdout.splitlines():
         line = line.strip()
         if not line:
@@ -57,6 +58,7 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
             cache_write += _int(cache.get("write"))
             reasoning += _int(tokens.get("reasoning"))
             cost += _float(part.get("cost"))
+            finish = str(part.get("reason") or finish)
 
     meta: dict[str, object] = {
         "input_tokens": input_tokens,
@@ -68,6 +70,12 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
     }
     text = "".join(parts).strip()
     if not text:
+        if finish == "length":
+            raise ValueError(
+                "the model's reply was cut at its max output tokens before any "
+                f"text was emitted ({output_tokens} output tokens, {reasoning} "
+                "of them reasoning); raise the model's output limit"
+            )
         raise ValueError("no text events found in opencode output")
     return text, meta
 

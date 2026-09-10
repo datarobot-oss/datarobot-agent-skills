@@ -1,4 +1,4 @@
-# Verification of one Layer-2 finding
+# Verification of one finding
 
 You are re-checking a single finding another pass produced. You see the cited
 file region with `N| ` line prefixes, plus repo-wide grep hints. Decide whether
@@ -17,6 +17,11 @@ Check, in order:
 6. Is the cited line itself an instance of the capability the finding says is
    missing (a `logger.info` call cited for "no logging", a `timeout=` for "no
    timeout")? Then the finding is refuted.
+7. For a secret-exposure finding: is the flagged value a generated credential,
+   or an identifier that merely contains a credential-like word (a resource
+   URN, a type or class name, a Pulumi target pattern, a placeholder, a
+   documentation example, a variable reference)? Identifiers and examples
+   refute the finding. Never repeat the value itself in `reason`.
 
 Return ONLY this JSON object:
 

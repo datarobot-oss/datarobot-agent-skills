@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .conformance import check_conformance
-from .detect import NO_LLM_NOTE, run_layer2
+from .detect import NO_LLM_NOTE, run_layer2, verify_layer1_findings
 from .inventory import build_inventory, git_ignore
 from .llm import get_client
 from .migrate import extract_spec, scaffold_from_spec
@@ -32,13 +32,15 @@ def analyze(
     llm_client: Any = None,
     progress: Callable[[str], None] | None = None,
     settings: Settings = DEFAULTS,
+    only: set[str] | None = None,
 ) -> tuple[AnalysisResult, dict[str, Any]]:
     """Run all enabled layers over an already-available workspace.
 
     Returns (result, policy). `llm_client` may be an injected af-component-llm
     callable; otherwise a standalone client is auto-detected from `settings`.
     `progress`, if given, is called with short status strings as each stage
-    runs (for CLI feedback).
+    runs (for CLI feedback). `only` restricts Layer 2 to the named condition
+    ids, for re-running checks that timed out.
     """
     use_llm = settings.use_llm
     max_workers = settings.workers
@@ -101,7 +103,7 @@ def analyze(
         list[dict[str, str]],
         list[str],
         dict[str, Any],
-        dict[str, Any],
+        Any,
     ]:
         # Layer 2, then Layer 4: the org's DataRobot risk-management policy
         # decides what Layer 4 requires; the same LLM client judges whether
@@ -122,6 +124,7 @@ def analyze(
             _tick,
             max_workers=max_workers,
             settings=settings,
+            only=only,
         )
         if client is not None:
             _phase("Layer 2 (LLM reasoning)", started, f"{len(f2)} finding(s)")
@@ -148,7 +151,7 @@ def analyze(
                 offline=settings.offline,
             )
             _phase("Layer 4 (regulatory)", started, f"{len(f4)} finding(s)")
-        return f2, s2, n2, f4, coverage4, n4, iac4, usage_snapshot(client)
+        return f2, s2, n2, f4, coverage4, n4, iac4, client
 
     with ThreadPoolExecutor(max_workers=3) as lanes:
         fut1 = lanes.submit(_lane_layer1)
@@ -156,7 +159,13 @@ def analyze(
         fut_llm = lanes.submit(_lane_llm)
         f1, n1 = fut1.result()
         f3, n3 = fut3.result()
-        f2, s2, n2, f4, coverage4, n4, iac4, usage = fut_llm.result()
+        f2, s2, n2, f4, coverage4, n4, iac4, client = fut_llm.result()
+
+    if client is not None and settings.verify:
+        _set_phase(client, "Layer 1 (secret verification)")
+        f1, n1v = verify_layer1_findings(client, Path(workspace), taxonomy, f1, _tick)
+        n1 += n1v
+    usage = usage_snapshot(client)
 
     # Aggregate in a fixed order so reports stay deterministic regardless of
     # which lane finished first.
@@ -216,9 +225,12 @@ def fix(
     policy: dict[str, Any],
     timestamp: str,
     selected_ids: set[str] | None = None,
+    report_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Apply the deterministic codemods; no model is involved."""
-    return remediate(workspace, result.findings, policy, timestamp, None, selected_ids)
+    return remediate(
+        workspace, result.findings, policy, timestamp, None, selected_ids, report_dir
+    )
 
 
 def migrate_extract(

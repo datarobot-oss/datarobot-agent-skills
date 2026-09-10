@@ -82,13 +82,18 @@ _HEX = re.compile(r"[A-Fa-f0-9]{20,}")
 _TOKEN_CHARS = re.compile(r"[A-Za-z0-9+/=_.-]{24,}")
 
 
+_EDGE_PUNCT = re.compile(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$")
+
+
 def _credential_shaped(value: str) -> bool:
     """Whether a value looks like a generated credential rather than a label.
 
     Generated secrets mix character classes or are long hex/base64 runs; the
     generic assignment pattern alone matches every placeholder in a fixture.
+    A `::` marks a resource URN or a scoped type name, never a secret.
     """
-    if len(value) < 12 or _WORDS_ONLY.fullmatch(value):
+    core = _EDGE_PUNCT.sub("", value)
+    if len(core) < 12 or _WORDS_ONLY.fullmatch(core) or "::" in value:
         return False
     classes = sum(
         bool(re.search(pat, value))
@@ -131,6 +136,21 @@ def _redact(label: str, value: str) -> str:
     return f"{label} (…{tail})" if tail else label
 
 
+_KEY_NAME = re.compile(r"[A-Za-z0-9_.\-]+")
+
+
+def _alnum(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _names_itself(match_text: str, value: str) -> bool:
+    """`apiTokenCredential: ApiTokenCredential` assigns a type name, not a secret."""
+    key = _KEY_NAME.match(match_text)
+    if not key:
+        return False
+    return _alnum(key.group(0)) == _alnum(_EDGE_PUNCT.sub("", value))
+
+
 def _scan_text_for_secrets(text: str) -> list[tuple[int, str, str, str]]:
     """Return (line_no, label, redacted, raw_value) for each match."""
     out = []
@@ -140,8 +160,8 @@ def _scan_text_for_secrets(text: str) -> list[tuple[int, str, str, str]]:
                 value = next((g for g in m.groups() if g), m.group(0))
                 if _PLACEHOLDER.search(value) or _NOT_SECRET_CHARS.search(value):
                     continue
-                if label == "Generic credential assignment" and not _credential_shaped(
-                    value
+                if label == "Generic credential assignment" and (
+                    not _credential_shaped(value) or _names_itself(m.group(0), value)
                 ):
                     continue
                 out.append((i, label, _redact(label, value), value))

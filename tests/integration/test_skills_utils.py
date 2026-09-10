@@ -163,9 +163,13 @@ def test_worker_env_injects_reasoning_effort_into_opencode_config():
     assert cfg["provider"]["datarobot"]["options"]["baseURL"] == "http://x", (
         "existing content is merged, not replaced"
     )
-    assert cfg["provider"]["datarobot"]["models"][
+    sonnet = cfg["provider"]["datarobot"]["models"][
         "bedrock/anthropic.claude-sonnet-4-6"
-    ]["options"] == {"reasoningEffort": "max"}
+    ]
+    assert sonnet["options"] == {"reasoningEffort": "max"}
+    assert sonnet["limit"] == {"context": 200_000, "output": 64_000}, (
+        "the provider config caps output at 8k, which a long JSON reply exceeds"
+    )
     assert "meta.llama3-8b-instruct-v1:0" not in json.dumps(cfg)
     assert env["PATH"] == "/bin" and base.get("PATH") == "/bin"
 
@@ -173,8 +177,11 @@ def test_worker_env_injects_reasoning_effort_into_opencode_config():
         ["datarobot/bedrock/meta.llama3-8b-instruct-v1:0"], "max", {"A": "1"}
     )
     assert none == {} and untouched == {"A": "1"}
-    off, _ = worker_env(["datarobot/anthropic/claude-opus-4-8"], "off", {"A": "1"})
-    assert "OPENCODE_CONFIG_CONTENT" not in off
+    off, none = worker_env(["datarobot/anthropic/claude-opus-4-8"], "off", {"A": "1"})
+    opus = json.loads(off["OPENCODE_CONFIG_CONTENT"])["provider"]["datarobot"][
+        "models"
+    ]["anthropic/claude-opus-4-8"]
+    assert none == {} and "options" not in opus and opus["limit"]["output"] == 64_000
 
 
 def test_usage_meter_sums_per_phase_and_total():
@@ -309,3 +316,22 @@ def test_bootstrap_copies_stay_identical():
     assert len(copies) >= 2, copies
     contents = {p.read_text() for p in copies}
     assert len(contents) == 1, [str(p) for p in copies]
+
+
+def test_parse_events_names_an_output_cut_at_the_token_limit():
+    stream = "\n".join(
+        [
+            _event("step_start", {}),
+            _event(
+                "step_finish",
+                {
+                    "tokens": {"input": 59761, "output": 5179, "reasoning": 3013},
+                    "reason": "length",
+                },
+            ),
+        ]
+    )
+    with pytest.raises(
+        ValueError, match="cut at its max output tokens.*5179 output tokens, 3013"
+    ):
+        parse_events(stream)
