@@ -61,7 +61,10 @@ def _loc(f: Finding) -> str:
 
 
 def render_report(
-    result: AnalysisResult, repo: str = "", policy: dict[str, Any] | None = None
+    result: AnalysisResult,
+    repo: str = "",
+    policy: dict[str, Any] | None = None,
+    findings_path: str = "",
 ) -> str:
     counts = result.counts()
     total = len(result.findings)
@@ -133,7 +136,8 @@ def render_report(
             lines.extend(_fix_details(f))
             if f.fix_type == "auto":
                 lines.append(
-                    f"  - **Apply:** `--fix --select {f.condition_id} --from gap-findings.json`"
+                    f"  - **Apply:** `--fix --select {f.condition_id} --from "
+                    f"{findings_path or 'gap-findings.json'}`"
                 )
             elif f.fix_type == "assisted":
                 lines.append(

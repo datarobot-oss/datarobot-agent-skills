@@ -119,6 +119,28 @@ def _make_llm_client():
     return client
 
 
+def out_path_for(args) -> Path | None:
+    """Where the Markdown report goes, or None for stdout."""
+    if not args.out:
+        return None
+    out_path = Path(args.out)
+    if out_path.is_dir() or args.out.endswith(("/", os.sep)):
+        out_path = out_path / "gap-report.md"
+    return out_path
+
+
+def _html_path(args, out_path: Path | None) -> str:
+    return args.html or (
+        str(out_path.with_suffix(".html")) if out_path else "gap-report.html"
+    )
+
+
+def _findings_path(args, out_path: Path | None) -> Path:
+    """The saved findings sit next to the HTML report, named by absolute path so
+    the report's fix commands work from any shell directory."""
+    return Path(_html_path(args, out_path)).resolve().with_name("gap-findings.json")
+
+
 def _run_fix(
     args, workspace, result, policy, ts, llm_client=None, html_path: str | None = None
 ) -> dict:
@@ -138,6 +160,16 @@ def _run_fix(
         "on a gap-fixes/* branch …"
     )
     summary = fix(workspace, result, policy, ts, selected_ids=selected)
+    # A fix that landed no longer counts against the exit code; without
+    # --verify this is the only way the run can reflect what it just did.
+    applied = {
+        (r["condition_id"], r.get("file"))
+        for r in summary["results"]
+        if r["status"] == "applied"
+    }
+    final_findings = [
+        f for f in result.findings if (f.condition_id, f.file) not in applied
+    ]
     print("\n" + "=" * 60)
     print(
         f"Remediation: applied {summary['applied']}/{summary['attempted']} fixes "
@@ -378,27 +410,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     if usage_summary(result.usage):
         _status(f"→ LLM Gateway usage: {usage_summary(result.usage)}.")
-    report = render_report(result, repo=args.repo, policy=policy)
+    findings_path = _findings_path(args, out_path_for(args))
+    report = render_report(
+        result, repo=args.repo, policy=policy, findings_path=str(findings_path)
+    )
 
-    out_path: Path | None = None
-    if args.out:
-        out_path = Path(args.out)
-        if out_path.is_dir() or args.out.endswith(("/", os.sep)):
-            out_path = out_path / "gap-report.md"
+    out_path = out_path_for(args)
+    if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(report)
         print(f"✓ Markdown report: {out_path.resolve()}")
     elif not args.html:
         print(report)
 
-    html_path = args.html or (
-        str(out_path.with_suffix(".html")) if out_path else "gap-report.html"
-    )
+    html_path = _html_path(args, out_path)
     final_findings = result.findings
     out = Path(html_path).resolve()
-    out.write_text(render_html(result, repo=args.repo, policy=policy))
+    out.write_text(
+        render_html(
+            result, repo=args.repo, policy=policy, findings_path=str(findings_path)
+        )
+    )
     print(f"✓ HTML report: {out.as_uri()}")
-    findings_path = out.with_name("gap-findings.json")
     findings_path.write_text(json.dumps(result.to_dict(), indent=1, default=str))
     print(f"✓ Findings: {findings_path} (reuse with --fix --from)")
     if args.open:

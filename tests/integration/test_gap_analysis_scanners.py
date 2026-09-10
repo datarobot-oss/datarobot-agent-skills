@@ -1783,3 +1783,105 @@ def test_cli_fix_from_saved_findings_skips_analysis(
     assert cli.main([str(repo), "--from", str(saved)]) == 2, (
         "--from without --fix is refused"
     )
+
+
+def test_fix_commands_name_the_findings_file_by_absolute_path(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from gap_analysis.cli import _findings_path, out_path_for
+    from gap_analysis.report_html import _fix_action, render_html
+
+    scratch = tmp_path / "scratch pad"
+    scratch.mkdir()
+    args = SimpleNamespace(out=str(scratch / "gap-report.md"), html=None)
+    findings = _findings_path(args, out_path_for(args))
+    assert findings == (scratch / "gap-findings.json").resolve()
+
+    auto = Finding(
+        "SEC-010",
+        "SEC",
+        Severity.HIGH,
+        "CVE",
+        file="uv.lock",
+        fix_type="auto",
+        fix_strategy="bump_vulnerable_dependency",
+        fix_risk="plumbing",
+    )
+    html = _fix_action(auto, "/repo", str(findings))
+    assert f"--from &quot;{findings}&quot;" in html, "a path with a space is quoted"
+    assert "--from gap-findings.json" not in html
+
+    result = AnalysisResult()
+    result.findings = [auto]
+    page = render_html(result, repo="/repo", findings_path=str(findings))
+    assert page.count(str(findings)) >= 2, (
+        "per-finding and fix-all commands both carry it"
+    )
+    md = render_report(result, repo="/repo", findings_path=str(findings))
+    assert f"--from {findings}" in md
+
+    dir_args = SimpleNamespace(out=str(scratch) + "/", html=None)
+    assert out_path_for(dir_args) == scratch / "gap-report.md"
+    assert (
+        _findings_path(SimpleNamespace(out=None, html=None), None).name
+        == "gap-findings.json"
+    )
+
+
+def test_exit_code_ignores_findings_the_fix_just_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n')
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=1,
+            evidence='API_KEY = "sk-live-…"',
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        )
+    ]
+    saved = tmp_path / "gap-findings.json"
+    saved.write_text(json.dumps(result.to_dict()))
+    monkeypatch.setattr(cli, "_make_llm_client", lambda: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 0, "the only critical finding was fixed, so the run must not fail"
+    assert "os.environ" in (repo / "app.py").read_text()
+
+    # A finding the fix could not close still fails the run.
+    unfixable = AnalysisResult()
+    unfixable.findings = [
+        Finding(
+            "AIG-001",
+            "AIG",
+            Severity.HIGH,
+            "No guardrails",
+            file="app.py",
+            fix_type="advisory",
+        )
+    ]
+    saved.write_text(json.dumps(unfixable.to_dict()))
+    assert cli.main([str(repo), "--fix", "--from", str(saved)]) == 1
