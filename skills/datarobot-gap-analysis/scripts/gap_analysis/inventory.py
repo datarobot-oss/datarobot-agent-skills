@@ -11,17 +11,17 @@ absent rather than guessed.
 from __future__ import annotations
 
 import fnmatch
-import os
 import json
 import re
 import urllib.request
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any
 
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover
-    tomllib = None
+    tomllib = None  # type: ignore[assignment]
 
 # Directories always skipped, matched by path component (robust vs. glob quirks).
 _SKIP_DIRS = {
@@ -115,7 +115,7 @@ def _excluded(rel: str, patterns: list[str]) -> bool:
     return any(glob_match(rel, pat) for pat in patterns)
 
 
-def _iter_files(root: Path, exclude: list[str]):
+def _iter_files(root: Path, exclude: list[str]) -> Iterator[tuple[Path, str]]:
     for p in root.rglob("*"):
         if not p.is_file():
             continue
@@ -128,7 +128,7 @@ def _iter_files(root: Path, exclude: list[str]):
 
 
 def build_inventory(
-    workspace: str | Path, exclude: list[str] | None = None
+    workspace: str | Path, exclude: list[str] | None = None, offline: bool = False
 ) -> dict[str, Any]:
     root = Path(workspace)
     exclude = (exclude or []) + _DEF_EXCLUDE
@@ -220,7 +220,7 @@ def build_inventory(
         "llm_usage": llm_usage,
         "model_code": model_code,
         "deploy_target": infer_deploy_target(agent_frameworks, llm_usage, model_code),
-        "agent_template_choices": agent_template_choices(),
+        "agent_template_choices": agent_template_choices(offline),
         "agent_frameworks": agent_frameworks,
     }
 
@@ -386,7 +386,9 @@ def _resolve_docker_vars(value: str, args: dict[str, str]) -> str:
     return _DOCKER_VAR_RE.sub(_sub, value)
 
 
-def iter_base_images(root: Path, exclude: list[str] | None = None):
+def iter_base_images(
+    root: Path, exclude: list[str] | None = None
+) -> Iterator[tuple[str, str]]:
     """Yield (image, dockerfile rel path) for every FROM that names a real image.
 
     Build args are resolved from their ARG defaults; stage aliases, `scratch`,
@@ -544,16 +546,16 @@ _AGENT_TEMPLATE_CHOICES_FALLBACK: dict[str, str] = {
 _agent_template_choices_cache: dict[str, str] | None = None
 
 
-def agent_template_choices() -> dict[str, str]:
+def agent_template_choices(offline: bool = False) -> dict[str, str]:
     """{label: value} of `agent_template_framework` in af-component-agent's copier.yml.
 
-    Set GAP_AGENT_TEMPLATE_CATALOG=off to skip the network and use the snapshot.
+    `offline` skips the network and uses the shipped snapshot.
     """
     global _agent_template_choices_cache
     if _agent_template_choices_cache is not None:
         return _agent_template_choices_cache
     choices: dict[str, str] = {}
-    if os.environ.get("GAP_AGENT_TEMPLATE_CATALOG", "").lower() != "off":
+    if not offline:
         try:
             with urllib.request.urlopen(_AGENT_TEMPLATE_COPIER_URL, timeout=8) as resp:
                 text = resp.read().decode("utf-8", "ignore")

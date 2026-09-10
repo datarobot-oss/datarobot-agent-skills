@@ -37,6 +37,7 @@ from gap_analysis.inventory import (  # noqa: E402
 )
 from gap_analysis.llm import brief_error, parse_json  # noqa: E402
 from gap_analysis.models import AnalysisResult, ConditionSkip, Finding, Severity  # noqa: E402
+from gap_analysis.settings import Settings  # noqa: E402
 from gap_analysis.posture import migration_advice  # noqa: E402
 from gap_analysis.remediate import (  # noqa: E402
     _locked_version,
@@ -1187,10 +1188,15 @@ def test_layer2_numbers_lines_snaps_evidence_and_verifies(
         }
     )
     client = _ScriptedClient([detect_reply, verify_reply])
-    monkeypatch.setenv("GAP_VERIFY", "on")
 
     findings, skip, notes = run_condition(
-        client, tmp_path, build_inventory(tmp_path), cond, "contract", 200_000
+        client,
+        tmp_path,
+        build_inventory(tmp_path),
+        cond,
+        "contract",
+        200_000,
+        Settings(verify=True, offline=True),
     )
 
     assert skip is None and len(findings) == 1
@@ -1233,8 +1239,6 @@ def test_layer2_refuted_findings_are_dropped_with_a_note(
     verify = json.dumps(
         {"verdict": "refuted", "reason": "health endpoint registered in create_app"}
     )
-    monkeypatch.setenv("GAP_VERIFY", "on")
-
     findings, skip, notes = run_condition(
         _ScriptedClient([detect, verify]),
         tmp_path,
@@ -1242,6 +1246,7 @@ def test_layer2_refuted_findings_are_dropped_with_a_note(
         cond,
         "c",
         200_000,
+        Settings(verify=True, offline=True),
     )
 
     assert findings == [] and skip is None
@@ -1409,7 +1414,7 @@ def test_layer4_http_hints_and_coverage_callout() -> None:
     result = AnalysisResult()
     result.notes = [
         "No Dockerfile linter detected, so 2 Dockerfile(s) were not linted (hadolint is the supported one).",
-        "Layer 2: 5 finding(s) confirmed by a second verification pass, 2 dropped as refuted (GAP_VERIFY=off disables the pass).",
+        "Layer 2: 5 finding(s) confirmed by a second verification pass, 2 dropped as refuted (--no-verify disables the pass).",
         "AIG-003/ITA-003: 62 model id(s) served by the DataRobot LLM Gateway are treated as approved.",
         "Layer 4 (DataRobot risk-management) skipped, policy 'EU AI Act' could not be loaded from x: request failed: HTTP 403 FORBIDDEN from y; risk management is not enabled for this org",
     ]
@@ -1490,40 +1495,6 @@ def test_migration_advice_follows_target_type_and_shipped_variant() -> None:
     )
 
 
-def test_litellm_client_sends_max_effort_and_backs_off_when_rejected(
-    monkeypatch,
-) -> None:
-    from gap_analysis import llm as llm_mod
-
-    calls = []
-
-    class _FakeLiteLLM:
-        def completion(self, **kwargs):
-            calls.append(kwargs)
-            if "reasoning_effort" in kwargs and len(calls) == 1:
-                raise RuntimeError("BadRequest: reasoning_effort is not supported")
-            return {"choices": [{"message": {"content": "ok"}}]}
-
-    monkeypatch.setattr(llm_mod, "litellm", _FakeLiteLLM())
-    monkeypatch.setenv("GAP_LLM_EFFORT", "max")
-    client = llm_mod.LiteLLMClient("datarobot/bedrock/anthropic.claude-sonnet-4-6")
-    assert client.reasoning_effort == "max"
-
-    assert client.complete("s", "u") == "ok"
-    assert calls[0]["reasoning_effort"] == "max" and "reasoning_effort" not in calls[1]
-    assert client.reasoning_effort is None, (
-        "a rejected effort is not retried on later calls"
-    )
-    client.complete("s", "u")
-    assert "reasoning_effort" not in calls[2]
-
-    monkeypatch.setenv("GAP_LLM_EFFORT", "off")
-    assert (
-        llm_mod.LiteLLMClient("datarobot/azure/gpt-5-5-2026-04-23").reasoning_effort
-        is None
-    )
-
-
 def test_usage_reaches_both_reports_and_the_coverage_block() -> None:
     from gap_analysis.report import usage_summary
     from gap_analysis.report_html import render_html
@@ -1585,40 +1556,6 @@ def test_usage_reaches_both_reports_and_the_coverage_block() -> None:
     assert usage_summary({}) == "" and "LLM Gateway Usage" not in render_report(
         AnalysisResult(), repo="/r"
     )
-
-
-def test_litellm_client_meters_usage_from_the_response(monkeypatch) -> None:
-    from gap_analysis import llm as llm_mod
-
-    class _FakeLiteLLM:
-        def completion(self, **kwargs):
-            return {
-                "choices": [{"message": {"content": "ok"}}],
-                "usage": {
-                    "prompt_tokens": 120,
-                    "completion_tokens": 40,
-                    "completion_tokens_details": {"reasoning_tokens": 25},
-                    "prompt_tokens_details": {"cached_tokens": 100},
-                },
-            }
-
-    monkeypatch.setattr(llm_mod, "litellm", _FakeLiteLLM())
-    monkeypatch.setenv("GAP_LLM_EFFORT", "off")
-    client = llm_mod.LiteLLMClient("datarobot/bedrock/anthropic.claude-sonnet-4-6")
-    client.usage.phase = "Layer 2"
-    client.complete("s", "u")
-    client.complete("s", "u")
-    snap = client.usage.snapshot()
-    assert snap["phases"]["Layer 2"]["calls"] == 2
-    assert snap["total"] == {
-        "calls": 2,
-        "input_tokens": 240,
-        "output_tokens": 80,
-        "reasoning_tokens": 50,
-        "cache_read_tokens": 200,
-        "cache_write_tokens": 0,
-        "cost": 0.0,
-    }
 
 
 def test_analysis_result_round_trips_through_json() -> None:
@@ -1775,7 +1712,7 @@ def test_cli_fix_from_saved_findings_skips_analysis(
         raise AssertionError("analyze must not run with --from")
 
     monkeypatch.setattr(cli, "analyze", boom)
-    monkeypatch.setattr(cli, "_make_llm_client", lambda: None)
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
 
     code = cli.main([str(repo), "--fix", "--from", str(saved)])
 
@@ -1864,7 +1801,7 @@ def test_exit_code_ignores_findings_the_fix_just_closed(
     ]
     saved = tmp_path / "gap-findings.json"
     saved.write_text(json.dumps(result.to_dict()))
-    monkeypatch.setattr(cli, "_make_llm_client", lambda: None)
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
 
     code = cli.main([str(repo), "--fix", "--from", str(saved)])
 
@@ -1885,3 +1822,55 @@ def test_exit_code_ignores_findings_the_fix_just_closed(
     ]
     saved.write_text(json.dumps(unfixable.to_dict()))
     assert cli.main([str(repo), "--fix", "--from", str(saved)]) == 1
+
+
+def test_settings_resolve_flags_over_env(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from gap_analysis.cli import settings_from_args
+
+    for k in (
+        "GAP_LLM_EFFORT",
+        "GAP_LLM_MODEL",
+        "GAP_VERIFY",
+        "GAP_WORKERS",
+        "GAP_OFFLINE",
+        "GAP_OPENCODE_TIMEOUT",
+        "GAP_DISABLE_LLM",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    args = SimpleNamespace(
+        no_llm=False,
+        model=None,
+        effort=None,
+        no_verify=False,
+        workers=None,
+        llm_timeout=None,
+        offline=False,
+    )
+    s = settings_from_args(args)
+    assert (s.model, s.effort, s.verify, s.workers, s.offline, s.use_llm) == (
+        "datarobot/anthropic/claude-sonnet-4-6",
+        "max",
+        True,
+        4,
+        False,
+        True,
+    )
+
+    monkeypatch.setenv("GAP_LLM_EFFORT", "low")
+    monkeypatch.setenv("GAP_VERIFY", "off")
+    monkeypatch.setenv("GAP_WORKERS", "8")
+    monkeypatch.setenv("GAP_OFFLINE", "on")
+    s = settings_from_args(args)
+    assert (s.effort, s.verify, s.workers, s.offline) == ("low", False, 8, True), (
+        "env is the default"
+    )
+
+    flagged = SimpleNamespace(
+        **{**vars(args), "effort": "high", "workers": 2, "no_verify": True}
+    )
+    s = settings_from_args(flagged)
+    assert (s.effort, s.workers, s.verify) == ("high", 2, False), (
+        "a flag wins over its env default"
+    )

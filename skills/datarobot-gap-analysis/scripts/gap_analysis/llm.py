@@ -1,24 +1,21 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pluggable LLM client for Layer-2/4 reasoning.
+"""LLM client protocol for Layer-2/4 reasoning.
 
-In the deployed DataRobot agent, the af-component-llm client is injected. For
-standalone runs, a litellm-backed client talks to the DataRobot LLM Gateway
-(or any provider) when configured via env. When no client is available the
-LLM layers are cleanly skipped — the engine still runs Layers 1 and 3.
+The CLI builds an opencode-backed client (see opencode.py) and passes it in; an
+embedding may inject any callable(system, user) -> str. There is no standalone
+fallback: without the DataRobot CLI the LLM layers are skipped and the report
+says so.
 """
 
 from __future__ import annotations
 
 import json
-import os
+from collections.abc import Callable
 from typing import Any, Protocol
 
-try:
-    import litellm
-except ImportError:  # optional: only standalone runs need it
-    litellm = None
+from .settings import DEFAULTS, Settings
 
 
 class LLMClient(Protocol):
@@ -26,135 +23,27 @@ class LLMClient(Protocol):
         ...
 
 
-class LiteLLMClient:
-    """Standalone client. Reads model + credentials from env.
-
-    Env:
-      GAP_LLM_MODEL        model id (default: datarobot/anthropic/claude-sonnet-4-6)
-      DATAROBOT_API_TOKEN  + DATAROBOT_ENDPOINT for the DataRobot gateway, or any
-      provider key litellm understands.
-    """
-
-    def __init__(self, model: str | None = None):
-        if litellm is None:
-            raise ImportError("litellm is not installed")
-        self._litellm = litellm
-        self.model = model or os.environ.get(
-            "GAP_LLM_MODEL", "datarobot/anthropic/claude-sonnet-4-6"
-        )
-        self.reasoning_effort = _resolve_effort(
-            self.model, os.environ.get("GAP_LLM_EFFORT", "max")
-        )
-        self.usage = _meter(self.model, self.reasoning_effort)
-
-    def complete(self, system: str, user: str) -> str:
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0,
-            "max_tokens": 8000,
-        }
-        if self.reasoning_effort:
-            try:
-                resp = self._litellm.completion(
-                    **kwargs, reasoning_effort=self.reasoning_effort
-                )
-                self._record(resp)
-                return resp["choices"][0]["message"]["content"]
-            except Exception as e:  # noqa: BLE001
-                if not _is_effort_rejection(e):
-                    raise
-                # The provider does not take this effort; stop asking for it.
-                self.reasoning_effort = None
-        resp = self._litellm.completion(**kwargs)
-        self._record(resp)
-        return resp["choices"][0]["message"]["content"]
-
-    def _record(self, resp: Any) -> None:
-        if self.usage is None:
-            return
-        usage = (
-            resp.get("usage")
-            if isinstance(resp, dict)
-            else getattr(resp, "usage", None)
-        )
-        if not usage:
-            return
-        get = (
-            usage.get
-            if isinstance(usage, dict)
-            else lambda k, d=None: getattr(usage, k, d)
-        )
-        details = get("completion_tokens_details") or {}
-        dget = (
-            details.get
-            if isinstance(details, dict)
-            else lambda k, d=None: getattr(details, k, d)
-        )
-        pdetails = get("prompt_tokens_details") or {}
-        pget = (
-            pdetails.get
-            if isinstance(pdetails, dict)
-            else lambda k, d=None: getattr(pdetails, k, d)
-        )
-        self.usage.record(
-            {
-                "input_tokens": get("prompt_tokens", 0) or 0,
-                "output_tokens": get("completion_tokens", 0) or 0,
-                "reasoning_tokens": dget("reasoning_tokens", 0) or 0,
-                "cache_read_tokens": pget("cached_tokens", 0) or 0,
-            }
-        )
-
-
-def _meter(model: str, effort: str | None):
-    try:
-        from datarobot_skills_utils.opencode import UsageMeter
-    except ImportError:
-        return None
-    return UsageMeter(model, effort)
-
-
-def _resolve_effort(model: str, setting: str | None) -> str | None:
-    try:
-        from datarobot_skills_utils.opencode import resolve_effort
-    except ImportError:
-        return None if not setting or setting.lower() in ("off", "max") else setting
-    return resolve_effort(model, setting)
-
-
-def _is_effort_rejection(e: BaseException) -> bool:
-    text = str(e).lower()
-    return any(
-        k in text for k in ("reasoning_effort", "effort", "thinking", "reasoning")
-    )
-
-
 class InjectedClient:
     """Wraps a callable(system, user)->str, e.g. from af-component-llm."""
 
-    def __init__(self, fn):
+    def __init__(self, fn: Callable[[str, str], str]):
         self._fn = fn
 
     def complete(self, system: str, user: str) -> str:
-        return self._fn(system, user)
+        return str(self._fn(system, user))
 
 
-def get_client(injected=None) -> LLMClient | None:
+def get_client(
+    injected: LLMClient | Callable[[str, str], str] | None = None,
+    settings: Settings = DEFAULTS,
+) -> LLMClient | None:
     """Return an LLM client, or None if none is configured/available."""
+    del settings  # the CLI decides the backend; nothing is auto-detected here
     if injected is not None:
-        return (
-            InjectedClient(injected) if not hasattr(injected, "complete") else injected
-        )
-    if os.environ.get("GAP_DISABLE_LLM"):
-        return None
-    try:
-        return LiteLLMClient()
-    except Exception:
-        return None
+        if hasattr(injected, "complete"):
+            return injected  # type: ignore[return-value]
+        return InjectedClient(injected)  # type: ignore[arg-type]
+    return None
 
 
 def parse_json(text: str) -> dict[str, Any]:
@@ -165,7 +54,10 @@ def parse_json(text: str) -> dict[str, Any]:
         text = text.strip("`")
         text = text.split("\n", 1)[1] if "\n" in text else text
     try:
-        return json.loads(text)
+        loaded = json.loads(text)
+        if not isinstance(loaded, dict):
+            raise ValueError("model response is not a JSON object")
+        return loaded
     except json.JSONDecodeError:
         start = text.find("{")
         if start < 0:

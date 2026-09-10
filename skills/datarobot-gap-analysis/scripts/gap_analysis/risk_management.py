@@ -63,6 +63,7 @@ from . import paths
 from .detect import number_lines
 from .docs import resolve_docs
 from .inventory import PREDICTIVE_TARGET, evidence_files, files_matching
+from .variants import _select_variant_text, shipped_deployment_variant
 from .llm import LLMClient, brief_error, parse_json
 from .models import Finding, Severity
 
@@ -166,9 +167,10 @@ def get_client() -> RiskManagementClient | None:
 
 def _as_list(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, list):
-        return data
+        return list(data)
     if isinstance(data, dict):
-        return data.get("data", [])
+        inner = data.get("data", [])
+        return list(inner) if isinstance(inner, list) else []
     return []
 
 
@@ -439,13 +441,13 @@ def applicability(
     through DataRobot.
     """
     entity = meta.get("applicable_entity")
-    if entity in (None, "system", "organization"):
+    if not entity or entity in ("system", "organization"):
         return None
     target = repo_target_type(iac, inventory)
     if target is None:
         return (
             "evaluated on a DataRobot "
-            + entity.replace("_", " ")
+            + str(entity).replace("_", " ")
             + "; this repo has no model or LLM path to deploy"
         )
     allowed = meta.get("applicable_target_types")
@@ -467,6 +469,7 @@ def _finding_for_mitigation(
     meta: dict[str, Any],
     item: dict[str, Any] | None,
     iac: dict[str, Any] | None = None,
+    offline: bool = False,
 ) -> Finding:
     """Build a Layer-4 Finding for one required-but-unsatisfied mitigation.
 
@@ -498,11 +501,12 @@ def _finding_for_mitigation(
     variant = shipped_deployment_variant(iac)
     if variant and fix_meta.get("via") in ("pulumi", "automatic"):
         steps.insert(0, _select_variant_text(iac or {}, variant))
-    pulumi_file = (iac or {}).get("file")
-    if requires == "deployment" and (iac or {}).get("deployment_file"):
-        pulumi_file = iac["deployment_file"]
-    elif requires == "custom_model" and (iac or {}).get("custom_model_file"):
-        pulumi_file = iac["custom_model_file"]
+    iac_map = iac or {}
+    pulumi_file = iac_map.get("file")
+    if requires == "deployment" and iac_map.get("deployment_file"):
+        pulumi_file = iac_map["deployment_file"]
+    elif requires == "custom_model" and iac_map.get("custom_model_file"):
+        pulumi_file = iac_map["custom_model_file"]
     target_exists = bool(
         iac
         and (
@@ -534,7 +538,7 @@ def _finding_for_mitigation(
         detector=f"risk_management:{mitigation_type}",
         structural=False if pulumi_fixable else bool(meta["structural"]),
         steps=steps,
-        docs_url=resolve_docs(str(meta.get("docs_topic") or ""))
+        docs_url=resolve_docs(str(meta.get("docs_topic") or ""), offline=offline)
         if meta.get("docs_topic")
         else "",
         docs_topic=str(meta.get("docs_topic") or ""),
@@ -556,36 +560,6 @@ _RESOURCE_NAMES = {
     "deployment": "datarobot.Deployment",
     "custom_model": "datarobot.CustomModel",
 }
-
-
-def shipped_deployment_variant(iac: dict[str, Any] | None) -> str | None:
-    """An inactive configuration variant that declares a datarobot.Deployment,
-    when the active one does not: selecting it is the remedy, not new IaC."""
-    iac = iac or {}
-    if iac.get("deployment"):
-        return None
-    candidates = [
-        rel
-        for rel, found in (iac.get("inactive_variants") or {}).items()
-        if found.get("deployment")
-    ]
-    # A gateway-backed variant keeps the LLM provider the org already governs.
-    return min(
-        candidates, key=lambda rel: ("gateway" not in rel.lower(), rel), default=None
-    )
-
-
-def _select_variant_text(iac: dict[str, Any], variant: str) -> str:
-    selector = iac.get("variant_selector")
-    how = (
-        f"set {selector}={variant.rsplit('/', 1)[-1]}"
-        if selector
-        else "point the configuration symlink at it"
-    )
-    return (
-        f"This repo already ships a variant that declares one: {variant}. "
-        f"Select it ({how}) instead of writing new infrastructure."
-    )
 
 
 def externally_provided(meta: dict[str, Any], iac: dict[str, Any] | None) -> str | None:
@@ -714,6 +688,7 @@ def run_dynamic_layer4(
     mitigation_metadata_path: str | Path | None = None,
     progress: Any = None,
     max_workers: int = _DEFAULT_MAX_WORKERS,
+    offline: bool = False,
 ) -> tuple[list[Finding], list[dict[str, str]], list[str], dict[str, Any]]:
     """Run Layer 4: fetch the org's policy, LLM-assess each required mitigation.
 
@@ -822,6 +797,7 @@ def run_dynamic_layer4(
             f"▶ Layer 4 (risk-management): judging {len(assessable)} mitigations "
             f"({max(1, max_workers)} workers)…"
         )
+        assert llm_client is not None and prompt is not None and contract is not None
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
             futures = {}
             for i, mt in enumerate(assessable):
@@ -908,7 +884,9 @@ def run_dynamic_layer4(
             continue
 
         if verdict == "gap":
-            findings.append(_finding_for_mitigation(mitigation_type, meta, item, iac))
+            findings.append(
+                _finding_for_mitigation(mitigation_type, meta, item, iac, offline)
+            )
             coverage.append(
                 {
                     "mitigation_type": mitigation_type,
@@ -938,7 +916,7 @@ def run_dynamic_layer4(
     if referenced:
         notes.append(
             f"Layer 4: {len(referenced)} mitigation(s) are provided by an existing "
-            f"deployment referenced in {iac.get('referenced_deployment_file')}; verify "
+            f"deployment referenced in {(iac or {}).get('referenced_deployment_file')}; verify "
             "them on that deployment in DataRobot."
         )
     if iac and iac.get("inactive_variants"):

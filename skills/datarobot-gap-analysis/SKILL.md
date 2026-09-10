@@ -52,9 +52,9 @@ Run in order before proceeding:
    install silently.
 5. **DataRobot CLI**: run `dr --version`. If missing, invoke the
    `datarobot-setup` skill to install it, then re-check. The LLM layers (2 and 4)
-   run through `dr opencode` workers authenticated by `dr auth`; without `dr` the
-   engine falls back to direct API calls via litellm (add `--with litellm` to the
-   `uv run` command in that case).
+   run through `dr opencode` workers authenticated by `dr auth`; without `dr` those
+   layers are skipped and the report says so, which is why the CLI is a prerequisite
+   rather than an option.
 
 ## Script path resolution
 
@@ -86,12 +86,15 @@ a private `dr opencode` server the engine starts and stops automatically,
 authenticated by the CLI's own login. Every Layer-2 finding is re-checked by a
 second verification call against the cited code region; refuted findings are dropped
 and listed in Engine Notes, and `--fix` refuses LLM findings that were not verified
-(`GAP_VERIFY=off` skips the pass for a faster, less trustworthy run). `GAP_LLM_MODEL` overrides the model. Reasoning effort defaults to the highest
-value the model's provider accepts through the LLM Gateway (`max` for Claude Sonnet
-and Opus, `xhigh` for GPT-5, `high` for Haiku, Gemini and gpt-oss, nothing for
-models without a reasoning mode); `GAP_LLM_EFFORT=off` disables it and a literal
-value such as `GAP_LLM_EFFORT=low` is sent as given. The setting is injected into
-the run's own opencode environment, never written to the user's opencode config.
+(`--no-verify` skips the pass for a faster, less trustworthy run). Run options are
+CLI flags: `--model` picks the model, `--effort` the reasoning effort (`max` for the
+highest value the model's provider accepts through the LLM Gateway, the default;
+`off`; or a literal value such as `low`), `--workers` the parallelism, `--llm-timeout`
+the per-call limit, and `--offline` skips every live catalog fetch. Each flag
+defaults to the matching `GAP_*` environment variable when one is set
+(`GAP_LLM_MODEL`, `GAP_LLM_EFFORT`, `GAP_WORKERS`, `GAP_OPENCODE_TIMEOUT`,
+`GAP_VERIFY`, `GAP_OFFLINE`), so CI can pin them once. The reasoning effort is injected into the
+run's own opencode environment, never written to the user's opencode config.
 Layer 4's policy fetch from DataRobot risk-management uses
 `DATAROBOT_API_TOKEN` + `DATAROBOT_ENDPOINT` when set, falling back to the dr
 CLI's own config (written by `dr auth login`), so a logged-in machine needs no

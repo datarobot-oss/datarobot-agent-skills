@@ -233,7 +233,7 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
     elif l2:
         out.append(
             "Layer 2 (LLM reasoning): ran; "
-            + l2[len("Layer 2: ") :].split(" (GAP_VERIFY")[0]
+            + l2[len("Layer 2: ") :].split(" (--no-verify")[0]
         )
     else:
         out.append("Layer 2 (LLM reasoning): ran")

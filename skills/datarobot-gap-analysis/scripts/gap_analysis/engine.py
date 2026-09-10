@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from .conformance import check_conformance
@@ -15,7 +16,8 @@ from .detect import NO_LLM_NOTE, run_layer2
 from .inventory import build_inventory
 from .llm import get_client
 from .migrate import extract_spec, scaffold_from_spec
-from .models import ConditionSkip, AnalysisResult
+from .models import AnalysisResult, ConditionSkip, Finding
+from .settings import DEFAULTS, Settings
 from .policy import load_policy
 from .posture import assess_posture
 from .remediate import remediate
@@ -27,17 +29,19 @@ from .taxonomy import Taxonomy
 def analyze(
     workspace: str | Path,
     policy_path: str | None = None,
-    llm_client=None,
-    use_llm: bool = True,
-    progress=None,
-    max_workers: int = 4,
+    llm_client: Any = None,
+    progress: Callable[[str], None] | None = None,
+    settings: Settings = DEFAULTS,
 ) -> tuple[AnalysisResult, dict[str, Any]]:
     """Run all enabled layers over an already-available workspace.
 
     Returns (result, policy). `llm_client` may be an injected af-component-llm
-    callable; otherwise a standalone client is auto-detected. `progress`, if given,
-    is called with short status strings as each stage runs (for CLI feedback).
+    callable; otherwise a standalone client is auto-detected from `settings`.
+    `progress`, if given, is called with short status strings as each stage
+    runs (for CLI feedback).
     """
+    use_llm = settings.use_llm
+    max_workers = settings.workers
 
     def _tick(msg: str) -> None:
         if progress:
@@ -57,35 +61,46 @@ def analyze(
     result = AnalysisResult()
     t0 = time.monotonic()
     _tick("▶ Indexing repository files…")
-    result.inventory = build_inventory(workspace, exclude)
+    result.inventory = build_inventory(workspace, exclude, offline=settings.offline)
     _phase("repo index", t0, f"{len(result.inventory.get('files', []))} files")
 
     # The layers only read the inventory and are independent of each other, so
     # they run in three concurrent lanes: Layer 1 (subprocess scanners, often
     # the slowest), Layer 3 (instant), and Layers 2+4 sequentially in one lane
     # so LLM concurrency stays at `max_workers` rather than doubling.
-    def _lane_layer1():
+    def _lane_layer1() -> tuple[list[Finding], list[str]]:
         started = time.monotonic()
         _tick("▶ Layer 1 (scanners): secrets, dependencies, SAST, tests/CI…")
         f1, n1 = run_layer1(workspace, taxonomy, exclude, progress=_tick, policy=policy)
         _phase("Layer 1 (scanners)", started, f"{len(f1)} finding(s)")
         return f1, n1
 
-    def _lane_layer3():
+    def _lane_layer3() -> tuple[list[Finding], list[str]]:
         started = time.monotonic()
         _tick("▶ Layer 3 (conformance): repo vs policy…")
-        f3, n3 = check_conformance(result.inventory, policy, taxonomy)
+        f3, n3 = check_conformance(
+            result.inventory, policy, taxonomy, offline=settings.offline
+        )
         _phase("Layer 3 (conformance)", started, f"{len(f3)} finding(s)")
         return f3, n3
 
-    def _lane_llm():
+    def _lane_llm() -> tuple[
+        list[Finding],
+        list[ConditionSkip],
+        list[str],
+        list[Finding],
+        list[dict[str, str]],
+        list[str],
+        dict[str, Any],
+        dict[str, Any],
+    ]:
         # Layer 2, then Layer 4: the org's DataRobot risk-management policy
         # decides what Layer 4 requires; the same LLM client judges whether
         # the repo shows evidence for each requirement (risk_management.py).
         # Without an LLM, requirements are still fetched and reported as not
         # assessed.
         started = time.monotonic()
-        client = get_client(llm_client) if use_llm else None
+        client = get_client(llm_client, settings) if use_llm else None
         if use_llm and client is None:
             _tick(NO_LLM_NOTE)
         _set_phase(client, "Layer 2 (code reasoning + verification)")
@@ -97,14 +112,15 @@ def analyze(
             max_bytes,
             _tick,
             max_workers=max_workers,
+            settings=settings,
         )
         if client is not None:
             _phase("Layer 2 (LLM reasoning)", started, f"{len(f2)} finding(s)")
 
-        f4: list = []
-        coverage4: list = []
-        n4: list = []
-        iac4: dict = {}
+        f4: list[Finding] = []
+        coverage4: list[dict[str, str]] = []
+        n4: list[str] = []
+        iac4: dict[str, Any] = {}
         packs = policy.get("regulatory", {}).get("packs", [])
         if "eu_ai_act" in (packs or []):
             started = time.monotonic()
@@ -120,6 +136,7 @@ def analyze(
                 max_bytes,
                 progress=_tick,
                 max_workers=max_workers,
+                offline=settings.offline,
             )
             _phase("Layer 4 (regulatory)", started, f"{len(f4)} finding(s)")
         return f2, s2, n2, f4, coverage4, n4, iac4, usage_snapshot(client)
@@ -158,19 +175,19 @@ def analyze(
     return result, policy
 
 
-def _set_phase(client, phase: str) -> None:
+def _set_phase(client: Any, phase: str) -> None:
     meter = getattr(client, "usage", None)
     if meter is not None:
         meter.phase = phase
 
 
-def usage_snapshot(client) -> dict[str, Any]:
+def usage_snapshot(client: Any) -> dict[str, Any]:
     """Token usage the client has metered so far; {} for clients without a meter."""
     meter = getattr(client, "usage", None)
-    return meter.snapshot() if meter is not None else {}
+    return dict(meter.snapshot()) if meter is not None else {}
 
 
-def _dedup(findings):
+def _dedup(findings: list[Finding]) -> list[Finding]:
     """Collapse findings that share (condition_id, file, line); file-level findings
     (no line) stay distinct per evidence so N CVEs in one manifest stay N."""
     seen = set()
@@ -189,11 +206,9 @@ def fix(
     result: AnalysisResult,
     policy: dict[str, Any],
     timestamp: str,
-    llm_client=None,
     selected_ids: set[str] | None = None,
-    use_llm: bool = True,
 ) -> dict[str, Any]:
-    del llm_client, use_llm  # codemods are deterministic; no model call
+    """Apply the deterministic codemods; no model is involved."""
     return remediate(workspace, result.findings, policy, timestamp, None, selected_ids)
 
 
@@ -201,11 +216,11 @@ def migrate_extract(
     workspace: str | Path,
     result: AnalysisResult,
     policy: dict[str, Any],
-    llm_client=None,
-    use_llm: bool = True,
+    llm_client: Any = None,
+    settings: Settings = DEFAULTS,
 ) -> dict[str, Any]:
     """Extract the agent's business logic into a reviewable migration spec (Part B step 1)."""
-    client = get_client(llm_client) if use_llm else None
+    client = get_client(llm_client, settings) if settings.use_llm else None
     max_bytes = int(policy.get("scan", {}).get("max_file_bytes", 120_000))
     return extract_spec(workspace, result.inventory, client, max_bytes)
 

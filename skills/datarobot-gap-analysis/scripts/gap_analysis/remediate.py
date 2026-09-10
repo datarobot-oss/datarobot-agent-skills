@@ -34,7 +34,7 @@ _MODEL_PINS = {
 # ───────────────────────── git helpers ─────────────────────────
 
 
-def _git(workspace: Path, *args: str) -> subprocess.CompletedProcess:
+def _git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=workspace, capture_output=True, text=True)
 
 
@@ -46,7 +46,7 @@ def create_fix_branch(workspace: str | Path, timestamp: str) -> str:
 
 
 def git_diff_stat(workspace: str | Path) -> str:
-    return _git(Path(workspace), "diff", "--stat").stdout
+    return str(_git(Path(workspace), "diff", "--stat").stdout)
 
 
 # ───────────────────────── auto codemods ─────────────────────────

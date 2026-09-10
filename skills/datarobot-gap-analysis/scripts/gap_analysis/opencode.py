@@ -5,9 +5,8 @@
 
 from __future__ import annotations
 
-import os
-
 from ._bootstrap import ensure_skills_utils
+from .settings import DEFAULT_MODEL, DEFAULT_WORKER_TIMEOUT
 
 ensure_skills_utils()
 
@@ -18,8 +17,6 @@ from datarobot_skills_utils.opencode import (  # noqa: E402  (path must be set u
     run_worker,
 )
 
-_DEFAULT_MODEL = "datarobot/anthropic/claude-sonnet-4-6"
-_WORKER_TIMEOUT_SECONDS = int(os.environ.get("GAP_OPENCODE_TIMEOUT", "120"))
 
 __all__ = ["OpenCodeServer", "OpenCodeWorkerClient", "dr_available"]
 
@@ -36,13 +33,15 @@ class OpenCodeWorkerClient:
     def __init__(
         self,
         server_url: str,
-        model: str | None = None,
+        model: str = DEFAULT_MODEL,
         cwd: str | None = None,
         reasoning_effort: str | None = None,
+        timeout: int = DEFAULT_WORKER_TIMEOUT,
     ):
         self.server_url = server_url
-        self.model = model or os.environ.get("GAP_LLM_MODEL", _DEFAULT_MODEL)
+        self.model = model
         self.cwd = cwd
+        self.timeout = timeout
         self.usage = UsageMeter(self.model, reasoning_effort)
 
     def complete(self, system: str, user: str) -> str:
@@ -51,7 +50,7 @@ class OpenCodeWorkerClient:
             self.model,
             server_url=self.server_url,
             cwd=self.cwd,
-            timeout=_WORKER_TIMEOUT_SECONDS,
+            timeout=self.timeout,
         )
         self.usage.record(meta)
         return text

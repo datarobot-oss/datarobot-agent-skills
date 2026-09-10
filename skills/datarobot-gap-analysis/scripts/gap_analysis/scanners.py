@@ -19,15 +19,16 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from .inventory import _DEF_EXCLUDE, _iter_files, glob_match
 from .llm import brief_error
 from .models import Finding, Severity
-from .taxonomy import Taxonomy
+from .taxonomy import Condition, Taxonomy
 
 # Vendor + generic credential patterns. Group 'val' is the secret (never emitted).
-_SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
+_SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("OpenAI key", re.compile(r"\b(sk-[A-Za-z0-9]{20,})")),
     ("AWS access key id", re.compile(r"\b(AKIA[0-9A-Z]{16})\b")),
     ("Slack token", re.compile(r"\b(xox[baprs]-[A-Za-z0-9-]{10,})")),
@@ -321,7 +322,7 @@ def _cve_waivers(root: Path) -> set[str]:
     return ids
 
 
-def _audit_one(root: Path, target: Path) -> list[dict]:
+def _audit_one(root: Path, target: Path) -> list[dict[str, Any]]:
     proc = subprocess.run(
         [
             "pip-audit",
@@ -970,7 +971,13 @@ def check_engineering_baseline(
     return findings, notes
 
 
-def _mk(cond, file, line, evidence, explanation) -> Finding:
+def _mk(
+    cond: Condition,
+    file: str | None,
+    line: int | None,
+    evidence: str,
+    explanation: str,
+) -> Finding:
     return Finding(
         condition_id=cond.id,
         pillar=cond.pillar,
@@ -1372,7 +1379,11 @@ def run_hadolint(
 
 
 def run_layer1(
-    workspace, taxonomy, exclude=None, progress=None, policy=None
+    workspace: str | Path,
+    taxonomy: Taxonomy,
+    exclude: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
+    policy: dict[str, Any] | None = None,
 ) -> tuple[list[Finding], list[str]]:
     def _tick(msg: str) -> None:
         if progress:

@@ -81,7 +81,8 @@ def main() -> int:
         print(exc, file=sys.stderr)
         return 1
     spec = importlib.util.find_spec("datarobot_skills_utils")
-    print(f"datarobot-skills-utils: {Path(spec.origin).parent}")
+    origin = spec.origin if spec is not None else None
+    print(f"datarobot-skills-utils: {Path(origin).parent if origin else '<unknown>'}")
     return 0
 
 
