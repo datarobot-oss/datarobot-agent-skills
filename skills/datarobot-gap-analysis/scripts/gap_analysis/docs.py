@@ -11,7 +11,6 @@ topic is shown as a search hint instead of a link.
 
 from __future__ import annotations
 
-import os
 import re
 import urllib.request
 
@@ -47,14 +46,13 @@ def parse_llms_txt(text: str) -> list[tuple[str, str, str]]:
     ]
 
 
-def docs_index() -> list[tuple[str, str, str]]:
-    """The live page index, fetched once per process; empty when offline or
-    disabled with GAP_DOCS_CATALOG=off."""
+def docs_index(offline: bool = False) -> list[tuple[str, str, str]]:
+    """The live page index, fetched once per process; empty when `offline`."""
     global _index_cache
     if _index_cache is not None:
         return _index_cache
     _index_cache = []
-    if os.environ.get("GAP_DOCS_CATALOG", "").lower() != "off":
+    if not offline:
         try:
             with urllib.request.urlopen(LLMS_TXT_URL, timeout=8) as resp:
                 _index_cache = parse_llms_txt(resp.read().decode("utf-8", "ignore"))
@@ -67,7 +65,9 @@ def _tokens(text: str) -> set[str]:
     return {w for w in _WORD_RE.findall(text.lower()) if w not in _STOP}
 
 
-def resolve_docs(topic: str, index: list[tuple[str, str, str]] | None = None) -> str:
+def resolve_docs(
+    topic: str, index: list[tuple[str, str, str]] | None = None, offline: bool = False
+) -> str:
     """URL of the docs page that best matches `topic`, or "" when nothing fits.
 
     Title matches count double; a page must cover at least half of the topic's
@@ -77,7 +77,7 @@ def resolve_docs(topic: str, index: list[tuple[str, str, str]] | None = None) ->
     if not want:
         return ""
     best_url, best_score = "", 0.0
-    for title, url, summary in index if index is not None else docs_index():
+    for title, url, summary in index if index is not None else docs_index(offline):
         title_hits = len(want & _tokens(title))
         score = 2.0 * title_hits + len(want & _tokens(summary))
         if title_hits == len(want):

@@ -17,10 +17,10 @@ a repo checkout, an installed copy, or a one-time install from PyPI):
 
   uv run <skill_scripts_dir>/run_gap_analysis.py <repo-url-or-path> [options]
 
-Layer-2/4 LLM reasoning runs through the `dr` CLI's opencode runtime when `dr`
-is installed (parallel workers, no extra Python deps, auth via `dr auth`).
-Without `dr` (or with GAP_LLM_BACKEND=litellm), add `--with litellm` for direct
-gateway calls. For deeper Layer-1 scanning, add the scanner extras:
+Layer-2/4 LLM reasoning runs through the `dr` CLI's opencode runtime (parallel
+workers, no extra Python deps, auth via `dr auth`). Without `dr` those layers
+are skipped and the report says so. For deeper Layer-1 scanning, add the scanner
+extras:
 
   uv run --with pip-audit --with semgrep \\
     <skill_scripts_dir>/run_gap_analysis.py <repo-url-or-path> [options]

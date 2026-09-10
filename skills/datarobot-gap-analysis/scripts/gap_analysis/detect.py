@@ -11,26 +11,27 @@ so it has no LLM-prompt-based runner here.
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from . import paths
+from .conformance import llm_gateway_models
 from .inventory import evidence_files, glob_match
 from .llm import LLMClient, brief_error, parse_json
 from .models import ConditionSkip, Finding, Severity
+from .settings import DEFAULTS, Settings
 from .taxonomy import Condition, Taxonomy
 
 _MAX_FILES = 12  # cap files fed per condition
 _DR_APP_CONTEXT_FILE = "prompts/_deployment_datarobot_app.md"
 NO_LLM_NOTE = (
     "Layers 2 and 4 (LLM) skipped: no model client. Install the DataRobot CLI "
-    "(run the datarobot-setup skill) so checks run through `dr opencode`, or add "
-    "`--with litellm` and set DATAROBOT_API_TOKEN / DATAROBOT_ENDPOINT (or GAP_LLM_MODEL "
-    "with provider credentials). Half of the framework is not assessed until then."
+    "(run the datarobot-setup skill) and log in with `dr auth login` so checks run "
+    "through `dr opencode`. Half of the framework is not assessed until then."
 )
 _DEFAULT_MAX_BYTES = 200_000
 _DEFAULT_MAX_WORKERS = 4
@@ -294,10 +295,6 @@ _VERIFY_CONTEXT_LINES = 80
 _VERIFY_WHOLE_FILE_MAX = 250
 
 
-def verification_enabled() -> bool:
-    return os.environ.get("GAP_VERIFY", "on").lower() not in ("off", "0", "false")
-
-
 def _region(raw: str, line: int | None) -> str:
     lines = raw.splitlines()
     if len(lines) <= _VERIFY_WHOLE_FILE_MAX or not line:
@@ -366,12 +363,10 @@ def verify_item(
     return verdict if verdict in ("confirmed", "weakened") else "confirmed"
 
 
-def _context_sections(cond: Condition) -> list[tuple[str, str]]:
+def _context_sections(cond: Condition, offline: bool) -> list[tuple[str, str]]:
     if cond.context != "llm_gateway_catalog":
         return []
-    from .conformance import llm_gateway_models
-
-    catalog = llm_gateway_models()
+    catalog = llm_gateway_models(offline)
     if not catalog:
         return []
     return [
@@ -408,6 +403,7 @@ def run_condition(
     cond: Condition,
     contract: str,
     max_bytes: int,
+    settings: Settings = DEFAULTS,
 ) -> tuple[list[Finding], ConditionSkip | None, list[str]]:
     """Detect, then verify. Returns (findings, skip, notes)."""
     files = _gather_files(workspace, inventory, cond, max_bytes)
@@ -420,7 +416,7 @@ def run_condition(
         f"{contract}\n\n"
         f"You are checking condition {cond.id}. Return ONLY the JSON object."
     )
-    user = _build_user_message(files, hints, _context_sections(cond))
+    user = _build_user_message(files, hints, _context_sections(cond, settings.offline))
     try:
         raw = client.complete(system, user)
         result = parse_json(raw)
@@ -450,7 +446,7 @@ def run_condition(
         kept.append(item)
     items = kept
 
-    if verification_enabled() and items:
+    if settings.verify and items:
         survivors = []
         for item in items:
             verdict = verify_item(client, workspace, cond, item, raw_files, hints)
@@ -488,21 +484,22 @@ def _merge_locations(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 def run_layer2(
     client: LLMClient | None,
-    workspace,
-    inventory,
+    workspace: str | Path,
+    inventory: dict[str, Any],
     taxonomy: Taxonomy,
     max_bytes: int = _DEFAULT_MAX_BYTES,
-    progress=None,
+    progress: Callable[[str], None] | None = None,
     max_workers: int = _DEFAULT_MAX_WORKERS,
+    settings: Settings = DEFAULTS,
 ) -> tuple[list[Finding], list[ConditionSkip], list[str]]:
     notes: list[str] = []
     if client is None:
-        skips = [
+        no_client_skips = [
             ConditionSkip(c.id, "Layer 2 (LLM) not run: no model client configured")
             for c in taxonomy.by_layer(2)
         ]
         notes.append(NO_LLM_NOTE)
-        return [], skips, notes
+        return [], no_client_skips, notes
     contract = (paths.prompts_dir() / "_contract.md").read_text()
     workspace = Path(workspace)
     conds = taxonomy.by_layer(2)
@@ -527,6 +524,7 @@ def run_layer2(
                     cond,
                     contract,
                     max_bytes,
+                    settings,
                 )
             ] = cond
         for future in as_completed(futures):
@@ -549,10 +547,10 @@ def run_layer2(
             skips.append(skip)
         notes += cond_notes
         dropped += sum(1 for n in cond_notes if "dropped on verification" in n)
-    if verification_enabled():
+    if settings.verify:
         verified = sum(1 for f in findings if f.verified)
         notes.append(
             f"Layer 2: {verified} finding(s) confirmed by a second verification pass, "
-            f"{dropped} dropped as refuted (GAP_VERIFY=off disables the pass)."
+            f"{dropped} dropped as refuted (--no-verify disables the pass)."
         )
     return findings, skips, notes

@@ -134,12 +134,13 @@ def extract_spec(
     spec = parse_json(client.complete(system, user))
     # Normalize the shape so downstream rendering/scaffolding is total.
     spec.setdefault("name", inventory.get("root", "agent").split("/")[-1])
-    for k, default in (
+    defaults: list[tuple[str, Any]] = [
         ("tools", []),
         ("domain_dependencies", []),
         ("carryover_files", []),
         ("manual_wiring", []),
-    ):
+    ]
+    for k, default in defaults:
         spec.setdefault(k, default)
     for k in (
         "description",
@@ -200,9 +201,9 @@ def render_spec_markdown(spec: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _yaml_scalar(s: Any) -> str:
+def _yaml_scalar(value: Any) -> str:
     """Quote a scalar if it could confuse the YAML reader."""
-    s = "" if s is None else str(s)
+    s: str = "" if value is None else str(value)
     if s == "" or any(ch in s for ch in ":#\n") or s.strip() != s:
         return '"' + s.replace('"', '\\"').replace("\n", " ") + '"'
     return s

@@ -7,14 +7,13 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import os
 import shutil
 import subprocess
 
 from typing import Any
 
 from .models import Finding
-from .taxonomy import Taxonomy
+from .taxonomy import Condition, Taxonomy
 
 
 def _ver_tuple(v: str) -> tuple[int, ...]:
@@ -28,19 +27,19 @@ def _glob_any(value: str, patterns: list[str]) -> bool:
 _GATEWAY_MODELS: list[str] | None = None
 
 
-def llm_gateway_models() -> list[str]:
+def llm_gateway_models(offline: bool = False) -> list[str]:
     """Model ids served by the org's DataRobot LLM Gateway, via `dr llm-gateway list`.
 
-    Empty when the CLI is missing, unauthenticated, slow, or disabled with
-    GAP_LLM_GATEWAY_CATALOG=off. Models the gateway serves are governed by the
-    platform, so they count as approved alongside the policy allowlist.
+    Empty when the CLI is missing, unauthenticated, slow, or `offline`. Models
+    the gateway serves are governed by the platform, so they count as approved
+    alongside the policy allowlist.
     """
     global _GATEWAY_MODELS
     if _GATEWAY_MODELS is not None:
         return _GATEWAY_MODELS
     _GATEWAY_MODELS = []
     dr = shutil.which("dr")
-    if dr and os.environ.get("GAP_LLM_GATEWAY_CATALOG", "").lower() != "off":
+    if dr and not offline:
         try:
             proc = subprocess.run(
                 [dr, "llm-gateway", "list", "--output-format", "json"],
@@ -62,7 +61,10 @@ def _gateway_serves(model_id: str, catalog: list[str]) -> bool:
 
 
 def check_conformance(
-    inventory: dict[str, Any], policy: dict[str, Any], taxonomy: Taxonomy
+    inventory: dict[str, Any],
+    policy: dict[str, Any],
+    taxonomy: Taxonomy,
+    offline: bool = False,
 ) -> tuple[list[Finding], list[str]]:
     findings: list[Finding] = []
     notes: list[str] = []
@@ -132,7 +134,9 @@ def check_conformance(
     # AIG-003 / ITA-003 — approved models
     allow_models = (it.get("models", {}) or {}).get("allow", []) or []
     catalog = (
-        llm_gateway_models() if allow_models and inventory.get("model_ids") else []
+        llm_gateway_models(offline)
+        if allow_models and inventory.get("model_ids")
+        else []
     )
     if catalog:
         notes.append(
@@ -211,7 +215,7 @@ _PY_FLOOR_FILES = (
 )
 
 
-def _py_source(inv):
+def _py_source(inv: dict[str, Any]) -> str | None:
     """The file that declares the lowest Python floor: the manifest in the
     component directory the inventory attributed that floor to."""
     versions = inv.get("python_versions") or {}
@@ -224,18 +228,26 @@ def _py_source(inv):
             if rel in files:
                 return rel
     man = inv.get("key_files", {}).get("manifests", [])
-    return (man or [None])[0]
+    return str(man[0]) if man else None
 
 
-def _manifest(inv):
-    return (inv.get("key_files", {}).get("manifests") or [None])[0]
+def _manifest(inv: dict[str, Any]) -> str | None:
+    man = inv.get("key_files", {}).get("manifests")
+    return str(man[0]) if man else None
 
 
-def _dockerfile(inv):
-    return (inv.get("key_files", {}).get("dockerfiles") or [None])[0]
+def _dockerfile(inv: dict[str, Any]) -> str | None:
+    files = inv.get("key_files", {}).get("dockerfiles")
+    return str(files[0]) if files else None
 
 
-def _mk(cond, file, line, evidence, explanation) -> Finding:
+def _mk(
+    cond: Condition,
+    file: str | None,
+    line: int | None,
+    evidence: str,
+    explanation: str,
+) -> Finding:
     return Finding(
         condition_id=cond.id,
         pillar=cond.pillar,

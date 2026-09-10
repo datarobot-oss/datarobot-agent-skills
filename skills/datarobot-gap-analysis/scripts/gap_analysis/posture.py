@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .variants import _select_variant_text, shipped_deployment_variant
 from .models import AnalysisResult, Finding, Severity
 from .taxonomy import Taxonomy
 
@@ -137,8 +138,6 @@ def migration_advice(
     frameworks without a native DataRobot template deploy through the generic
     Base flavor.
     """
-    from .risk_management import _select_variant_text, shipped_deployment_variant
-
     inv = inventory or {}
     iac = iac or {}
     sources = [s for s in inv.get("template_sources", []) if "af-component" in s]
@@ -208,7 +207,7 @@ def _deployment_shape(target: str | None) -> str:
     )
 
 
-def _drivers(structural, limit: int) -> list[dict[str, str]]:
+def _drivers(structural: list[Finding], limit: int) -> list[dict[str, str]]:
     """One row per structural condition (deduped), worst severity first."""
     seen: dict[str, dict[str, str]] = {}
     for f in structural:
@@ -228,7 +227,7 @@ def _rationale(
     score: float,
     structural_count: int,
     total: int,
-    high_structural: list,
+    high_structural: list[Finding],
     advice: str = "",
 ) -> str:
     pct = int(round(score * 100))

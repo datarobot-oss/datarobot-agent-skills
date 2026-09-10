@@ -15,13 +15,15 @@ import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from .engine import analyze, fix
 from .ingest import clone_repo
-from .opencode import _DEFAULT_MODEL, OpenCodeServer, OpenCodeWorkerClient, dr_available
+from .opencode import OpenCodeServer, OpenCodeWorkerClient, dr_available
 from .models import AnalysisResult
 from .policy import load_policy
 from .report import render_report, usage_summary
+from .settings import Settings
 from .report_html import render_html
 
 
@@ -69,32 +71,28 @@ def _load_env_file(path: str) -> list[str]:
     return loaded
 
 
-def _make_llm_client():
+def _make_llm_client(settings: Settings) -> OpenCodeWorkerClient | None:
     """Return the LLM client for this run, or None to let the engine auto-detect.
 
-    Preferred backend is `dr opencode`: a private server is started on a free
-    port and every check attaches to it as a worker subprocess, authenticated
-    through the CLI's own login. `GAP_LLM_BACKEND=litellm` (or a missing `dr`)
-    falls back to direct gateway calls via litellm, which need
-    DATAROBOT_API_TOKEN/DATAROBOT_ENDPOINT (or GAP_LLM_MODEL provider creds).
-    The server is stopped at process exit, covering every CLI return path.
+    A private `dr opencode` server is started on a free port and every check
+    attaches to it as a worker subprocess, authenticated through the CLI's own
+    login. Without `dr` there is no LLM client: Layers 2 and 4 are skipped and
+    the report says so. The server is stopped at process exit, covering every
+    CLI return path.
     """
-    if os.environ.get("GAP_LLM_BACKEND", "opencode") != "opencode":
-        return None
     if not dr_available():
         _status(
-            "→ dr CLI not found; LLM checks fall back to direct API calls (litellm)."
+            "→ dr CLI not found; Layers 2 and 4 (LLM) will be skipped. Install it "
+            "with the datarobot-setup skill."
         )
         return None
-    model = os.environ.get("GAP_LLM_MODEL", _DEFAULT_MODEL)
-    effort_setting = os.environ.get("GAP_LLM_EFFORT", "max")
-    server = OpenCodeServer(models=[model], reasoning=effort_setting)
+    server = OpenCodeServer(models=[settings.model], reasoning=settings.effort)
     try:
         url = server.start()
     except Exception as e:  # noqa: BLE001
         _status(
-            f"→ dr opencode server failed to start ({e}); "
-            "falling back to direct API calls (litellm)."
+            f"→ dr opencode server failed to start ({e}); Layers 2 and 4 (LLM) "
+            "will be skipped."
         )
         return None
     atexit.register(server.stop)
@@ -102,16 +100,20 @@ def _make_llm_client():
     # private server outlives the run.
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, lambda signum, _frame: sys.exit(128 + signum))
-    effort = server.efforts.get(model)
+    effort = server.efforts.get(settings.model)
     client = OpenCodeWorkerClient(
-        url, model=model, cwd=server.workdir, reasoning_effort=effort
+        url,
+        model=settings.model,
+        cwd=server.workdir,
+        reasoning_effort=effort,
+        timeout=settings.worker_timeout,
     )
     effort_note = (
         f"reasoning effort {effort}"
         if effort
         else (
             "reasoning effort off"
-            if effort_setting.lower() == "off"
+            if settings.effort.lower() == "off"
             else "no reasoning mode for this model"
         )
     )
@@ -119,7 +121,23 @@ def _make_llm_client():
     return client
 
 
-def out_path_for(args) -> Path | None:
+def settings_from_args(args: argparse.Namespace) -> Settings:
+    """Every run option in one object: flags win, GAP_* variables are the defaults."""
+    base = Settings.from_env()
+    return base.with_(
+        use_llm=base.use_llm and not args.no_llm,
+        model=args.model or base.model,
+        effort=args.effort or base.effort,
+        verify=base.verify and not args.no_verify,
+        workers=args.workers if args.workers is not None else base.workers,
+        worker_timeout=args.llm_timeout
+        if args.llm_timeout is not None
+        else base.worker_timeout,
+        offline=base.offline or args.offline,
+    )
+
+
+def out_path_for(args: argparse.Namespace) -> Path | None:
     """Where the Markdown report goes, or None for stdout."""
     if not args.out:
         return None
@@ -129,21 +147,27 @@ def out_path_for(args) -> Path | None:
     return out_path
 
 
-def _html_path(args, out_path: Path | None) -> str:
-    return args.html or (
-        str(out_path.with_suffix(".html")) if out_path else "gap-report.html"
-    )
+def _html_path(args: argparse.Namespace, out_path: Path | None) -> str:
+    if args.html:
+        return str(args.html)
+    return str(out_path.with_suffix(".html")) if out_path else "gap-report.html"
 
 
-def _findings_path(args, out_path: Path | None) -> Path:
+def _findings_path(args: argparse.Namespace, out_path: Path | None) -> Path:
     """The saved findings sit next to the HTML report, named by absolute path so
     the report's fix commands work from any shell directory."""
     return Path(_html_path(args, out_path)).resolve().with_name("gap-findings.json")
 
 
 def _run_fix(
-    args, workspace, result, policy, ts, llm_client=None, html_path: str | None = None
-) -> dict:
+    args: argparse.Namespace,
+    workspace: str | Path,
+    result: AnalysisResult,
+    policy: dict[str, Any],
+    ts: str,
+    llm_client: Any = None,
+    html_path: str | None = None,
+) -> dict[str, Any]:
     """Apply deterministic codemods, print the summary, optionally re-verify.
 
     Returns {"final_findings": [...]} so the caller can compute the exit code.
@@ -221,9 +245,8 @@ def _run_fix(
             workspace,
             args.policy,
             llm_client=llm_client,
-            use_llm=not args.no_llm,
             progress=progress,
-            max_workers=args.workers,
+            settings=settings_from_args(args),
         )
         before_keys = {(f.condition_id, f.file, f.line) for f in result.findings}
         after_keys = {(f.condition_id, f.file, f.line) for f in after.findings}
@@ -302,8 +325,8 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         const=".env",
         metavar="PATH",
-        help="load env vars (e.g. DATAROBOT_ENDPOINT/_API_TOKEN, GAP_LLM_MODEL) "
-        "from a dotenv file before running (default: .env)",
+        help="load DataRobot credentials (DATAROBOT_ENDPOINT, DATAROBOT_API_TOKEN) "
+        "from a dotenv file before running (default: .env); run options are flags",
     )
     ap.add_argument(
         "--no-llm",
@@ -313,11 +336,44 @@ def main(argv: list[str] | None = None) -> int:
         "fetched from DataRobot risk-management and reported as not assessed). "
         "Layers 1 and 3 always run.",
     )
-    ap.add_argument(
+    llm = ap.add_argument_group(
+        "LLM options",
+        "Each flag defaults to the matching GAP_* environment variable when set.",
+    )
+    llm.add_argument(
         "--workers",
         type=int,
-        default=int(os.environ.get("GAP_WORKERS", "4")),
-        help="parallel workers for Layer 2/4 LLM checks (default: 4, or $GAP_WORKERS)",
+        default=None,
+        help="parallel workers for Layer 2/4 LLM checks (default 4; GAP_WORKERS)",
+    )
+    llm.add_argument(
+        "--model",
+        default=None,
+        help="model id for the LLM checks, provider/model (GAP_LLM_MODEL)",
+    )
+    llm.add_argument(
+        "--effort",
+        default=None,
+        help="reasoning effort: max (the highest the provider accepts, default), off, "
+        "or a literal value such as low or high (GAP_LLM_EFFORT)",
+    )
+    llm.add_argument(
+        "--llm-timeout",
+        type=int,
+        default=None,
+        help="seconds per LLM call before it is abandoned (default 120; GAP_OPENCODE_TIMEOUT)",
+    )
+    llm.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="skip the second verification call per Layer 2 finding; faster, less "
+        "trustworthy, and nothing is marked verified (GAP_VERIFY=off)",
+    )
+    ap.add_argument(
+        "--offline",
+        action="store_true",
+        help="fetch no live catalogs (LLM Gateway models, docs index, agent template "
+        "flavors); use the shipped snapshots (GAP_OFFLINE=on)",
     )
     ap.add_argument(
         "--fix",
@@ -391,7 +447,8 @@ def main(argv: list[str] | None = None) -> int:
         fail_on = set(policy.get("report", {}).get("fail_on", []))
         return 1 if any(f.severity.value in fail_on for f in final) else 0
 
-    llm_client = _make_llm_client() if not args.no_llm else None
+    settings = settings_from_args(args)
+    llm_client = _make_llm_client(settings) if settings.use_llm else None
 
     _status(
         "→ Analyzing (Layer 2/4 LLM checks run in parallel; use --no-llm to skip) …"
@@ -400,9 +457,8 @@ def main(argv: list[str] | None = None) -> int:
         workspace,
         args.policy,
         llm_client=llm_client,
-        use_llm=not args.no_llm,
         progress=progress,
-        max_workers=args.workers,
+        settings=settings,
     )
     _status(
         f"→ Analysis complete — {len(result.findings)} gaps "
