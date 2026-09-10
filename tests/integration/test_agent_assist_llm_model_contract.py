@@ -314,6 +314,73 @@ def test_env_file_accepts_every_shape_the_real_catalog_uses(tmp_path: Path) -> N
         assert ok, f"{model} rejected: {msg}"
 
 
+# -- the external OpenAI-compatible path (CFX-7986) ------------------------------
+
+EXTERNAL_BASE_URL = "http://localhost:4000/v1"
+EXTERNAL_API_KEY = "ext-key"
+
+
+def test_external_env_writes_the_keys_the_template_reads(tmp_path: Path) -> None:
+    """The bug: 1.7.0 wrote EXTERNAL_LLM_* keys nothing reads. The template resolves
+    an external LLM from USE_DATAROBOT_LLM_GATEWAY=0 + OPENAI_API_BASE/KEY instead."""
+    ok, _ = setup_template.create_env_file(
+        tmp_path, "openai/local-ollama", "", EXTERNAL_API_KEY, EXTERNAL_BASE_URL
+    )
+    assert ok
+    env = (tmp_path / ".env").read_text()
+    assert 'USE_DATAROBOT_LLM_GATEWAY="0"' in env
+    assert f'OPENAI_API_BASE="{EXTERNAL_BASE_URL}"' in env
+    assert f'OPENAI_API_KEY="{EXTERNAL_API_KEY}"' in env
+    assert "SESSION_SECRET_KEY=" in env  # fastapi_server won't boot without it
+    assert "EXTERNAL_LLM_" not in env
+
+
+def test_external_model_is_routed_through_the_openai_provider() -> None:
+    """litellm calls OPENAI_API_BASE only under the openai provider, so the model
+    carries one openai/ prefix and never keeps a datarobot/ one."""
+    assert (
+        setup_template.as_openai_compatible_model("local-ollama")
+        == "openai/local-ollama"
+    )
+    assert (
+        setup_template.as_openai_compatible_model("datarobot/local-ollama")
+        == "openai/local-ollama"
+    )
+    assert setup_template.as_openai_compatible_model("openai/gpt-4o") == "openai/gpt-4o"
+
+
+@pytest.mark.parametrize("bad", ['ht"tp://x', "http://x\n", "key$(x)", "back`tick"])
+def test_external_creds_that_break_the_env_line_are_refused(
+    tmp_path: Path, bad: str
+) -> None:
+    """base URL and key land in double-quoted .env lines, so the same break-out
+    characters the model value refuses are refused here too."""
+    ok, _ = setup_template.create_env_file(tmp_path, "openai/m", "", bad, bad)
+    assert not ok
+    assert not (tmp_path / ".env").exists()
+
+
+def test_external_setup_writes_env_and_skips_dotenv_and_deploy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The external path stops after .env: 'dr dotenv setup' would rewrite it onto
+    the gateway path and the Pulumi deploy wants a DataRobot backend."""
+    monkeypatch.setattr(
+        setup_template, "get_external_model_api_key", lambda *_: EXTERNAL_API_KEY
+    )
+
+    def _fail(*_: object, **__: object) -> None:
+        raise AssertionError("external path must not run dotenv/pulumi/deploy")
+
+    monkeypatch.setattr(setup_template, "run_command", _fail)
+    monkeypatch.setattr(setup_template, "initialize_pulumi", _fail)
+
+    rc = setup_template.setup_and_run("local-ollama", tmp_path, "", EXTERNAL_BASE_URL)
+
+    assert rc == 0
+    assert 'LLM_DEFAULT_MODEL="openai/local-ollama"' in (tmp_path / ".env").read_text()
+
+
 # -- the docs the agent copies from ---------------------------------------------
 
 

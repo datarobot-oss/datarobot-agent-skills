@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Fixed
+
+- `datarobot-agent-assist`: External LLM setup writes the OpenAI-compatible env the agent template actually reads (`USE_DATAROBOT_LLM_GATEWAY=0`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, and an `openai/`-prefixed `LLM_DEFAULT_MODEL`) instead of the unread `EXTERNAL_LLM_*` keys. The external path now stops after writing `.env` for local `task dev`, skipping the DataRobot-only `dr dotenv setup` and Pulumi deploy.
+
 ## [1.8.0] - 2026-09-02
 
 ### Added
