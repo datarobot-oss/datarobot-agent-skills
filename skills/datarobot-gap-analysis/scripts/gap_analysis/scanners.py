@@ -22,7 +22,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from .inventory import _DEF_EXCLUDE, _iter_files, glob_match
+from .inventory import _DEF_EXCLUDE, _iter_files, git_ignore, glob_match, is_ignored
 from .llm import brief_error
 from .models import Finding, Severity
 from .taxonomy import Condition, Taxonomy
@@ -279,6 +279,7 @@ def _export_uv_locks(root: Path, notes: list[str]) -> list[tuple[Path, str]]:
         p
         for p in root.rglob("uv.lock")
         if not {"node_modules", ".venv", "venv"} & set(p.parts)
+        and not is_ignored(root, p)
     ]
     if not locks:
         return []
@@ -383,6 +384,7 @@ def run_sca(
         (p, p.relative_to(root).as_posix())
         for p in root.rglob("requirements*.txt")
         if not {"node_modules", ".venv", "venv"} & set(p.parts)
+        and not is_ignored(root, p)
     ]
     targets += _export_uv_locks(root, notes)
     if not targets:
@@ -473,7 +475,9 @@ def run_sca_npm(
     lockfiles = [
         p
         for p in root.rglob("package-lock.json")
-        if "node_modules" not in p.parts and ".venv" not in p.parts
+        if "node_modules" not in p.parts
+        and ".venv" not in p.parts
+        and not is_ignored(root, p)
     ]
     if not lockfiles:
         return findings, notes
@@ -763,6 +767,8 @@ def _automation_text(root: Path) -> str:
     for p in root.rglob("*"):
         if not p.is_file() or _SKIP_MANIFEST_DIRS & set(p.parts):
             continue
+        if is_ignored(root, p):
+            continue
         if p.name in (
             "Makefile",
             ".pre-commit-config.yaml",
@@ -775,7 +781,12 @@ def _automation_text(root: Path) -> str:
 def _manifest_dirs(root: Path, names: tuple[str, ...]) -> list[Path]:
     dirs: set[Path] = set()
     for p in root.rglob("*"):
-        if p.is_file() and p.name in names and not _SKIP_MANIFEST_DIRS & set(p.parts):
+        if (
+            p.is_file()
+            and p.name in names
+            and not _SKIP_MANIFEST_DIRS & set(p.parts)
+            and not is_ignored(root, p)
+        ):
             dirs.add(p.parent)
     return sorted(dirs)
 
@@ -1147,6 +1158,14 @@ _TRIVY_SKIP_DIRS = ",".join(
 )
 
 
+def _trivy_skip_args(root: Path) -> list[str]:
+    ignored = git_ignore(root)
+    args = ["--skip-dirs", ",".join([_TRIVY_SKIP_DIRS, *ignored.dirs])]
+    if ignored.files:
+        args += ["--skip-files", ",".join(sorted(ignored.files))]
+    return args
+
+
 def run_trivy(
     workspace: str | Path, taxonomy: Taxonomy, policy: dict[str, Any] | None = None
 ) -> tuple[list[Finding], list[str], bool]:
@@ -1188,8 +1207,7 @@ def run_trivy(
         "json",
         "--quiet",
         "--skip-db-update",
-        "--skip-dirs",
-        _TRIVY_SKIP_DIRS,
+        *_trivy_skip_args(root),
     ]
     rego = root / "trivy-ignore.rego"
     if rego.is_file():
@@ -1362,6 +1380,7 @@ def run_hadolint(
         if p.is_file()
         and (p.name.startswith("Dockerfile") or p.suffix.lower() == ".dockerfile")
         and not _SKIP_MANIFEST_DIRS & set(p.parts)
+        and not is_ignored(root, p)
     ]
     if not dockerfiles:
         return [], notes

@@ -13,7 +13,7 @@ from typing import Any
 
 from .conformance import check_conformance
 from .detect import NO_LLM_NOTE, run_layer2
-from .inventory import build_inventory
+from .inventory import build_inventory, git_ignore
 from .llm import get_client
 from .migrate import extract_spec, scaffold_from_spec
 from .models import AnalysisResult, ConditionSkip, Finding
@@ -63,6 +63,15 @@ def analyze(
     _tick("▶ Indexing repository files…")
     result.inventory = build_inventory(workspace, exclude, offline=settings.offline)
     _phase("repo index", t0, f"{len(result.inventory.get('files', []))} files")
+    ignored = git_ignore(Path(workspace)).entries
+    if ignored:
+        shown = ", ".join(f"`{e}`" for e in ignored[:6])
+        if len(ignored) > 6:
+            shown += f" and {len(ignored) - 6} more"
+        result.notes.append(
+            f"{len(ignored)} git-ignored entr{'y' if len(ignored) == 1 else 'ies'} "
+            f"left out of every layer, since git would never commit them: {shown}."
+        )
 
     # The layers only read the inventory and are independent of each other, so
     # they run in three concurrent lanes: Layer 1 (subprocess scanners, often

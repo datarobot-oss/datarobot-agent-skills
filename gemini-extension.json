@@ -76,7 +76,7 @@
     },
     {
       "name": "datarobot-gap-analysis",
-      "description": "Score any agent repository (DataRobot-built or not) against a 40-factor enterprise-readiness framework across seven risk pillars and four evaluation layers, then patch or guide the fixing of every gap found",
+      "description": "Score any agent repository (DataRobot-built or not) against a 41-factor enterprise-readiness framework across seven risk pillars and four evaluation layers, then patch or guide the fixing of every gap found",
       "path": "skills/datarobot-gap-analysis/SKILL.md"
     }
   ]

@@ -238,3 +238,74 @@ def test_parse_events_reports_reasoning_tokens():
     assert (
         text == "391" and meta["reasoning_tokens"] == 25 and meta["output_tokens"] == 30
     )
+
+
+def test_parse_events_tolerates_null_sub_objects_and_non_object_lines():
+    stream = "\n".join(
+        [
+            json.dumps({"type": "text", "part": None}),
+            json.dumps({"type": "step_finish", "part": {"tokens": None}}),
+            json.dumps({"type": "step_finish", "part": {"tokens": {"cache": None}}}),
+            json.dumps(["not", "an", "event"]),
+            json.dumps("nor this"),
+            _event("text", {"text": "ok"}),
+        ]
+    )
+
+    text, meta = parse_events(stream)
+
+    assert text == "ok"
+    assert meta["input_tokens"] == 0 and meta["cache_read_tokens"] == 0
+
+
+def test_run_worker_timeout_keeps_the_prompt_out_of_the_traceback(monkeypatch):
+    import subprocess
+    import traceback
+
+    from datarobot_skills_utils.opencode import worker
+
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+
+    # Built at run time so the marker never appears on a source line that the
+    # traceback itself would print.
+    marker = "PROMPT-BODY-" + "MARKER"
+    with pytest.raises(TimeoutError) as info:
+        worker.run_worker(marker, "m", isolated_dir="/tmp/x", timeout=1)
+
+    rendered = "".join(traceback.format_exception(info.value))
+    assert info.value.__cause__ is None
+    assert marker not in rendered
+    assert "timed out after 1s" in rendered
+
+
+def test_server_start_reports_stderr_tail_without_a_pipe(monkeypatch):
+    import subprocess
+
+    from datarobot_skills_utils.opencode import server
+
+    seen: dict[str, object] = {}
+    real_popen = subprocess.Popen
+
+    def fake_popen(cmd, **kwargs):
+        seen["stderr"] = kwargs.get("stderr")
+        return real_popen(["sh", "-c", "echo boom >&2; exit 3"], **kwargs)
+
+    monkeypatch.setattr(server.subprocess, "Popen", fake_popen)
+    srv = server.OpenCodeServer()
+
+    with pytest.raises(RuntimeError, match="exited 3: boom"):
+        srv.start()
+
+    assert seen["stderr"] is not subprocess.PIPE
+    assert srv.workdir is None and srv.url is None
+
+
+def test_bootstrap_copies_stay_identical():
+    root = Path(__file__).resolve().parents[2] / "skills"
+    copies = sorted(root.rglob("_bootstrap.py"))
+    assert len(copies) >= 2, copies
+    contents = {p.read_text() for p in copies}
+    assert len(contents) == 1, [str(p) for p in copies]

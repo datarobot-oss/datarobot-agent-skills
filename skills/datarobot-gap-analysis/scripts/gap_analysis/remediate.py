@@ -1,13 +1,16 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Remediation engine — applies fixes on a dedicated branch.
+"""Remediation engine: deterministic codemods on a dedicated branch.
 
 Safety rails:
-  * all changes land on a new `gap-fixes/<timestamp>` branch, never the
-    caller's checked-out default branch state is committed without the user;
-  * nothing is pushed and no PR is opened here (see open_pull_request);
-  * a fix that cannot be applied safely is downgraded to advisory guidance.
+  * the worktree must be clean, and every change lands on a new
+    `gap-fixes/<timestamp>` branch, so the caller reviews a diff, not a fait
+    accompli;
+  * nothing is pushed and no pull request is opened;
+  * a codemod that cannot be applied safely reports why instead of guessing;
+  * assisted findings are never edited here; the report carries an agent
+    prompt for them.
 """
 
 from __future__ import annotations
@@ -21,15 +24,6 @@ from typing import Any
 from .llm import LLMClient
 from .models import Finding
 from .scanners import _SECRET_PATTERNS, _PLACEHOLDER
-
-# Floating -> pinned model id map for AIG-002 auto-pinning (extend as needed).
-_MODEL_PINS = {
-    "gpt-4o": "gpt-4o-2024-11-20",
-    "claude-3-5-sonnet": "claude-3-5-sonnet-20241022",
-    "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
-    "gemini-1.5-pro": "gemini-1.5-pro-002",
-}
-
 
 # ───────────────────────── git helpers ─────────────────────────
 
@@ -290,24 +284,6 @@ def _bump_uv_lock(
     )
 
 
-def _fix_pin_model(workspace: Path, f: Finding) -> dict[str, Any]:
-    floating = f.evidence.strip()
-    pinned = None
-    for k, v in _MODEL_PINS.items():
-        if k in floating:
-            pinned = floating.replace(k, v)
-            break
-    if not pinned or not f.file:
-        return _cannot(f, "no known pinned id for this model alias")
-    path = workspace / f.file
-    text = path.read_text(errors="ignore")
-    new = text.replace(floating, pinned)
-    if new == text:
-        return _cannot(f, "model id not found verbatim")
-    path.write_text(new)
-    return _ok(f, f"Pinned model '{floating}' -> '{pinned}' in {f.file}.")
-
-
 def _fix_pin_python(
     workspace: Path, f: Finding, policy: dict[str, Any]
 ) -> dict[str, Any]:
@@ -355,14 +331,10 @@ def _fix_scaffold_tests(workspace: Path, f: Finding) -> dict[str, Any]:
 _AUTO = {
     "secret_to_env_var": lambda ws, f, pol, cl: _fix_secret_to_env_var(ws, f),
     "bump_vulnerable_dependency": lambda ws, f, pol, cl: _fix_bump_dependency(ws, f),
-    "pin_model_version": lambda ws, f, pol, cl: _fix_pin_model(ws, f),
     "pin_python_version": lambda ws, f, pol, cl: _fix_pin_python(ws, f, pol),
     "scaffold_ci_workflow": lambda ws, f, pol, cl: _fix_scaffold_ci(ws, f),
     "scaffold_test_stub": lambda ws, f, pol, cl: _fix_scaffold_tests(ws, f),
 }
-
-
-# ───────────────────────── assisted (LLM) fixes ─────────────────────────
 
 
 # ───────────────────────── orchestration ─────────────────────────

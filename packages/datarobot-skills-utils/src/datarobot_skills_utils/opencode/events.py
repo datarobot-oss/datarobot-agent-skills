@@ -8,6 +8,20 @@ from __future__ import annotations
 import json
 
 
+def _obj(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def _int(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _float(value: object) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return 0.0
+
+
 def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
     """Return (text, token_meta) from an opencode JSONL event stream.
 
@@ -27,19 +41,22 @@ def parse_events(stdout: str) -> tuple[str, dict[str, object]]:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(event, dict):
+            continue
+        part = _obj(event.get("part"))
         if event.get("type") == "text":
-            chunk = event.get("part", {}).get("text", "")
-            if chunk:
+            chunk = part.get("text")
+            if isinstance(chunk, str) and chunk:
                 parts.append(chunk)
         elif event.get("type") == "step_finish":
-            part = event.get("part", {})
-            tokens = part.get("tokens", {})
-            input_tokens += tokens.get("input", 0)
-            output_tokens += tokens.get("output", 0)
-            cache_read += tokens.get("cache", {}).get("read", 0)
-            cache_write += tokens.get("cache", {}).get("write", 0)
-            reasoning += tokens.get("reasoning", 0) or 0
-            cost += part.get("cost", 0.0) or 0.0
+            tokens = _obj(part.get("tokens"))
+            cache = _obj(tokens.get("cache"))
+            input_tokens += _int(tokens.get("input"))
+            output_tokens += _int(tokens.get("output"))
+            cache_read += _int(cache.get("read"))
+            cache_write += _int(cache.get("write"))
+            reasoning += _int(tokens.get("reasoning"))
+            cost += _float(part.get("cost"))
 
     meta: dict[str, object] = {
         "input_tokens": input_tokens,
