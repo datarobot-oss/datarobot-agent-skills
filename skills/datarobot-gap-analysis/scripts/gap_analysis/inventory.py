@@ -116,15 +116,32 @@ def _excluded(rel: str, patterns: list[str]) -> bool:
 
 
 def _iter_files(root: Path, exclude: list[str]) -> Iterator[tuple[Path, str]]:
+    resolved_root = root.resolve()
     for p in root.rglob("*"):
         if not p.is_file():
             continue
         if _SKIP_DIRS.intersection(p.parts):
             continue
+        if p.is_symlink() and not _resolves_within(p, resolved_root):
+            continue
         rel = p.relative_to(root).as_posix()
         if _excluded(rel, exclude):
             continue
         yield p, rel
+
+
+def _resolves_within(path: Path, root: Path) -> bool:
+    """True when a symlink's target stays inside `root` (already resolved).
+
+    A repo can ship a symlink pointing outside the clone (e.g. `/etc/passwd`
+    or `~/.ssh/id_rsa`); following it would read host files as "evidence"
+    and could leak them into the report or the LLM Gateway payload.
+    """
+    try:
+        target = path.resolve()
+    except OSError:
+        return False
+    return target == root or root in target.parents
 
 
 def build_inventory(
