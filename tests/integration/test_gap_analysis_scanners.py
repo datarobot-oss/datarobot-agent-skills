@@ -21,7 +21,9 @@ from gap_analysis import scanners  # noqa: E402
 from gap_analysis.detect import _result_to_findings, layer2_files  # noqa: E402
 from gap_analysis.docs import parse_llms_txt, resolve_docs  # noqa: E402
 from gap_analysis.engine import _dedup  # noqa: E402
+from gap_analysis.ingest import clone_repo  # noqa: E402
 from gap_analysis.inventory import (  # noqa: E402
+    _iter_files,
     build_inventory,
     detect_agent_frameworks,
     detect_python_version,
@@ -42,6 +44,8 @@ from gap_analysis.posture import migration_advice  # noqa: E402
 from gap_analysis.remediate import (  # noqa: E402
     _locked_version,
     _uv_error_line,
+    create_fix_branch,
+    ensure_clean_worktree,
     fix_version_from,
     pin_in_pyproject,
     remediate,
@@ -69,6 +73,29 @@ def _write(root: Path, rel: str, text: str = "") -> None:
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
+
+
+def test_clone_repo_rejects_option_injection_and_bad_refs(tmp_path: Path) -> None:
+    marker = tmp_path / "pwned"
+    with pytest.raises(ValueError, match="does not look like"):
+        clone_repo(f"--upload-pack=touch {marker}", dest=str(tmp_path / "dest"))
+    assert not marker.exists()
+
+    with pytest.raises(ValueError, match="does not look like"):
+        clone_repo("ext::sh -c touch /tmp/pwned", dest=str(tmp_path / "dest2"))
+
+    with pytest.raises(ValueError, match="not a valid branch"):
+        clone_repo(
+            "https://github.com/octocat/Hello-World",
+            ref="--upload-pack=x",
+            dest=str(tmp_path / "dest3"),
+        )
+
+
+def test_clone_repo_accepts_a_local_path_as_is(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert clone_repo(str(repo)) == str(repo.resolve())
 
 
 def test_glob_match_reaches_root_level_paths() -> None:
@@ -266,6 +293,25 @@ def test_evidence_files_prefer_source_over_config_and_skip_locks() -> None:
     assert evidence_files(inventory, ["**/infra/**"], 3, first=["infra/infra/web.py"])[
         0
     ] == ("infra/infra/web.py")
+
+
+def test_iter_files_skips_symlinks_that_escape_the_workspace_root(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "id_rsa").write_text("HOST SECRET")
+
+    repo = tmp_path / "repo"
+    _write(repo, "sub/shared.txt", "shared content")
+    (repo / "leak.txt").symlink_to(outside / "id_rsa")
+    (repo / "alias.txt").symlink_to(repo / "sub" / "shared.txt")
+
+    seen = {rel for _, rel in _iter_files(repo, [])}
+
+    assert "leak.txt" not in seen
+    assert "alias.txt" in seen
+    assert "sub/shared.txt" in seen
 
 
 def test_detect_iac_finds_infra_program_behind_a_large_app_tree(tmp_path: Path) -> None:
@@ -1365,6 +1411,96 @@ def test_remediate_applies_only_deterministic_codemods(tmp_path: Path) -> None:
     assert summary["unfixable_selected"] == ["AIG-002"]
 
 
+def test_ensure_clean_worktree_rejects_non_git_dirs(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="not a git repository"):
+        ensure_clean_worktree(tmp_path)
+
+
+def test_ensure_clean_worktree_rejects_uncommitted_changes(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write(tmp_path, "untracked.txt", "hello\n")
+
+    with pytest.raises(RuntimeError, match="uncommitted changes"):
+        ensure_clean_worktree(tmp_path)
+
+
+def test_ensure_clean_worktree_accepts_a_committed_repo(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write(tmp_path, "a.py", "x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    ensure_clean_worktree(tmp_path)  # must not raise
+
+
+def test_create_fix_branch_raises_on_collision(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "init",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    create_fix_branch(tmp_path, "dup-ts")
+    subprocess.run(["git", "checkout", "-q", "-"], cwd=tmp_path, check=True)
+
+    with pytest.raises(RuntimeError, match="could not create fix branch"):
+        create_fix_branch(tmp_path, "dup-ts")
+
+
+def test_remediate_refuses_a_dirty_worktree_before_touching_anything(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write(
+        tmp_path, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n'
+    )
+    # Deliberately left uncommitted: --fix must refuse to run rather than mix
+    # its own edits with this pre-existing change.
+
+    finding = Finding(
+        "SEC-002",
+        "SEC",
+        Severity.CRITICAL,
+        "Hardcoded secret",
+        file="app.py",
+        line=1,
+        evidence='API_KEY = "sk-live-…"',
+        fix_type="auto",
+        fix_strategy="secret_to_env_var",
+        fix_risk="plumbing",
+        layer=1,
+    )
+
+    with pytest.raises(RuntimeError, match="uncommitted changes"):
+        remediate(tmp_path, [finding], {}, "ts", client=None)
+
+    assert "os.environ" not in (tmp_path / "app.py").read_text(), (
+        "no fix should be applied when the pre-flight check fails"
+    )
+
+
 def test_ita001_anchors_on_the_declaring_manifest(tmp_path: Path) -> None:
     from gap_analysis.conformance import _py_source
 
@@ -1722,6 +1858,46 @@ def test_cli_fix_from_saved_findings_skips_analysis(
     )
 
 
+def test_cli_fix_reports_a_dirty_worktree_instead_of_crashing(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n')
+    # Left uncommitted on purpose: --fix must refuse cleanly, not crash.
+
+    saved = tmp_path / "gap-findings.json"
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=1,
+            evidence="x",
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        )
+    ]
+    saved.write_text(json.dumps(result.to_dict()))
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 2
+    assert "uncommitted changes" in capsys.readouterr().err
+
+
 def test_fix_commands_name_the_findings_file_by_absolute_path(tmp_path: Path) -> None:
     from types import SimpleNamespace
 
@@ -1874,3 +2050,36 @@ def test_settings_resolve_flags_over_env(monkeypatch) -> None:
     assert (s.effort, s.workers, s.verify) == ("high", 2, False), (
         "a flag wins over its env default"
     )
+
+
+def test_generic_credential_pattern_catches_prefixed_names_and_bare_values() -> None:
+    from gap_analysis.scanners import _scan_text_for_secrets
+
+    hits = {
+        'DB_PASSWORD = "Xk9#mP2vL8qR4tWn"': "Xk9#mP2vL8qR4tWn",
+        'STRIPE_API_KEY = "pk_notreal_Q7x!K2eZvY9o2C9aB3Xy7Lm"': "pk_notreal_Q7x!K2eZvY9o2C9aB3Xy7Lm",
+        'AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzz1234"': "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzz1234",
+        "DB_PASSWORD=Xk9#mP2vL8qR4tWn": "Xk9#mP2vL8qR4tWn",
+        "db_password: Xk9#mP2vL8qR4tWn": "Xk9#mP2vL8qR4tWn",
+        "DB_PASSWORD=Xk9mP2vL8qR4tWn  # rotate quarterly": "Xk9mP2vL8qR4tWn",
+        "export OPENAI_API_KEY=sk-proj-AbC123DeF456GhI789JkL012MnO": "sk-proj-AbC123DeF456GhI789JkL012MnO",
+        'client_secret = "q7T9zX2pL5mN8bV1cR4wY6uE3"': "q7T9zX2pL5mN8bV1cR4wY6uE3",
+    }
+    for line, value in hits.items():
+        found = _scan_text_for_secrets(line)
+        assert found and found[0][3] == value, line
+
+    misses = [
+        "DB_PASSWORD=changeme",
+        "DB_PASSWORD=${DB_PASSWORD}",
+        'AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"',
+        "PASSWORD_FILE=/run/secrets/db_password",
+        "TOKEN_URL=https://login.example.com/oauth/token/endpoint",
+        "SECRET_NAME=projects/123/secrets/prod-db",
+        "password = get_password_from_vault()",
+        'token = request.headers.get("x-api-token")',
+        "api_key: str = Field(default=None)",
+        "DB_PASSWORD=hunter2hunter2hunter2",
+    ]
+    for line in misses:
+        assert not _scan_text_for_secrets(line), line

@@ -38,10 +38,37 @@ def _git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=workspace, capture_output=True, text=True)
 
 
+def ensure_clean_worktree(workspace: str | Path) -> None:
+    """Raise if `workspace` isn't a git repo, or has uncommitted changes.
+
+    A local path is used in place (never cloned), so any pre-existing
+    uncommitted work would otherwise land on the fix branch indistinguishable
+    from the fixes themselves, and would follow the branch back if
+    `create_fix_branch` ever failed (git carries a dirty tree across
+    `checkout`).
+    """
+    workspace = Path(workspace)
+    status = _git(workspace, "status", "--porcelain")
+    if status.returncode != 0:
+        raise RuntimeError(
+            f"'{workspace}' is not a git repository; --fix requires one so fixes "
+            "can land on a dedicated branch."
+        )
+    if status.stdout.strip():
+        raise RuntimeError(
+            f"'{workspace}' has uncommitted changes; commit or stash them before "
+            "running --fix so its edits aren't mixed with yours."
+        )
+
+
 def create_fix_branch(workspace: str | Path, timestamp: str) -> str:
     workspace = Path(workspace)
     branch = f"gap-fixes/{timestamp}"
-    _git(workspace, "checkout", "-b", branch)
+    result = _git(workspace, "checkout", "-b", branch)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"could not create fix branch '{branch}': {result.stderr.strip()}"
+        )
     return branch
 
 
@@ -404,7 +431,10 @@ def remediate(
         for cid in (selected_ids or set())
         if cid not in fixable_ids and any(f.condition_id == cid for f in findings)
     )
-    branch = create_fix_branch(workspace, timestamp) if targets else None
+    branch = None
+    if targets:
+        ensure_clean_worktree(workspace)
+        branch = create_fix_branch(workspace, timestamp)
     results = []
     for f in targets:
         r = apply_fix(workspace, f, policy, client)

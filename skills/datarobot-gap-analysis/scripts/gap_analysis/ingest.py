@@ -12,11 +12,38 @@ import tempfile
 from pathlib import Path
 
 
+_REMOTE_URL_RE = re.compile(
+    r"^(https://[A-Za-z0-9.-]+/[\w.\-~/]+(?:\.git)?/?"
+    r"|git@[A-Za-z0-9.-]+:[\w.\-~/]+(?:\.git)?)$"
+)
+
+
 def _auth_url(url: str) -> str:
     token = os.environ.get("GITHUB_TOKEN")
     if token and url.startswith("https://github.com/"):
         return url.replace("https://", f"https://x-access-token:{token}@")
     return url
+
+
+def _validate_remote_url(url: str) -> None:
+    """Reject anything that isn't a plain `https://` or `git@` remote.
+
+    Without this, a string such as `--upload-pack=touch /tmp/pwned` is a
+    legal `git clone` positional argument that git parses as an option,
+    running arbitrary commands as the transport. This skill accepts a
+    repo URL directly from the user (or an agent acting on their behalf),
+    so the value must be validated before it ever reaches `subprocess`.
+    """
+    if not _REMOTE_URL_RE.match(url):
+        raise ValueError(
+            f"'{url}' does not look like a GitHub/git remote URL "
+            "(expected https://... or git@...) or an existing local path."
+        )
+
+
+def _validate_ref(ref: str) -> None:
+    if ref.startswith("-"):
+        raise ValueError(f"'{ref}' is not a valid branch/tag/commit ref.")
 
 
 def clone_repo(url: str, ref: str | None = None, dest: str | None = None) -> str:
@@ -28,11 +55,17 @@ def clone_repo(url: str, ref: str | None = None, dest: str | None = None) -> str
     if Path(url).expanduser().is_dir():
         return str(Path(url).expanduser().resolve())
 
+    _validate_remote_url(url)
+    if ref:
+        _validate_ref(ref)
+
     dest = dest or tempfile.mkdtemp(prefix="gap-analysis-")
     args = ["git", "clone", "--depth", "1"]
     if ref:
         args += ["--branch", ref]
-    args += [_auth_url(url), dest]
+    # `--` stops git from ever re-interpreting the URL/dest as options, even
+    # if a future change loosens `_validate_remote_url`.
+    args += ["--", _auth_url(url), dest]
     proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
         # Never leak a token in error text.

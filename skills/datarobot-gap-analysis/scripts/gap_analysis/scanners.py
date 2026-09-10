@@ -40,9 +40,20 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     (
         "Generic credential assignment",
+        # The name may carry any prefix (DB_PASSWORD, STRIPE_API_KEY,
+        # AWS_SECRET_ACCESS_KEY) and an optional _ID/_VALUE style suffix; `_`
+        # is a word character, so a bare \b would never see them. The value
+        # may be quoted (source) or bare (.env, YAML, INI); a bare value ends
+        # at whitespace or at a `#` that starts a comment (a `#` inside the
+        # value is kept). Names ending in _FILE/_PATH/_URL name a location,
+        # not a credential.
         re.compile(
-            r"(?i)\b(?:api[_-]?key|secret|token|password|passwd|access[_-]?key)\b"
-            r"\s*[:=]\s*['\"]([^'\"]{8,})['\"]"
+            r"(?i)(?<![A-Za-z0-9])"
+            r"[A-Za-z0-9_.\-]*?"
+            r"(?:api[_-]?key|secret|token|password|passwd|access[_-]?key|credential)"
+            r"(?:[_-]?(?:id|value|str|string|key))?"
+            r"(?![A-Za-z0-9_-]*(?:file|path|url|name|env|var)\b)"
+            r"\s*[:=]\s*(?:['\"]([^'\"]{8,})['\"]|((?:[^\s'\"#]|#(?!\s))(?:[^\s'\"#]|#(?!\s)){7,}))"
         ),
     ),
 ]
@@ -126,7 +137,7 @@ def _scan_text_for_secrets(text: str) -> list[tuple[int, str, str, str]]:
     for i, line in enumerate(text.splitlines(), start=1):
         for label, pat in _SECRET_PATTERNS:
             for m in pat.finditer(line):
-                value = m.group(1) if m.groups() else m.group(0)
+                value = next((g for g in m.groups() if g), m.group(0))
                 if _PLACEHOLDER.search(value) or _NOT_SECRET_CHARS.search(value):
                     continue
                 if label == "Generic credential assignment" and not _credential_shaped(

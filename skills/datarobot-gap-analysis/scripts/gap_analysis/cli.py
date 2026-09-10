@@ -443,7 +443,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        final = _run_fix(args, workspace, result, policy, ts)["final_findings"]
+        try:
+            final = _run_fix(args, workspace, result, policy, ts)["final_findings"]
+        except RuntimeError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
         fail_on = set(policy.get("report", {}).get("fail_on", []))
         return 1 if any(f.severity.value in fail_on for f in final) else 0
 
@@ -494,9 +498,14 @@ def main(argv: list[str] | None = None) -> int:
         webbrowser.open(out.as_uri())
 
     if args.fix:
-        final_findings = _run_fix(
-            args, workspace, result, policy, ts, llm_client, html_path
-        )["final_findings"]
+        try:
+            final_findings = _run_fix(
+                args, workspace, result, policy, ts, llm_client, html_path
+            )["final_findings"]
+        except RuntimeError as e:
+            # The report/findings above are already written; only --fix failed.
+            print(f"error: {e}", file=sys.stderr)
+            return 2
 
     fail_on = set(policy.get("report", {}).get("fail_on", []))
     if any(f.severity.value in fail_on for f in final_findings):
