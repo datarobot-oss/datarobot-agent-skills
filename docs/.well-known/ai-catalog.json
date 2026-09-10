@@ -178,7 +178,7 @@
       "displayName": "datarobot-gap-analysis",
       "type": "application/ai-skill",
       "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-gap-analysis/SKILL.md",
-      "description": "Score any agent repository against a 40-factor enterprise-readiness framework (security, governance, reliability, EU AI Act) and patch or guide the fixing of every gap found.",
+      "description": "Score any agent repository against a 41-factor enterprise-readiness framework (security, governance, reliability, EU AI Act) and patch or guide the fixing of every gap found.",
       "representativeQueries": [
         "run a gap analysis on an agent repository",
         "check an agent for enterprise readiness and security gaps",

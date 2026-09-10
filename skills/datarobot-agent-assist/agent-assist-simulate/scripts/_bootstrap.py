@@ -80,9 +80,9 @@ def main() -> int:
     except ImportError as exc:
         print(exc, file=sys.stderr)
         return 1
-    import datarobot_skills_utils
-
-    print(f"datarobot-skills-utils: {Path(datarobot_skills_utils.__file__).parent}")
+    spec = importlib.util.find_spec("datarobot_skills_utils")
+    origin = spec.origin if spec is not None else None
+    print(f"datarobot-skills-utils: {Path(origin).parent if origin else '<unknown>'}")
     return 0
 
 

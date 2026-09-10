@@ -3,6 +3,7 @@
 
 """Deterministic Layer-1 detectors of the datarobot-gap-analysis engine."""
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -2083,3 +2084,63 @@ def test_generic_credential_pattern_catches_prefixed_names_and_bare_values() -> 
     ]
     for line in misses:
         assert not _scan_text_for_secrets(line), line
+
+
+def _git_repo(root: Path, ignore: str) -> None:
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    _write(root, ".gitignore", ignore)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+
+
+def test_git_ignored_files_are_left_out_of_every_walker(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    from gap_analysis.inventory import git_ignore
+    from gap_analysis.scanners import _trivy_skip_args, run_secret_scan
+
+    secret = 'OPENAI_API_KEY="sk-proj-AbC123DeF456GhI789JkL012MnO"\n'
+    repo = tmp_path / "repo"
+    _write(repo, "app/config.py", secret)
+    _git_repo(repo, ".env\npulumi_config.json\ninfra/Pulumi.prd.yaml\n.venv/\n")
+    _write(repo, ".env", secret)
+    _write(
+        repo, "pulumi_config.json", '{"api_key": "sk-proj-AbC123DeF456GhI789JkL012MnO"}'
+    )
+    _write(
+        repo,
+        "infra/Pulumi.prd.yaml",
+        "config:\n  token: sk-proj-AbC123DeF456GhI789JkL012MnO\n",
+    )
+    _write(repo, ".venv/lib/site.py", secret)
+    _write(repo, "notes.txt", "untracked but not ignored")
+
+    ignored = git_ignore(repo)
+    assert ".env" in ignored and "pulumi_config.json" in ignored
+    assert "infra/Pulumi.prd.yaml" in ignored and ".venv/lib/site.py" in ignored
+    assert "app/config.py" not in ignored and "notes.txt" not in ignored
+
+    walked = {rel for _p, rel in _iter_files(repo, [])}
+    assert "app/config.py" in walked and "notes.txt" in walked
+    assert not walked & {".env", "pulumi_config.json", "infra/Pulumi.prd.yaml"}
+
+    findings, _notes = run_secret_scan(repo, taxonomy)
+    assert {f.file for f in findings} == {"app/config.py"}
+
+    skip = " ".join(_trivy_skip_args(repo))
+    assert "--skip-files" in skip and "pulumi_config.json" in skip
+    assert ".venv" in skip
+
+
+def test_without_git_every_file_stays_in_scope(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    from gap_analysis.inventory import git_ignore
+    from gap_analysis.scanners import run_secret_scan
+
+    plain = tmp_path / "plain"
+    _write(plain, ".gitignore", ".env\n")
+    _write(plain, ".env", 'OPENAI_API_KEY="sk-proj-AbC123DeF456GhI789JkL012MnO"\n')
+
+    assert git_ignore(plain).entries == []
+    findings, _notes = run_secret_scan(plain, taxonomy)
+    assert {f.file for f in findings} == {".env"}

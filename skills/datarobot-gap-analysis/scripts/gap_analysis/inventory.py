@@ -11,9 +11,12 @@ absent rather than guessed.
 from __future__ import annotations
 
 import fnmatch
+import functools
 import json
 import re
+import subprocess
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Iterator
 from typing import Any
@@ -115,8 +118,83 @@ def _excluded(rel: str, patterns: list[str]) -> bool:
     return any(glob_match(rel, pat) for pat in patterns)
 
 
+@dataclass(frozen=True)
+class GitIgnore:
+    """Untracked entries that git ignores under a root, as git reports them:
+    a file path, or a directory path covering everything beneath it."""
+
+    files: frozenset[str]
+    dirs: tuple[str, ...]
+
+    def __contains__(self, rel: str) -> bool:
+        return rel in self.files or any(
+            rel == d or rel.startswith(d + "/") for d in self.dirs
+        )
+
+    @property
+    def entries(self) -> list[str]:
+        return sorted(self.files | set(self.dirs))
+
+
+_NO_IGNORE = GitIgnore(frozenset(), ())
+
+
+@functools.lru_cache(maxsize=8)
+def _git_ignore_for(root: str) -> GitIgnore:
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                root,
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+                "-z",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return _NO_IGNORE
+    if proc.returncode != 0:
+        return _NO_IGNORE
+    entries = [e for e in proc.stdout.split("\0") if e]
+    # A directory entry already covers everything git lists beneath it.
+    dirs: list[str] = []
+    for entry in sorted(e.rstrip("/") for e in entries if e.endswith("/")):
+        if not any(entry.startswith(d + "/") for d in dirs):
+            dirs.append(entry)
+    files = {
+        e
+        for e in entries
+        if not e.endswith("/") and not any(e.startswith(d + "/") for d in dirs)
+    }
+    return GitIgnore(frozenset(files), tuple(dirs))
+
+
+def git_ignore(root: Path) -> GitIgnore:
+    """What git would never commit from `root`: local `.env` files, stack
+    configs, build output. A tracked file stays in scope even when a later
+    ignore rule matches it, because it is already in the repository.
+    Outside a git checkout nothing is ignored."""
+    return _git_ignore_for(str(root.resolve()))
+
+
+def is_ignored(root: Path, path: Path) -> bool:
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        return False
+    return rel in git_ignore(root)
+
+
 def _iter_files(root: Path, exclude: list[str]) -> Iterator[tuple[Path, str]]:
     resolved_root = root.resolve()
+    ignored = git_ignore(root)
     for p in root.rglob("*"):
         if not p.is_file():
             continue
@@ -125,7 +203,7 @@ def _iter_files(root: Path, exclude: list[str]) -> Iterator[tuple[Path, str]]:
         if p.is_symlink() and not _resolves_within(p, resolved_root):
             continue
         rel = p.relative_to(root).as_posix()
-        if _excluded(rel, exclude):
+        if rel in ignored or _excluded(rel, exclude):
             continue
         yield p, rel
 
@@ -251,6 +329,8 @@ def detect_python_versions(root: Path) -> dict[str, str]:
     for p in sorted(root.rglob("*")):
         if not p.is_file() or _SKIP_DIRS.intersection(p.parts):
             continue
+        if is_ignored(root, p):
+            continue
         rel = p.parent.relative_to(root)
         # Hidden directories (docs/.bin, backend/.internals) hold tooling, not components.
         if any(part.startswith(".") for part in rel.parts):
@@ -292,7 +372,7 @@ def extract_dependencies(root: Path) -> list[str]:
     deps: set[str] = set()
 
     for req in list(root.rglob("requirements*.txt")):
-        if _SKIP_DIRS.intersection(req.parts):
+        if _SKIP_DIRS.intersection(req.parts) or is_ignored(root, req):
             continue
         for line in req.read_text(errors="ignore").splitlines():
             line = line.strip()
@@ -305,7 +385,7 @@ def extract_dependencies(root: Path) -> list[str]:
     pyprojects = [
         pp
         for pp in root.rglob("pyproject.toml")
-        if not _SKIP_DIRS.intersection(pp.parts)
+        if not _SKIP_DIRS.intersection(pp.parts) and not is_ignored(root, pp)
     ]
     for pp in pyprojects if tomllib else []:
         try:

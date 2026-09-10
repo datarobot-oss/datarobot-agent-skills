@@ -1,6 +1,6 @@
 # The Assessment Framework
 
-The engine evaluates every submitted repository against a registry of 33 static
+The engine evaluates every submitted repository against a registry of 41 static
 conditions, defined in `scripts/taxonomy.yaml`, plus a dynamic regulatory layer
 whose checks come from the org's own DataRobot risk-management policy at run
 time (see below). Each static condition belongs to exactly one pillar and is
@@ -39,8 +39,8 @@ severity from `scripts/risk_management_mitigations.yaml` instead.
 Every condition also carries a `fix_type`, which drives what the remediation step
 offers:
 
-- **auto**: a deterministic codemod (secret → env var + `.gitignore` entry, model
-  pin, dependency bump, Python version pin, CI/test/logging scaffold).
+- **auto**: a deterministic codemod (secret → env var + `.gitignore` entry,
+  dependency bump, Python version pin, CI/test scaffold).
 - **assisted**: the report carries a self-contained prompt for the developer's own coding agent (citation, evidence, verification note, fix guidance, safety rails); the engine never applies these itself, because an agent with the repo open can read call sites and run tests where a one-shot edit cannot
 - **advisory**: written guidance only; no automated fix exists (these are also the
   findings most likely to be flagged `structural`, see

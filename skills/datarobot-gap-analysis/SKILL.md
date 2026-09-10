@@ -233,7 +233,9 @@ Two remediation surfaces, and the report says which applies to each finding:
 **Safety rails, never skip these:**
 - Fixes land on a new `gap-fixes/<timestamp>` branch, never the default branch. A
   GitHub URL is cloned to a scratch workspace; a local path is used as-is, so make
-  sure its working tree is clean before running `--fix`.
+  sure its working tree is clean before running `--fix`. Files git ignores in that
+  checkout (a local `.env`, stack configs, build output) are left out of every
+  layer and listed in the report's engine notes.
 - Nothing is pushed or opened as a PR without a **separate, explicit** approval after
   the developer has reviewed the diff.
 - After `--fix`, offer `--verify` to re-score the fix branch and show a before/after

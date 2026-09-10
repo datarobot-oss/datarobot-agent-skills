@@ -100,12 +100,13 @@ def run_worker(
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env
             )
-        except subprocess.TimeoutExpired as e:
-            # TimeoutExpired's message repeats argv, which carries the prompt.
+        except subprocess.TimeoutExpired:
+            # TimeoutExpired carries argv, and with it the prompt; a chained
+            # cause would put both back into any printed traceback.
             raise TimeoutError(
                 f"dr opencode run timed out after {timeout}s "
                 f"({len(message)} chars of prompt)"
-            ) from e
+            ) from None
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "").strip()[-500:]
             raise RuntimeError(f"dr opencode run exited {result.returncode}: {detail}")

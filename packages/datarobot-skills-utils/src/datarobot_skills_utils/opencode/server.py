@@ -13,6 +13,7 @@ import subprocess
 from collections.abc import Iterable
 import tempfile
 import time
+from typing import IO
 import urllib.error
 import urllib.request
 
@@ -83,6 +84,7 @@ class OpenCodeServer:
         self, models: Iterable[str] = (), reasoning: str | None = None
     ) -> None:
         self._proc: subprocess.Popen[str] | None = None
+        self._stderr: IO[str] | None = None
         self.workdir: str | None = None
         self.url: str | None = None
         # Attached sessions inherit the server's config, so reasoning effort
@@ -95,12 +97,17 @@ class OpenCodeServer:
         subprocess.run(
             ["git", "init", "-q", self.workdir], check=False, capture_output=True
         )
+        # Nothing reads the server's stderr for the rest of the run, so a pipe
+        # would eventually fill and block the child; a file never does.
+        self._stderr = tempfile.TemporaryFile(
+            mode="w+", encoding="utf-8", errors="replace"
+        )
         # `dr opencode serve` re-execs the real server twice; a fresh session puts
         # the whole chain in one process group so stop() can take it all down.
         self._proc = subprocess.Popen(
             ["dr", "opencode", "serve", "--port", str(port)],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=self._stderr,
             text=True,
             cwd=self.workdir,
             start_new_session=True,
@@ -110,11 +117,10 @@ class OpenCodeServer:
         deadline = time.monotonic() + _SERVE_STARTUP_SECONDS
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
-                stderr = (self._proc.stderr.read() if self._proc.stderr else "") or ""
-                raise RuntimeError(
-                    f"dr opencode serve exited {self._proc.returncode}: "
-                    f"{stderr.strip()[-500:]}"
-                )
+                returncode = self._proc.returncode
+                detail = self._stderr_tail()
+                self.stop()
+                raise RuntimeError(f"dr opencode serve exited {returncode}: {detail}")
             try:
                 with urllib.request.urlopen(f"{url}/global/health", timeout=2):
                     self.url = url
@@ -126,10 +132,22 @@ class OpenCodeServer:
             f"dr opencode serve did not become healthy within {_SERVE_STARTUP_SECONDS}s"
         )
 
+    def _stderr_tail(self, limit: int = 500) -> str:
+        if self._stderr is None:
+            return ""
+        try:
+            self._stderr.seek(0)
+            return self._stderr.read().strip()[-limit:]
+        except (OSError, ValueError):
+            return ""
+
     def stop(self) -> None:
         if self._proc is not None:
             terminate_process_tree(self._proc)
             self._proc = None
+        if self._stderr is not None:
+            self._stderr.close()
+            self._stderr = None
         if self.workdir is not None:
             shutil.rmtree(self.workdir, ignore_errors=True)
             self.workdir = None

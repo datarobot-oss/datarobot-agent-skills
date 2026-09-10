@@ -416,7 +416,10 @@ def main(argv: list[str] | None = None) -> int:
     def progress(msg: str) -> None:
         _status(f"  … {msg}")
 
-    _status(f"→ Cloning {args.repo} …")
+    if Path(args.repo).expanduser().is_dir():
+        _status(f"→ Using the local checkout at {args.repo} …")
+    else:
+        _status(f"→ Cloning {args.repo} …")
     try:
         workspace = clone_repo(args.repo, args.ref)
     except Exception as e:  # noqa: BLE001
