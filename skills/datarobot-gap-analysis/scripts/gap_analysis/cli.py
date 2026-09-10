@@ -183,7 +183,14 @@ def _run_fix(
         f"→ Applying fixes ({'selected: ' + ','.join(sorted(selected)) if selected else 'all auto-fixable'}) "
         "on a gap-fixes/* branch …"
     )
-    summary = fix(workspace, result, policy, ts, selected_ids=selected)
+    report_dir = (
+        Path(args.from_json).resolve().parent
+        if getattr(args, "from_json", None)
+        else Path(html_path).resolve().parent
+    )
+    summary = fix(
+        workspace, result, policy, ts, selected_ids=selected, report_dir=report_dir
+    )
     # A fix that landed no longer counts against the exit code; without
     # --verify this is the only way the run can reflect what it just did.
     applied = {
@@ -361,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         "--llm-timeout",
         type=int,
         default=None,
-        help="seconds per LLM call before it is abandoned (default 120; GAP_OPENCODE_TIMEOUT)",
+        help="seconds per LLM call before it is abandoned (default 600; GAP_OPENCODE_TIMEOUT)",
     )
     llm.add_argument(
         "--no-verify",
@@ -389,7 +396,10 @@ def main(argv: list[str] | None = None) -> int:
         "the report) instead of analyzing again; pairs with --fix",
     )
     ap.add_argument(
-        "--select", help="comma-separated condition ids to fix (default: all fixable)"
+        "--select",
+        help="comma-separated condition ids: with --fix, the fixes to apply "
+        "(default: all fixable); otherwise the Layer 2 checks to run, for "
+        "re-running ones that timed out (default: all)",
     )
     ap.add_argument(
         "--verify",
@@ -466,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
         llm_client=llm_client,
         progress=progress,
         settings=settings,
+        only=set(s.strip() for s in args.select.split(",")) if args.select else None,
     )
     _status(
         f"→ Analysis complete — {len(result.findings)} gaps "

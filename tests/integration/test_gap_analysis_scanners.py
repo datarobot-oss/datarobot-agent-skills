@@ -2144,3 +2144,298 @@ def test_without_git_every_file_stays_in_scope(
     assert git_ignore(plain).entries == []
     findings, _notes = run_secret_scan(plain, taxonomy)
     assert {f.file for f in findings} == {".env"}
+
+
+def test_generic_credential_pattern_ignores_identifiers_that_name_themselves() -> None:
+    from gap_analysis.scanners import _scan_text_for_secrets
+
+    misses = [
+        "--target 'urn:pulumi:*::*::datarobot:index/apiTokenCredential:ApiTokenCredential::*' \\",
+        "credential: ApiTokenCredential",
+        'api_key_type = "ApiKeyType::Managed"',
+        "secret_ref: SecretRef",
+    ]
+    for line in misses:
+        assert not _scan_text_for_secrets(line), line
+    hit = _scan_text_for_secrets('api_key = "Xk9#mP2vL8qR4tWn"')
+    assert hit and hit[0][3] == "Xk9#mP2vL8qR4tWn"
+
+
+def test_excerpt_keeps_header_definitions_and_hint_windows_with_real_numbers() -> None:
+    import re
+
+    from gap_analysis.detect import excerpt
+
+    body = ["import os", "", "def top():", "    return 1", ""]
+    body += [f"    filler_{i} = {i}" for i in range(300)]
+    body += ["def late():", "    resp = httpx.get(url)", "    return resp"]
+    body += [f"    tail_{i} = {i}" for i in range(100)]
+    text = "\n".join(body)
+
+    shown = excerpt(text, re.compile(r"httpx\.get"))
+
+    assert "1| import os" in shown
+    assert "306| def late():" in shown
+    assert "307|     resp = httpx.get(url)" in shown
+    assert "omitted" in shown
+    assert "filler_150" not in shown
+    assert len(shown) < len(text)
+
+    plain = excerpt(text, None)
+    assert "def late():" in plain and "filler_150" not in plain
+
+
+def test_run_condition_sends_large_files_as_excerpts_but_snaps_on_the_full_file(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from gap_analysis import detect
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    big = "import httpx\n\n" + "".join(f"x_{i} = {i}\n" for i in range(4000))
+    big += "def fetch(url):\n    return httpx.get(url)\n"
+    _write(tmp_path, "app/client.py", big)
+    assert len(big) > detect._EXCERPT_OVER_CHARS
+    cited = big.count("\n")  # the httpx.get line is the last one
+    detect_reply = json.dumps(
+        {
+            "condition_id": "REL-003",
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/client.py",
+                    "line": 3,
+                    "evidence": "return httpx.get(url)",
+                    "explanation": "no timeout",
+                    "confidence": "high",
+                }
+            ],
+        }
+    )
+    client = _ScriptedClient([detect_reply])
+    findings, skip, _notes = run_condition(
+        client,
+        tmp_path,
+        build_inventory(tmp_path),
+        Taxonomy.load().get("REL-003"),
+        "contract",
+        200_000,
+        Settings(verify=False),
+    )
+    sent = client.calls[0][1]
+    assert skip is None and findings
+    assert findings[0].line == cited
+    assert "EXCERPT" in sent and "x_2000 = 2000" not in sent
+
+
+def test_layer1_secret_findings_get_the_verification_pass(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.detect import verify_layer1_findings
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(tmp_path, "infra/Taskfile.yaml", "x: 1\n" * 10)
+    _write(tmp_path, "app/config.py", 'API_KEY = "Xk9#mP2vL8qR4tWn"\n')
+    tax = Taxonomy.load()
+    c003 = tax.get("SEC-003")
+    urn = Finding(
+        condition_id="SEC-003",
+        pillar="SEC",
+        severity=Severity.CRITICAL,
+        title=c003.title,
+        file="infra/Taskfile.yaml",
+        line=3,
+        evidence="Generic credential assignment (…l::*)",
+        layer=1,
+        fix_type="auto",
+    )
+    real = Finding(
+        condition_id="SEC-003",
+        pillar="SEC",
+        severity=Severity.CRITICAL,
+        title=c003.title,
+        file="app/config.py",
+        line=1,
+        evidence="Generic credential assignment (…4tWn)",
+        layer=1,
+        fix_type="auto",
+    )
+    other = Finding(
+        condition_id="REL-001",
+        pillar="REL",
+        severity=Severity.HIGH,
+        title="no tests",
+        layer=1,
+    )
+    client = _ScriptedClient(
+        [
+            json.dumps({"verdict": "refuted", "reason": "a Pulumi URN target pattern"}),
+            json.dumps({"verdict": "confirmed", "reason": "generated key literal"}),
+        ]
+    )
+
+    kept, notes = verify_layer1_findings(client, tmp_path, tax, [urn, real, other])
+
+    assert [f.condition_id for f in kept] == ["SEC-003", "REL-001"]
+    assert kept[0].file == "app/config.py" and kept[0].verified
+    assert any(
+        "dropped on verification: a Pulumi URN target pattern" in n for n in notes
+    )
+    assert any("1 secret finding(s) confirmed" in n and "1 dropped" in n for n in notes)
+
+
+def test_coverage_names_timed_out_checks_with_a_rerun_command() -> None:
+    from gap_analysis.report import coverage_lines
+
+    result = AnalysisResult()
+    result.skipped = [
+        ConditionSkip(
+            "SEC-011", "LLM/parse error: dr opencode run timed out after 300s"
+        ),
+        ConditionSkip("SEC-001", "relational pair incomplete"),
+        ConditionSkip(
+            "REL-003", "LLM/parse error: dr opencode run timed out after 300s"
+        ),
+    ]
+    lines = coverage_lines(result)
+    line = next(n for n in lines if "timed out" in n)
+    assert "NOT ASSESSED" in line
+    assert "--select SEC-011,REL-003 --llm-timeout 1200" in line
+
+
+def test_fix_holds_back_layer1_secret_findings_the_pass_did_not_confirm(
+    tmp_path: Path,
+) -> None:
+    from gap_analysis.remediate import remediate
+
+    repo = tmp_path / "repo"
+    _write(repo, "app/config.py", 'API_KEY = "Xk9#mP2vL8qR4tWn"\n')
+    _git_repo(repo, "")
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.email=t@x",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
+        check=True,
+    )
+
+    def finding(verified: bool, verification: str) -> Finding:
+        return Finding(
+            condition_id="SEC-003",
+            pillar="SEC",
+            severity=Severity.CRITICAL,
+            title="secret",
+            file="app/config.py",
+            line=1,
+            layer=1,
+            evidence="Generic credential assignment (…4tWn)",
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            verified=verified,
+            verification=verification,
+        )
+
+    policy = {
+        "remediation": {"allow_fix_types": ["auto"], "auto_apply_risk": ["plumbing"]}
+    }
+    unconfirmed = finding(False, "not verified (the second look could not run)")
+    summary = remediate(repo, [unconfirmed], policy, "t1")
+    assert summary["unverified"] == [
+        {"condition_id": "SEC-003", "file": "app/config.py"}
+    ]
+    assert not summary.get("applied")
+
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-"], check=False)
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "."], check=False)
+    offline = finding(False, "")
+    summary = remediate(repo, [offline], policy, "t2")
+    assert summary["unverified"] == []
+
+
+def test_run_condition_repairs_malformed_json_once(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(tmp_path, "app/client.py", "import httpx\n\nresp = httpx.get(url)\n")
+    broken = '{"condition_id": "REL-003", "status": "found", "findings": [{"file": "app/client.py", "line": 3, "evidence": "resp = httpx.get(url)", "explanation": "quote " unescaped'
+    repaired = json.dumps(
+        {
+            "condition_id": "REL-003",
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/client.py",
+                    "line": 3,
+                    "evidence": "resp = httpx.get(url)",
+                    "explanation": "no timeout",
+                }
+            ],
+        }
+    )
+    client = _ScriptedClient([broken, repaired])
+    findings, skip, _notes = run_condition(
+        client,
+        tmp_path,
+        build_inventory(tmp_path),
+        Taxonomy.load().get("REL-003"),
+        "contract",
+        200_000,
+        Settings(verify=False),
+    )
+    assert skip is None and len(findings) == 1
+    assert len(client.calls) == 2
+    assert "not valid JSON" in client.calls[1][1] and broken in client.calls[1][1]
+
+
+def test_ensure_clean_worktree_ignores_the_analysis_report_files(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _write(repo, "app.py", "x = 1\n")
+    _git_repo(repo, "")
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.email=t@x",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
+        check=True,
+    )
+    _write(repo, "gap-analysis-out/gap-report.md", "# report\n")
+    _write(repo, "gap-analysis-out/gap-report.html", "<p>report</p>\n")
+    _write(repo, "gap-analysis-out/gap-findings.json", "{}")
+    _write(repo, "gap-analysis-out/run.log", "log\n")
+    _write(repo, "docs/gap-report.html", "<p>elsewhere</p>\n")
+
+    ensure_clean_worktree(repo, repo / "gap-analysis-out")  # must not raise
+
+    with pytest.raises(
+        RuntimeError, match=r"uncommitted changes \(gap-analysis-out/run.log\)"
+    ):
+        ensure_clean_worktree(repo)
+
+    _write(repo, "app.py", "x = 2\n")
+    with pytest.raises(RuntimeError, match=r"uncommitted changes \(app.py\)"):
+        ensure_clean_worktree(repo, repo / "gap-analysis-out")

@@ -90,7 +90,7 @@ and listed in Engine Notes, and `--fix` refuses LLM findings that were not verif
 CLI flags: `--model` picks the model, `--effort` the reasoning effort (`max` for the
 highest value the model's provider accepts through the LLM Gateway, the default;
 `off`; or a literal value such as `low`), `--workers` the parallelism, `--llm-timeout`
-the per-call limit, and `--offline` skips every live catalog fetch. Each flag
+the per-call limit (default 600 s, since a broad check at max reasoning effort takes about five minutes on a large repo; a check that still times out is listed in the report's coverage block with a `--select <ids> --llm-timeout` command that reruns just those checks), and `--offline` skips every live catalog fetch. Each flag
 defaults to the matching `GAP_*` environment variable when one is set
 (`GAP_LLM_MODEL`, `GAP_LLM_EFFORT`, `GAP_WORKERS`, `GAP_OPENCODE_TIMEOUT`,
 `GAP_VERIFY`, `GAP_OFFLINE`), so CI can pin them once. The reasoning effort is injected into the
@@ -233,7 +233,8 @@ Two remediation surfaces, and the report says which applies to each finding:
 **Safety rails, never skip these:**
 - Fixes land on a new `gap-fixes/<timestamp>` branch, never the default branch. A
   GitHub URL is cloned to a scratch workspace; a local path is used as-is, so make
-  sure its working tree is clean before running `--fix`. Files git ignores in that
+  sure its working tree is clean before running `--fix` (the report files this
+  skill wrote into the repo are the one exception, they are ignored by that check). Files git ignores in that
   checkout (a local `.env`, stack configs, build output) are left out of every
   layer and listed in the report's engine notes.
 - Nothing is pushed or opened as a PR without a **separate, explicit** approval after

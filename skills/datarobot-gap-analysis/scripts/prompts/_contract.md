@@ -29,10 +29,18 @@ Rules for every detection prompt:
 - If a relational check is missing one of its required file groups, return
   `status: "skipped"` with a `skip_reason` rather than guessing.
 - Prefer precision over recall: if unsure, use `confidence: "low"` rather than omitting.
+- Return at most 10 findings, the most consequential first. Locations that share
+  a `root_cause` are ONE finding: cite the clearest location and name the others
+  in `evidence` ("same pattern in tools/b.py, tools/c.py"). Never enumerate every
+  parameter or every call site; the reply must stay short enough to finish.
 - `line` may be null when the finding is file-level (e.g. "no tests anywhere").
 - Files are shown with each line prefixed `N| `. Report that N as `line`, and put
   the exact code of that line (without the prefix) in `evidence` so it can be
   checked mechanically.
+- A large file may be shown as an EXCERPT: its header, its definition lines, and
+  windows around the lines that matter for this condition, with
+  `… lines A-B omitted …` markers. Line numbers are the file's real ones. Never
+  report on an omitted range; judge only the lines shown.
 - Read the enclosing block before claiming something is unguarded: a `try/except`,
   validator, or allowlist a few lines above the cited line means it is guarded.
 - A comment that explains why a guard exists ("timeout added to prevent a hang")

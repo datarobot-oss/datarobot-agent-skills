@@ -20,6 +20,10 @@ LLM execution through the DataRobot CLI's opencode runtime, extracted from the
   (merged over any existing value), so opencode sends `reasoning_effort` without
   the user's `opencode.json` being edited. "max" resolves to the highest value
   each provider accepts; models without a reasoning mode are left untouched.
+  The same injection sets `limit.output` (and `context`) per model family:
+  the DataRobot opencode config declares 8k output tokens for every model, and
+  with reasoning enabled the thinking counts against that, so a long JSON reply
+  is cut mid-string. `token_limits(model)` returns the pair used.
 - `UsageMeter(model, reasoning_effort)`: thread-safe token accounting across a
   run; set `phase` before a batch of calls and `record(meta)` after each, then
   `snapshot()` gives per-phase and total calls, input, output, reasoning and

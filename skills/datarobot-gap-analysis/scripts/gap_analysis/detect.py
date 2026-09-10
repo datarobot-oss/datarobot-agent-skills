@@ -10,6 +10,8 @@ so it has no LLM-prompt-based runner here.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import json
 import re
 import time
@@ -97,22 +99,88 @@ def layer2_files(
     ][:limit]
 
 
+@dataclass
+class FileView:
+    """One file as the model sees it: `shown` is numbered and may be an
+    excerpt, `raw` is the whole file for line snapping and verification."""
+
+    rel: str
+    raw: str
+    shown: str
+    excerpted: bool = False
+
+
+# A file over this size goes in as an excerpt rather than a head-truncated
+# blob: one 137 KB module otherwise crowds out every other file in the prompt
+# and pushes the call past its deadline.
+_EXCERPT_OVER_CHARS = 48_000
+_EXCERPT_HEAD_LINES = 40
+_EXCERPT_WINDOW_LINES = 20
+_EXCERPT_MAX_WINDOWS = 12
+_SKELETON_RE = re.compile(
+    r"^\s*(?:@\w|(?:async\s+)?def\s|class\s|import\s|from\s+\S+\s+import\s"
+    r"|export\s|function\s|(?:const|let|var)\s)"
+)
+
+
+def _hint_regex(cond: Condition) -> re.Pattern[str] | None:
+    if not cond.hint_patterns:
+        return None
+    try:
+        return re.compile("|".join(f"(?:{p})" for p in cond.hint_patterns))
+    except re.error:
+        return None
+
+
+def excerpt(raw: str, pattern: re.Pattern[str] | None) -> str:
+    """The header, every definition line, and windows around lines matching
+    `pattern`, numbered with the file's real line numbers and gaps marked."""
+    lines = raw.splitlines()
+    keep = set(range(1, min(_EXCERPT_HEAD_LINES, len(lines)) + 1))
+    keep.update(i for i, line in enumerate(lines, 1) if _SKELETON_RE.match(line))
+    windows = 0
+    if pattern is not None:
+        for i, line in enumerate(lines, 1):
+            if pattern.search(line):
+                lo, hi = max(1, i - _EXCERPT_WINDOW_LINES), i + _EXCERPT_WINDOW_LINES
+                keep.update(range(lo, min(len(lines), hi) + 1))
+                windows += 1
+                if windows >= _EXCERPT_MAX_WINDOWS:
+                    break
+    out: list[str] = []
+    prev = 0
+    for i in sorted(keep):
+        if i != prev + 1:
+            out.append(f"… lines {prev + 1}-{i - 1} omitted …")
+        out.append(f"{i}| {lines[i - 1]}")
+        prev = i
+    if prev < len(lines):
+        out.append(f"… lines {prev + 1}-{len(lines)} omitted …")
+    text = "\n".join(out)
+    if len(text) > _EXCERPT_OVER_CHARS:
+        text = text[:_EXCERPT_OVER_CHARS] + "\n…[truncated]…"
+    return text
+
+
 def _gather_files(
     workspace: Path, inventory: dict[str, Any], cond: Condition, max_bytes: int
-) -> list[tuple[str, str]]:
+) -> list[FileView]:
     rels = layer2_files(inventory, cond, _MAX_FILES)
-    out = []
+    pattern = _hint_regex(cond)
+    out: list[FileView] = []
     for rel in rels:
         p = workspace / rel
         try:
             data = p.read_text(errors="ignore")
         except Exception:
             continue
-        if len(data.encode("utf-8", "ignore")) > max_bytes:
-            data = data[:max_bytes] + "\n…[truncated]…"
         # NUL bytes survive errors="ignore" but cannot travel in a subprocess
         # argv (the opencode worker path) and break most JSON transports.
-        out.append((rel, data.replace("\x00", "")))
+        data = data.replace("\x00", "")
+        if len(data) > min(_EXCERPT_OVER_CHARS, max_bytes):
+            out.append(FileView(rel, data, excerpt(data, pattern), excerpted=True))
+        else:
+            out.append(FileView(rel, data, number_lines(data)))
     return out
 
 
@@ -140,11 +208,8 @@ _HINT_MAX_PER_FILE = 4
 def hint_hits(workspace: Path, inventory: dict[str, Any], cond: Condition) -> list[str]:
     """`path:line: text` grep hits for the condition's hint_patterns across the
     repo (tests excluded), so the model sees evidence outside its file cap."""
-    if not cond.hint_patterns:
-        return []
-    try:
-        pattern = re.compile("|".join(f"(?:{p})" for p in cond.hint_patterns))
-    except re.error:
+    pattern = _hint_regex(cond)
+    if pattern is None:
         return []
     excluded = list(_TEST_PATHS)
     if cond.runtime_only:
@@ -169,12 +234,21 @@ def hint_hits(workspace: Path, inventory: dict[str, Any], cond: Condition) -> li
     return hits[:_HINT_MAX_LINES]
 
 
+_EXCERPT_TAG = (
+    " (EXCERPT: header, definitions and windows around relevant lines; "
+    "real line numbers, gaps marked)"
+)
+
+
 def _build_user_message(
-    files: list[tuple[str, str]],
+    files: list[FileView],
     hints: list[str] | None = None,
     extra_sections: list[tuple[str, str]] | None = None,
 ) -> str:
-    parts = [f"=== FILE: {rel} ===\n{number_lines(content)}" for rel, content in files]
+    parts = [
+        f"=== FILE: {v.rel}{_EXCERPT_TAG if v.excerpted else ''} ===\n{v.shown}"
+        for v in files
+    ]
     if hints:
         parts.append(
             "=== REPO-WIDE EVIDENCE HINTS (grep hits from files not shown above) ===\n"
@@ -363,6 +437,70 @@ def verify_item(
     return verdict if verdict in ("confirmed", "weakened") else "confirmed"
 
 
+_LAYER1_VERIFIED = ("SEC-002", "SEC-003", "SEC-004", "SEC-006")
+
+
+def verify_layer1_findings(
+    client: LLMClient,
+    workspace: Path,
+    taxonomy: Taxonomy,
+    findings: list[Finding],
+    progress: Callable[[str], None] | None = None,
+) -> tuple[list[Finding], list[str]]:
+    """The second look Layer 2 gets, applied to the secret scanner's findings.
+
+    A regex cannot tell a generated key from a resource URN or a type name;
+    the model, shown the region, can. Refuted findings are dropped and named
+    in the notes; a finding the pass could not check keeps a `verification`
+    note so --fix holds it back.
+    """
+    todo = {
+        id(f)
+        for f in findings
+        if f.layer == 1 and f.condition_id in _LAYER1_VERIFIED and f.file
+    }
+    if not todo:
+        return findings, []
+    if progress:
+        progress(f"▶ Layer 1 (secret verification): {len(todo)} finding(s)…")
+    kept: list[Finding] = []
+    notes: list[str] = []
+    confirmed = dropped = 0
+    for f in findings:
+        cond = taxonomy.get(f.condition_id) if id(f) in todo else None
+        if cond is None:
+            kept.append(f)
+            continue
+        item: dict[str, Any] = {
+            "file": f.file,
+            "line": f.line,
+            "evidence": f.evidence,
+            "explanation": f.explanation,
+        }
+        verdict = verify_item(client, workspace, cond, item, {}, [])
+        if verdict == "refuted":
+            dropped += 1
+            notes.append(
+                f"Layer 1: {f.condition_id} at {f.file}:{f.line} dropped on "
+                f"verification: {item.get('_verify_reason') or 'refuted'}"
+            )
+            continue
+        f.verified = bool(item.get("_verified"))
+        confirmed += int(f.verified)
+        f.verification = str(item.get("_verify_reason") or "") or (
+            "" if f.verified else "not verified (the second look could not run)"
+        )
+        line = item.get("line")
+        if isinstance(line, int) and line > 0:
+            f.line = line
+        kept.append(f)
+    notes.append(
+        f"Layer 1: {confirmed} secret finding(s) confirmed by a second verification "
+        f"pass, {dropped} dropped as refuted."
+    )
+    return kept, notes
+
+
 def _context_sections(cond: Condition, offline: bool) -> list[tuple[str, str]]:
     if cond.context != "llm_gateway_catalog":
         return []
@@ -419,7 +557,7 @@ def run_condition(
     user = _build_user_message(files, hints, _context_sections(cond, settings.offline))
     try:
         raw = client.complete(system, user)
-        result = parse_json(raw)
+        result = _parse_or_repair(client, raw)
     except Exception as e:  # noqa: BLE001
         return [], ConditionSkip(cond.id, f"LLM/parse error: {brief_error(e)}"), []
     status = result.get("status", "found")
@@ -433,7 +571,7 @@ def run_condition(
         return [], None, []
 
     notes: list[str] = []
-    raw_files = dict(files)
+    raw_files = {v.rel: v.raw for v in files}
     items = list(result.get("findings", []) or [])
     kept = []
     for item in items:
@@ -460,6 +598,27 @@ def run_condition(
         items = survivors
     result = dict(result, findings=items)
     return _result_to_findings(cond, result), None, notes
+
+
+_REPAIR_SYSTEM = (
+    "You fix malformed JSON. Return ONLY the corrected JSON object: escape quotes "
+    "and newlines inside strings, close unterminated strings and brackets, and "
+    "change nothing else."
+)
+
+
+def _parse_or_repair(client: LLMClient, raw: str) -> dict[str, Any]:
+    """Parse the model's JSON; on a syntax error ask the model to repair its
+    own reply once. A repair call carries only the broken reply, so it is far
+    cheaper than re-running a detection over the same files."""
+    try:
+        return parse_json(raw)
+    except ValueError as e:
+        fixed = client.complete(
+            _REPAIR_SYSTEM,
+            f"This reply was not valid JSON ({brief_error(e)}):\n\n{raw}",
+        )
+        return parse_json(fixed)
 
 
 def _merge_locations(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -491,6 +650,7 @@ def run_layer2(
     progress: Callable[[str], None] | None = None,
     max_workers: int = _DEFAULT_MAX_WORKERS,
     settings: Settings = DEFAULTS,
+    only: set[str] | None = None,
 ) -> tuple[list[Finding], list[ConditionSkip], list[str]]:
     notes: list[str] = []
     if client is None:
@@ -502,7 +662,7 @@ def run_layer2(
         return [], no_client_skips, notes
     contract = (paths.prompts_dir() / "_contract.md").read_text()
     workspace = Path(workspace)
-    conds = taxonomy.by_layer(2)
+    conds = [c for c in taxonomy.by_layer(2) if only is None or c.id in only]
     if progress:
         progress(
             f"▶ Layer 2 (LLM reasoning): starting {len(conds)} checks "
@@ -532,8 +692,10 @@ def run_layer2(
             done += 1
             results[cond.id] = future.result()
             if progress:
+                skip = results[cond.id][1]
+                state = "timed out" if skip and "timed out" in skip.reason else "done"
                 progress(
-                    f"Layer 2 (LLM reasoning): {cond.id} done [{done}/{len(conds)}]"
+                    f"Layer 2 (LLM reasoning): {cond.id} {state} [{done}/{len(conds)}]"
                 )
 
     # Aggregate in taxonomy order so reports stay deterministic across runs.

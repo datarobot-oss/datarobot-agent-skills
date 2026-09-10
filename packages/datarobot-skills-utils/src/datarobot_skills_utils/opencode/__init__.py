@@ -10,7 +10,7 @@ SQLite lock contention under parallelism. Auth rides on the CLI's own login.
 """
 
 from .events import parse_events, strip_code_fences
-from .reasoning import max_reasoning_effort, resolve_effort, worker_env
+from .reasoning import max_reasoning_effort, resolve_effort, token_limits, worker_env
 from .server import OpenCodeServer, dr_available
 from .usage import UsageMeter
 from .worker import WORKER_PREAMBLE, build_run_command, run_worker, sanitize_message
@@ -22,6 +22,7 @@ __all__ = [
     "build_run_command",
     "dr_available",
     "max_reasoning_effort",
+    "token_limits",
     "parse_events",
     "resolve_effort",
     "run_worker",

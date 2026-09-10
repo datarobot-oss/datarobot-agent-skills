@@ -160,6 +160,9 @@ conditions:
     remediation: Validate/parameterize inputs; use safe loaders; isolate untrusted content from instructions.
     fix_type: assisted
     fix_strategy: prompts/fix-sec-011-injection.md
+    hint_patterns:
+      - "subprocess|os\\.system|os\\.popen|shell=True|\\beval\\(|\\bexec\\("
+      - "pickle\\.loads?|yaml\\.load\\(|marshal\\.loads?|execute\\(f|SELECT .*\\+|requests\\.\\w+\\(f"
 
   - id: SEC-012
     pillar: SEC
@@ -175,6 +178,9 @@ conditions:
     remediation: Add schema validation (e.g. pydantic) at trust boundaries.
     fix_type: assisted
     fix_strategy: prompts/fix-sec-012-validation.md
+    hint_patterns:
+      - "BaseModel|@validator|field_validator|model_validate|jsonschema|TypeAdapter"
+      - "@tool|@mcp\\.tool|def \\w*tool|Field\\("
 
   - id: SEC-013
     pillar: SEC
@@ -190,6 +196,9 @@ conditions:
     remediation: Enforce TLS with verification; encrypt data at rest; drop weak algorithms.
     fix_type: assisted
     fix_strategy: prompts/fix-sec-013-encryption.md
+    hint_patterns:
+      - "verify\\s*=\\s*False|CERT_NONE|check_hostname\\s*=\\s*False|http://"
+      - "hashlib\\.(md5|sha1)|Fernet|encrypt|ssl_context|create_default_context"
 
   # ─────────────────────────────────────────────────────────────────────
   # Pillar 1 — Identity (IDN)
@@ -325,6 +334,8 @@ conditions:
     remediation: Add input/output guardrails (moderation, PII filter, jailbreak checks).
     fix_type: assisted
     fix_strategy: prompts/fix-aig-001-guardrails.md
+    hint_patterns:
+      - "guard|moderation|jailbreak|toxicity|pii|redact|OutputParser|output_validator"
     structural: true # guardrails belong in the agent architecture, not a point patch
 
   - id: AIG-002
@@ -340,6 +351,8 @@ conditions:
     remediation: Pin the model to a dated/versioned id.
     fix_type: assisted
     fix_strategy: prompts/fix-aig-002-model-pinning.md
+    hint_patterns:
+      - "model\\s*[:=]\\s*[\"']|model_id|model_name|MODEL\\b|gpt-|claude-|gemini-|llama"
     context: llm_gateway_catalog
 
   - id: AIG-003
@@ -563,6 +576,8 @@ conditions:
     remediation: Add fallback/degraded-mode handling for dependency failures.
     fix_type: advisory
     fix_strategy: null
+    hint_patterns:
+      - "fallback|circuit|degrad|except .*(Timeout|ConnectionError)|retry"
 
   # ─────────────────────────────────────────────────────────────────────
   # Pillar 4 — IT Conformance (ITA) — all driven by policy YAML
