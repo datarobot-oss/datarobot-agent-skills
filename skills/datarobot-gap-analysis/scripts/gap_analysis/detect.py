@@ -416,7 +416,7 @@ def verify_item(
     except Exception as e:  # noqa: BLE001
         item["_verify_reason"] = f"verification failed ({brief_error(e)})"
         return "unverifiable"
-    verdict = str(verdict_obj.get("verdict", "confirmed")).lower()
+    verdict = str(verdict_obj.get("verdict", "")).lower()
     reason = str(verdict_obj.get("reason") or "")
     line = verdict_obj.get("line")
     if isinstance(line, int) and line > 0:
@@ -427,6 +427,12 @@ def verify_item(
     if verdict == "refuted":
         item["_verify_reason"] = reason
         return "refuted"
+    if verdict not in ("confirmed", "weakened"):
+        item["_verify_reason"] = (
+            f"the second look returned no usable verdict ({verdict or 'none given'})"
+            + (f": {reason}" if reason else "")
+        )
+        return "unverifiable"
     if verdict == "weakened":
         item["_weakened"] = bool(verdict_obj.get("severity_overstated"))
         item["confidence"] = "low" if item.get("confidence") == "low" else "medium"
@@ -434,7 +440,7 @@ def verify_item(
     elif reason:
         item["_verify_reason"] = reason
     item["_verified"] = True
-    return verdict if verdict in ("confirmed", "weakened") else "confirmed"
+    return verdict
 
 
 _LAYER1_VERIFIED = ("SEC-002", "SEC-003", "SEC-004", "SEC-006")

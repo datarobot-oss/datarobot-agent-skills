@@ -24,6 +24,15 @@ from .models import Severity
 _FIX_RISK_VALUES = {"plumbing", "business_logic", "none"}
 
 
+def _derive_structural(declared: bool, fix_type: str, severity: Severity) -> bool:
+    """Whether a condition flags an architectural deficiency that cannot be
+    surgically patched: declared as such, or advisory at high/critical
+    severity, where by definition no safe in-place fix exists."""
+    return declared or (
+        fix_type == "advisory" and severity in (Severity.CRITICAL, Severity.HIGH)
+    )
+
+
 def _derive_fix_risk(fix_type: str) -> str:
     if fix_type == "auto":
         return "plumbing"
@@ -48,6 +57,8 @@ class Condition:
     fix_strategy: str | None
     fix_risk: str = "none"
     structural: bool = False
+    # Kept so a severity override can re-derive `structural` without losing it.
+    structural_declared: bool = False
     # "repo": the question is answered once for the whole codebase (is there
     # tracing anywhere?), so multiple hits collapse into one finding listing
     # its locations. "file": every hit is its own finding (an injection sink).
@@ -68,13 +79,9 @@ class Condition:
         fix_risk = d.get("fix_risk") or _derive_fix_risk(fix_type)
         if fix_risk not in _FIX_RISK_VALUES:
             fix_risk = _derive_fix_risk(fix_type)
-        # A condition is "structural" when it flags an architectural deficiency that
-        # cannot be surgically patched (declared explicitly, or any advisory finding at
-        # high/critical severity — those have no safe in-place fix).
         severity = Severity(d.get("severity", "medium"))
-        structural = bool(d.get("structural", False)) or (
-            fix_type == "advisory" and severity in (Severity.CRITICAL, Severity.HIGH)
-        )
+        declared = bool(d.get("structural", False))
+        structural = _derive_structural(declared, fix_type, severity)
         return cls(
             id=d["id"],
             pillar=d["pillar"],
@@ -90,6 +97,7 @@ class Condition:
             fix_strategy=d.get("fix_strategy"),
             fix_risk=fix_risk,
             structural=structural,
+            structural_declared=declared,
             scope=str(d.get("scope", "file")),
             runtime_only=bool(d.get("runtime_only", False)),
             hint_patterns=list(d.get("hint_patterns", []) or []),
@@ -123,3 +131,6 @@ class Taxonomy:
             c = self._by_id.get(cid)
             if c:
                 c.severity = Severity(sev)
+                c.structural = _derive_structural(
+                    c.structural_declared, c.fix_type, c.severity
+                )

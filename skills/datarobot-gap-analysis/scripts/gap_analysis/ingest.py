@@ -41,9 +41,31 @@ def _validate_remote_url(url: str) -> None:
         )
 
 
+_COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$", re.I)
+
+
 def _validate_ref(ref: str) -> None:
     if ref.startswith("-"):
         raise ValueError(f"'{ref}' is not a valid branch/tag/commit ref.")
+
+
+def _checkout_commit(dest: str, ref: str) -> None:
+    """Fetch and check out a bare commit sha in an already-cloned `dest`.
+
+    `git clone --branch` takes a branch or tag only, so a sha has to be
+    fetched after the clone.
+    """
+    for args in (
+        ["fetch", "--depth", "1", "origin", ref],
+        ["checkout", "--detach", "FETCH_HEAD"],
+    ):
+        proc = subprocess.run(
+            ["git", "-C", dest, *args], capture_output=True, text=True, timeout=600
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"could not check out commit {ref}: {proc.stderr.strip()[-300:]}"
+            )
 
 
 def clone_repo(url: str, ref: str | None = None, dest: str | None = None) -> str:
@@ -60,8 +82,9 @@ def clone_repo(url: str, ref: str | None = None, dest: str | None = None) -> str
         _validate_ref(ref)
 
     dest = dest or tempfile.mkdtemp(prefix="gap-analysis-")
+    commit = bool(ref) and bool(_COMMIT_RE.match(str(ref)))
     args = ["git", "clone", "--depth", "1"]
-    if ref:
+    if ref and not commit:
         args += ["--branch", ref]
     # `--` stops git from ever re-interpreting the URL/dest as options, even
     # if a future change loosens `_validate_remote_url`.
@@ -71,4 +94,6 @@ def clone_repo(url: str, ref: str | None = None, dest: str | None = None) -> str
         # Never leak a token in error text.
         safe = re.sub(r"x-access-token:[^@]+@", "x-access-token:***@", proc.stderr)
         raise RuntimeError(f"git clone failed: {safe.strip()}")
+    if commit and ref:
+        _checkout_commit(dest, ref)
     return dest

@@ -5,6 +5,7 @@
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,15 @@ SCRIPTS = (
     / "scripts"
 )
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(
+    0,
+    str(
+        Path(__file__).resolve().parents[2]
+        / "packages"
+        / "datarobot-skills-utils"
+        / "src"
+    ),
+)
 
 from gap_analysis import scanners  # noqa: E402
 from gap_analysis.detect import _result_to_findings, layer2_files  # noqa: E402
@@ -2439,3 +2449,194 @@ def test_ensure_clean_worktree_ignores_the_analysis_report_files(
     _write(repo, "app.py", "x = 2\n")
     with pytest.raises(RuntimeError, match=r"uncommitted changes \(app.py\)"):
         ensure_clean_worktree(repo, repo / "gap-analysis-out")
+
+
+def test_verification_only_confirms_on_an_explicit_verdict(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.detect import verify_item, verify_layer1_findings
+    from gap_analysis.taxonomy import Taxonomy
+
+    tax = Taxonomy.load()
+    cond = tax.get("REL-003")
+    raw = {"app.py": "import httpx\n\nresp = httpx.get(url)\n"}
+
+    for reply in (
+        json.dumps({"reason": "no verdict field at all"}),
+        json.dumps({"verdict": "unverifiable", "reason": "could not tell"}),
+        json.dumps({"verdict": "probably fine"}),
+    ):
+        item: dict = {"file": "app.py", "line": 3, "evidence": "resp = httpx.get(url)"}
+        verdict = verify_item(_ScriptedClient([reply]), tmp_path, cond, item, raw, [])
+        assert verdict == "unverifiable", reply
+        assert not item.get("_verified"), reply
+        assert "no usable verdict" in item["_verify_reason"]
+
+    _write(tmp_path, "config.py", 'API_KEY = "Xk9#mP2vL8qR4tWn"\n')
+    secret = Finding(
+        condition_id="SEC-003",
+        pillar="SEC",
+        severity=Severity.CRITICAL,
+        title="secret",
+        file="config.py",
+        line=1,
+        layer=1,
+        evidence="Generic credential assignment (…4tWn)",
+        fix_type="auto",
+    )
+    kept, _notes = verify_layer1_findings(
+        _ScriptedClient([json.dumps({"verdict": "unsure"})]), tmp_path, tax, [secret]
+    )
+    assert len(kept) == 1 and not kept[0].verified
+    assert "no usable verdict" in kept[0].verification
+
+
+def test_gateway_catalog_is_published_only_once_it_is_complete(monkeypatch) -> None:
+    import json
+    import threading
+
+    from gap_analysis import conformance
+
+    monkeypatch.setattr(conformance, "_GATEWAY_MODELS", None)
+    monkeypatch.setattr(conformance.shutil, "which", lambda _n: "/usr/bin/dr")
+    started = threading.Event()
+
+    class _Proc:
+        stdout = json.dumps({"llms": [{"model": "anthropic/claude-sonnet-4-6"}]})
+
+    def slow_run(*_a, **_k):
+        started.set()
+        time.sleep(0.3)
+        return _Proc()
+
+    monkeypatch.setattr(conformance.subprocess, "run", slow_run)
+    seen: list[list[str]] = []
+    first = threading.Thread(
+        target=lambda: seen.append(conformance.llm_gateway_models())
+    )
+    first.start()
+    assert started.wait(2)
+    second = threading.Thread(
+        target=lambda: seen.append(conformance.llm_gateway_models())
+    )
+    second.start()
+    first.join(5)
+    second.join(5)
+
+    assert seen == [["anthropic/claude-sonnet-4-6"]] * 2, (
+        "a concurrent caller must wait for the fetch, not read an empty sentinel"
+    )
+
+
+def test_required_library_patterns_match_declared_dependencies() -> None:
+    from gap_analysis.conformance import _matched_by, check_conformance
+    from gap_analysis.taxonomy import Taxonomy
+
+    assert _matched_by("datarobot*", {"datarobot", "httpx"})
+    assert not _matched_by("datarobot*", {"httpx"})
+
+    tax = Taxonomy.load()
+    inventory = {"dependencies": ["datarobot-pulumi-utils", "httpx"], "files": []}
+    policy = {"it_admin": {"libraries": {"require": ["datarobot*"]}}}
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert not [f for f in findings if "Required library" in f.explanation]
+
+    policy = {"it_admin": {"libraries": {"require": ["pandas*"]}}}
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert [f for f in findings if "Required library 'pandas*'" in f.explanation]
+
+
+def test_python_floor_treats_3_11_and_3_11_0_as_equal() -> None:
+    from gap_analysis.conformance import _ver_tuple, check_conformance
+    from gap_analysis.taxonomy import Taxonomy
+
+    assert _ver_tuple("3.11") == _ver_tuple("3.11.0")
+    assert _ver_tuple("3.9") < _ver_tuple("3.11")
+
+    tax = Taxonomy.load()
+    policy = {"it_admin": {"python": {"min_version": "3.11.0"}}}
+    inventory = {"python_version": "3.11", "dependencies": [], "files": []}
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert not [f for f in findings if f.condition_id == "ITA-001"]
+
+    inventory["python_version"] = "3.10"
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert [f for f in findings if f.condition_id == "ITA-001"]
+
+
+def test_severity_override_re_derives_the_structural_flag() -> None:
+    from gap_analysis.taxonomy import Condition, Taxonomy
+
+    advisory = Condition.from_dict(
+        {
+            "id": "X-001",
+            "pillar": "SEC",
+            "layer": 2,
+            "severity": "high",
+            "title": "t",
+            "fix_type": "advisory",
+        }
+    )
+    declared = Condition.from_dict(
+        {
+            "id": "X-002",
+            "pillar": "SEC",
+            "layer": 2,
+            "severity": "high",
+            "title": "t",
+            "fix_type": "auto",
+            "structural": True,
+        }
+    )
+    assert advisory.structural and declared.structural
+    tax = Taxonomy([advisory, declared])
+
+    tax.apply_severity_overrides({"X-001": "low", "X-002": "low"})
+
+    assert not advisory.structural, "an advisory finding lowered to low is patchable"
+    assert declared.structural, "an explicit structural: true survives an override"
+
+    tax.apply_severity_overrides({"X-001": "critical"})
+    assert advisory.structural
+
+
+def test_clone_uses_branch_for_names_and_a_fetch_for_commit_shas(monkeypatch) -> None:
+    from gap_analysis import ingest
+
+    calls: list[list[str]] = []
+
+    class _Ok:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(
+        ingest.subprocess, "run", lambda args, **_k: calls.append(args) or _Ok()
+    )
+
+    ingest.clone_repo("https://github.com/o/r", ref="main", dest="/tmp/x")
+    assert calls[0][:6] == ["git", "clone", "--depth", "1", "--branch", "main"]
+    assert len(calls) == 1
+
+    calls.clear()
+    sha = "9f2c1ab7d3e4f5061728394a5b6c7d8e9f001122"
+    ingest.clone_repo("https://github.com/o/r", ref=sha, dest="/tmp/x")
+    assert "--branch" not in calls[0], "git clone --branch rejects a bare commit sha"
+    assert calls[1] == ["git", "-C", "/tmp/x", "fetch", "--depth", "1", "origin", sha]
+    assert calls[2] == ["git", "-C", "/tmp/x", "checkout", "--detach", "FETCH_HEAD"]
+
+
+def test_process_teardown_falls_back_where_there_are_no_process_groups(
+    monkeypatch,
+) -> None:
+    import os as os_mod
+    import subprocess
+
+    from datarobot_skills_utils.opencode import server
+
+    proc = subprocess.Popen(["sh", "-c", "sleep 300"], start_new_session=True)
+    monkeypatch.delattr(os_mod, "killpg", raising=False)
+
+    assert server._own_group(proc) is None
+    server.terminate_process_tree(proc, timeout=2)
+    assert proc.poll() is not None, "the direct child is still stopped"

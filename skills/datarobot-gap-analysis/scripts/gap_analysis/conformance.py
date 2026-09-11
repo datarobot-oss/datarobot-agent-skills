@@ -9,6 +9,7 @@ import fnmatch
 import json
 import shutil
 import subprocess
+import threading
 
 from typing import Any
 
@@ -16,15 +17,25 @@ from .models import Finding
 from .taxonomy import Condition, Taxonomy
 
 
-def _ver_tuple(v: str) -> tuple[int, ...]:
-    return tuple(int(x) for x in v.split(".") if x.isdigit())
+def _ver_tuple(v: str, width: int = 3) -> tuple[int, ...]:
+    """A comparable version tuple, zero-padded: "3.11" and "3.11.0" are equal,
+    where the raw split tuples would order the shorter one first."""
+    parts = tuple(int(x) for x in v.split(".") if x.isdigit())
+    return parts + (0,) * max(0, width - len(parts))
 
 
 def _glob_any(value: str, patterns: list[str]) -> bool:
+    """True when `value` matches any of the patterns (allow/deny lists)."""
     return any(fnmatch.fnmatch(value, p) for p in patterns)
 
 
+def _matched_by(pattern: str, values: set[str] | list[str]) -> bool:
+    """True when any value matches `pattern` (a require entry is the pattern)."""
+    return any(fnmatch.fnmatch(v, pattern) for v in values)
+
+
 _GATEWAY_MODELS: list[str] | None = None
+_GATEWAY_LOCK = threading.Lock()
 
 
 def llm_gateway_models(offline: bool = False) -> list[str]:
@@ -33,27 +44,35 @@ def llm_gateway_models(offline: bool = False) -> list[str]:
     Empty when the CLI is missing, unauthenticated, slow, or `offline`. Models
     the gateway serves are governed by the platform, so they count as approved
     alongside the policy allowlist.
+
+    Layer 2 workers and Layer 3 call this from different threads, so the cache
+    is only published once the fetch has finished: an empty list means "asked
+    and got nothing", never "asking right now".
     """
     global _GATEWAY_MODELS
     if _GATEWAY_MODELS is not None:
         return _GATEWAY_MODELS
-    _GATEWAY_MODELS = []
-    dr = shutil.which("dr")
-    if dr and not offline:
-        try:
-            proc = subprocess.run(
-                [dr, "llm-gateway", "list", "--output-format", "json"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            data = json.loads(proc.stdout or "{}")
-            _GATEWAY_MODELS = sorted(
-                {m.get("model") for m in data.get("llms", []) if m.get("model")}
-            )
-        except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError):
-            _GATEWAY_MODELS = []
-    return _GATEWAY_MODELS
+    with _GATEWAY_LOCK:
+        if _GATEWAY_MODELS is not None:
+            return _GATEWAY_MODELS
+        models: list[str] = []
+        dr = shutil.which("dr")
+        if dr and not offline:
+            try:
+                proc = subprocess.run(
+                    [dr, "llm-gateway", "list", "--output-format", "json"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                data = json.loads(proc.stdout or "{}")
+                models = sorted(
+                    {m.get("model") for m in data.get("llms", []) if m.get("model")}
+                )
+            except (OSError, subprocess.TimeoutExpired, ValueError, AttributeError):
+                models = []
+        _GATEWAY_MODELS = models
+        return _GATEWAY_MODELS
 
 
 def _gateway_serves(model_id: str, catalog: list[str]) -> bool:
@@ -120,7 +139,7 @@ def check_conformance(
                     )
                 )
         for req in require:
-            if req not in deps and not _glob_any(req, list(deps)):
+            if req not in deps and not _matched_by(req, deps):
                 findings.append(
                     _mk(
                         cond,
