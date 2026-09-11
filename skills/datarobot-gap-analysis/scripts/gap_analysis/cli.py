@@ -98,8 +98,11 @@ def _make_llm_client(settings: Settings) -> OpenCodeWorkerClient | None:
     atexit.register(server.stop)
     # A SIGTERM (timeout, orchestrator kill) must still run atexit hooks, or the
     # private server outlives the run.
-    for sig in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(sig, lambda signum, _frame: sys.exit(128 + signum))
+    # SIGHUP does not exist on Windows.
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            signal.signal(sig, lambda signum, _frame: sys.exit(128 + signum))
     effort = server.efforts.get(settings.model)
     client = OpenCodeWorkerClient(
         url,

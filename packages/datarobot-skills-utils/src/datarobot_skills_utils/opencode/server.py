@@ -32,18 +32,33 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
+def _own_group(proc: subprocess.Popen[str]) -> int | None:
+    """The child's private process group, or None when there is not one to
+    signal: Windows has no process groups here, and a child that shares the
+    caller's group must never be signalled as a group, since that would take
+    the caller down with it.
+    """
+    if not hasattr(os, "getpgid") or not hasattr(os, "killpg"):
+        return None
+    try:
+        pgid = os.getpgid(proc.pid)
+        return None if pgid == os.getpgid(0) else pgid
+    except (ProcessLookupError, PermissionError, OSError):
+        return None
+
+
 def terminate_process_tree(proc: subprocess.Popen[str], timeout: float = 5.0) -> None:
     """Stop `proc` and every descendant started with `start_new_session=True`.
 
     Terminating only the direct child leaves re-exec'd grandchildren running,
-    which is how orphaned servers accumulate across runs.
+    which is how orphaned servers accumulate across runs. Where the platform
+    has no process groups, only the direct child can be stopped.
     """
-    try:
-        pgid = os.getpgid(proc.pid)
-    except (ProcessLookupError, PermissionError):
-        pgid = None
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        if pgid is not None and pgid != os.getpgid(0):
+    pgid = _own_group(proc)
+    # Windows has no SIGKILL; there, both rounds end in TerminateProcess.
+    hard = getattr(signal, "SIGKILL", signal.SIGTERM)
+    for sig in (signal.SIGTERM, hard):
+        if pgid is not None:
             try:
                 os.killpg(pgid, sig)
             except (ProcessLookupError, PermissionError):
@@ -55,20 +70,21 @@ def terminate_process_tree(proc: subprocess.Popen[str], timeout: float = 5.0) ->
         except subprocess.TimeoutExpired:
             continue
         break
-    if pgid is not None and pgid != os.getpgid(0):
-        # Grandchildren can outlive the wrapper by a moment; give the group a
-        # few polls to drain before SIGKILL is left as the last word above.
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                os.killpg(pgid, 0)
-            except (ProcessLookupError, PermissionError):
-                return
-            time.sleep(0.1)
+    if pgid is None:
+        return
+    # Grandchildren can outlive the wrapper by a moment; give the group a
+    # few polls to drain before the hard signal is left as the last word above.
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         try:
-            os.killpg(pgid, signal.SIGKILL)
+            os.killpg(pgid, 0)
         except (ProcessLookupError, PermissionError):
-            pass
+            return
+        time.sleep(0.1)
+    try:
+        os.killpg(pgid, hard)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 class OpenCodeServer:
