@@ -114,7 +114,7 @@ def main() -> None:
             if inspect.isawaitable(result):
                 result = asyncio.run(result)  # type: ignore[arg-type]
             if hasattr(result, "model_dump"):
-                result = result.model_dump()
+                result = result.model_dump(mode="json")
             return_value = result
         elif hasattr(fn, "invoke"):
             return_value = fn.invoke(call_args)
