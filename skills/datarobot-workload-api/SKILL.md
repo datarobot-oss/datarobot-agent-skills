@@ -24,7 +24,9 @@ Run container images as managed, autoscalable services on DataRobot. One skill, 
 
 ## Prerequisites
 
-`DATAROBOT_ENDPOINT` (must end in `/api/v2`) and `DATAROBOT_API_TOKEN` must be set. Run `datarobot-setup` if not. Auth header: `Authorization: Bearer ${DATAROBOT_API_TOKEN}`. The Workload API is not in the `datarobot` Python SDK — call REST directly.
+Auth works like `gh`: `dr auth login` (or an existing `.env`/`~/.config/datarobot/drconfig.yaml`) persists credentials, so `dr workload`/`dr artifact` commands need no per-run env vars — verify with `dr auth check` before assuming setup is required. Run `datarobot-setup` only if that check fails.
+
+`DATAROBOT_ENDPOINT` (must end in `/api/v2`) and `DATAROBOT_API_TOKEN` are only required as **explicit env vars** for the raw-REST path below (bundled `scripts/`, `httpx`/`curl` calls) or CI, since those don't go through the CLI's stored auth. Auth header: `Authorization: Bearer ${DATAROBOT_API_TOKEN}`. The Workload API is not in the `datarobot` Python SDK — call REST directly.
 
 **Transport.** Examples use Python `httpx` (`pip install httpx`). The API is plain HTTP, so equivalent calls work via `curl` or the `pulumi-datarobot` Pulumi provider declaratively. The skill teaches the model; transport is interchangeable.
 
