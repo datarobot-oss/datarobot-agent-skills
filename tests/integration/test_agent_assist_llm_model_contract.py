@@ -22,53 +22,30 @@ Nothing here touches the network. Catalog payloads are fixtures.
 
 from __future__ import annotations
 
-import importlib
-import sys
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 
+import list_llm_models
 import pytest
-
-SCRIPTS_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "skills/datarobot-agent-assist/agent-assist-build/scripts"
+import rehearsal
+import setup_template
+from agent_assist_contracts import (
+    API_MODEL,
+    CANONICAL,
+    CLI_ENTRY,
+    DEPLOYED_CATALOG_ENTRY,
+    DEPLOYED_PLACEHOLDER,
+    DEPLOYED_ROUTING_KEYS,
+    GATEWAY_CATALOG_ENTRY,
+    LLM_ID,
+    map_deployed_listing,
+    map_gateway_listing,
+    spec_fields_from_listing_entry,
 )
-sys.path.insert(0, str(SCRIPTS_DIR))
 
-list_llm_models = importlib.import_module("list_llm_models")
-rehearsal = importlib.import_module("rehearsal")
-setup_template = importlib.import_module("setup_template")
-
-# Shaped as /genai/llmgw/catalog/ returns them.
-GATEWAY_ENTRY = {
-    "llmId": "azure-openai-gpt-5",
-    "model": "azure/gpt-5-2025-08-07",
-    "name": "Azure OpenAI GPT-5",
-    "provider": "Azure OpenAI",
-    "contextSize": 400000,
-    "isActive": True,
-}
-
-# Shaped as `dr llm-gateway list --output-format json` returns them.
-CLI_ENTRY = {
-    "id": "azure-openai-gpt-5",
-    "name": "Azure OpenAI GPT-5",
-    "provider": "Azure OpenAI",
-    "model": "azure/gpt-5-2025-08-07",
-    "source": "gateway",
-}
-
-DEPLOYED_ENTRY = {
-    "id": "6a43eb5f10dbecadbebc5b2b",
-    "label": "DocsBot (stg)",
-    "status": "active",
-    "model": {"targetType": "TextGeneration"},
-}
-
-LLM_ID = "azure-openai-gpt-5"
-API_MODEL = "azure/gpt-5-2025-08-07"
-CANONICAL = "datarobot/azure/gpt-5-2025-08-07"
+DEPLOYED_ENTRY = DEPLOYED_CATALOG_ENTRY
+GATEWAY_ENTRY = GATEWAY_CATALOG_ENTRY
 
 
 @pytest.fixture
@@ -79,9 +56,7 @@ def no_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _gateway_model() -> dict[str, Any]:
-    mapped = list_llm_models._map_gateway_catalog_entry(GATEWAY_ENTRY)
-    assert mapped is not None
-    return dict(mapped)
+    return map_gateway_listing(list_llm_models)
 
 
 # -- the listing ----------------------------------------------------------------
@@ -112,15 +87,46 @@ def test_cli_and_rest_mappers_agree() -> None:
 
 
 def test_deployed_entry_uses_the_prefixed_placeholder() -> None:
-    mapped = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
-    assert mapped is not None
-    assert mapped["llm_default_model"] == "datarobot/datarobot-deployed-llm"
+    mapped = map_deployed_listing(list_llm_models)
+    assert mapped["llm_default_model"] == DEPLOYED_PLACEHOLDER
     assert mapped["api_model"] == "datarobot-deployed-llm"
 
 
 def test_prefixing_is_idempotent() -> None:
     once = list_llm_models.ensure_datarobot_prefix(API_MODEL)
     assert list_llm_models.ensure_datarobot_prefix(once) == once
+
+
+@pytest.mark.parametrize(
+    ("listing_entry", "expected_fields"),
+    [
+        pytest.param(
+            map_gateway_listing(list_llm_models),
+            {"model": CANONICAL},
+            id="gateway",
+        ),
+        pytest.param(
+            map_deployed_listing(list_llm_models),
+            {
+                "model": DEPLOYED_PLACEHOLDER,
+                "llm_deployment_id": DEPLOYED_ENTRY["id"],
+            },
+            id="deployed",
+        ),
+    ],
+)
+def test_listing_entry_maps_to_spec_fields(
+    listing_entry: dict[str, Any],
+    expected_fields: dict[str, str],
+) -> None:
+    recorded = spec_fields_from_listing_entry(listing_entry)
+    assert recorded == expected_fields
+    assert recorded["model"] == listing_entry["llm_default_model"]
+    if listing_entry["source"] == "gateway":
+        assert recorded["model"] not in {
+            listing_entry["id"],
+            listing_entry["api_model"],
+        }
 
 
 # -- the table ------------------------------------------------------------------
@@ -130,15 +136,12 @@ def test_table_leads_with_the_env_value_not_the_llm_id() -> None:
     header, _rule, row = list_llm_models.format_as_table(
         [_gateway_model()]
     ).splitlines()
-    # Read the first column rather than searching the whole table: the llmId is a
-    # substring of nothing here today, but that is an accident of this fixture.
     assert header.split("|")[0].strip() == "LLM_DEFAULT_MODEL"
     assert row.split("|")[0].strip() == CANONICAL
 
 
 def test_table_hides_the_deployment_column_when_all_gateway() -> None:
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
-    assert deployed is not None
+    deployed = map_deployed_listing(list_llm_models)
     gateway_only = list_llm_models.format_as_table([_gateway_model()])
     mixed = list_llm_models.format_as_table([_gateway_model(), deployed])
     assert "Deployment ID" not in gateway_only
@@ -184,7 +187,6 @@ def catalog(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 
 
 def test_catalog_lookup_wins_on_spelling(tmp_path: Path, catalog: Any) -> None:
-    """With credentials, the catalog is the authority on the exact spelling."""
     catalog([_gateway_model()])
     assert (
         setup_template.canonical_gateway_model(API_MODEL.upper(), tmp_path) == CANONICAL
@@ -192,8 +194,6 @@ def test_catalog_lookup_wins_on_spelling(tmp_path: Path, catalog: Any) -> None:
 
 
 def test_catalog_overrules_the_slash_heuristic(tmp_path: Path, catalog: Any) -> None:
-    """The no-slash rule is a fallback for when the catalog cannot be read. A
-    catalog free to register a bare litellm name must not be second-guessed."""
     bare_name = dict(_gateway_model())
     bare_name["api_model"] = "gpt-4o"
     bare_name["llm_default_model"] = "datarobot/gpt-4o"
@@ -213,21 +213,16 @@ def test_model_absent_from_catalog_is_refused(tmp_path: Path, catalog: Any) -> N
 def test_catalog_present_still_refuses_a_bare_llm_id(
     tmp_path: Path, catalog: Any
 ) -> None:
-    """A readable catalog does not excuse a no-slash llmId. It matches no api_model
-    and is not a provider path, so it is refused rather than prefixed and written."""
     catalog([_gateway_model()])
     assert setup_template.canonical_gateway_model(LLM_ID, tmp_path) is None
 
 
 def test_unreachable_catalog_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
-    """An instance this process cannot reach must not stop a scaffold."""
     catalog(RuntimeError("connection refused"))
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
 
 
 def test_connection_reset_does_not_block_setup(tmp_path: Path, catalog: Any) -> None:
-    """urlopen lets raw OSError subclasses past the fetch helper's URLError
-    handling, so catching RuntimeError alone let a reset kill the whole setup."""
     catalog(ConnectionResetError(54, "Connection reset by peer"))
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
 
@@ -235,12 +230,8 @@ def test_connection_reset_does_not_block_setup(tmp_path: Path, catalog: Any) -> 
 def test_empty_gateway_points_at_a_deployed_llm(
     tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """An on-prem instance with the gateway off must get a way forward, not a
-    refusal followed by an empty list of alternatives."""
     catalog([])
-
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
-
     err = capsys.readouterr().err
     assert "--llm-deployment-id" in err
     assert "Available:" not in err
@@ -249,12 +240,8 @@ def test_empty_gateway_points_at_a_deployed_llm(
 def test_disabled_gateway_is_treated_as_empty(
     tmp_path: Path, catalog: Any, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A 404 from the catalog endpoint is the instance answering that it has no
-    gateway, not a failure to reach it. Passing it as unverified would hand back a
-    model the instance cannot serve."""
     http_404 = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 404, "", {}, None)  # type: ignore[arg-type]
     catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=http_404)
-
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) is None
     assert "--llm-deployment-id" in capsys.readouterr().err
 
@@ -262,23 +249,12 @@ def test_disabled_gateway_is_treated_as_empty(
 def test_forbidden_catalog_is_not_a_disabled_gateway(
     tmp_path: Path, catalog: Any
 ) -> None:
-    """A 403 says this token may not read the catalog, not that the gateway is
-    absent. Refusing on it sends a user to a deployed LLM they do not need."""
     forbidden = HTTPError("https://x/api/v2/genai/llmgw/catalog/", 403, "", {}, None)  # type: ignore[arg-type]
     catalog(RuntimeError("Failed to fetch LLM Gateway catalog"), cause=forbidden)
-
     assert setup_template.canonical_gateway_model(API_MODEL, tmp_path) == CANONICAL
 
 
-def test_env_file_carries_the_canonical_value(tmp_path: Path) -> None:
-    ok, _ = setup_template.create_env_file(tmp_path, CANONICAL)
-    assert ok
-    assert f'LLM_DEFAULT_MODEL="{CANONICAL}"' in (tmp_path / ".env").read_text()
-
-
 def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> None:
-    """The value lands in a double-quoted line the template's loader re-parses, so
-    a quote closes it early and the rest becomes further keys."""
     ok, _ = setup_template.create_env_file(tmp_path, 'a/b" \nFOO="bar')
     assert not ok
     assert not (tmp_path / ".env").exists()
@@ -288,60 +264,106 @@ def test_env_file_refuses_a_value_that_would_break_the_line(tmp_path: Path) -> N
 def test_env_file_rejects_each_dangerous_character(
     tmp_path: Path, bad_char: str
 ) -> None:
-    """Each break-out character is refused on its own, not only in the combined
-    value above, so no single one can slip through the guard."""
     ok, _ = setup_template.create_env_file(tmp_path, f"datarobot/azure/gpt-5{bad_char}")
     assert not ok
     assert not (tmp_path / ".env").exists()
 
 
 def test_env_file_rejects_an_empty_model(tmp_path: Path) -> None:
-    """An empty LLM_DEFAULT_MODEL is not a usable value; the '+' guard rejects it."""
     ok, _ = setup_template.create_env_file(tmp_path, "")
     assert not ok
     assert not (tmp_path / ".env").exists()
 
 
 def test_env_file_accepts_every_shape_the_real_catalog_uses(tmp_path: Path) -> None:
-    """':' and '@' are load-bearing, so the guard cannot be tightened to [\\w/-]."""
     for model in (
         "datarobot/bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0",
         "datarobot/vertex_ai/claude-haiku-4-5@20251001",
         "datarobot/azure/gpt-5-2025-08-07",
-        "datarobot/datarobot-deployed-llm",
+        DEPLOYED_PLACEHOLDER,
     ):
         ok, msg = setup_template.create_env_file(tmp_path, model)
         assert ok, f"{model} rejected: {msg}"
 
 
-# -- the docs the agent copies from ---------------------------------------------
+@pytest.mark.parametrize(
+    ("llm_model", "deployment_id", "expected_fragments", "forbidden_fragments"),
+    [
+        pytest.param(
+            CANONICAL,
+            "",
+            [f'LLM_DEFAULT_MODEL="{CANONICAL}"'],
+            DEPLOYED_ROUTING_KEYS,
+            id="gateway",
+        ),
+        pytest.param(
+            DEPLOYED_PLACEHOLDER,
+            DEPLOYED_ENTRY["id"],
+            [
+                f'LLM_DEFAULT_MODEL="{DEPLOYED_PLACEHOLDER}"',
+                f'LLM_DEPLOYMENT_ID="{DEPLOYED_ENTRY["id"]}"',
+                'INFRA_ENABLE_LLM="deployed_llm.py"',
+                'USE_DATAROBOT_LLM_GATEWAY="0"',
+            ],
+            (),
+            id="deployed",
+        ),
+    ],
+)
+def test_create_env_file_writes_correct_routing_keys(
+    tmp_path: Path,
+    llm_model: str,
+    deployment_id: str,
+    expected_fragments: list[str],
+    forbidden_fragments: tuple[str, ...],
+) -> None:
+    ok, _ = setup_template.create_env_file(tmp_path, llm_model, deployment_id)
+    assert ok
+    contents = (tmp_path / ".env").read_text()
+    for fragment in expected_fragments:
+        assert fragment in contents
+    for fragment in forbidden_fragments:
+        assert fragment not in contents
 
 
-# Every provider the LLM Gateway catalog routes through. An example naming
-# anything else is addressing a provider that does not exist, which is how
-# `google/gemini-2.5-pro-preview-05-06` shipped: the real entry is under
-# `vertex_ai/`. Whether a given model is still listed cannot be checked without
-# the network, so this is the shape check, not a membership check.
-CATALOG_PROVIDERS = {"anthropic", "azure", "bedrock", "vertex_ai"}
+@pytest.mark.parametrize(
+    ("llm_model", "deployment_id", "llm_base_url"),
+    [
+        pytest.param(
+            DEPLOYED_PLACEHOLDER, "", "", id="placeholder_without_deployment_id"
+        ),
+        pytest.param(DEPLOYED_PLACEHOLDER, "null", "", id="invalid_deployment_id_null"),
+        pytest.param(
+            DEPLOYED_PLACEHOLDER,
+            "not-a-valid-deployment-id",
+            "",
+            id="invalid_deployment_id_non_hex",
+        ),
+        pytest.param(
+            "external-model",
+            DEPLOYED_ENTRY["id"],
+            "https://llm.example.invalid/v1",
+            id="external_llm_with_deployment_id",
+        ),
+    ],
+)
+def test_setup_and_run_deployed_path_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    llm_model: str,
+    deployment_id: str,
+    llm_base_url: str,
+) -> None:
+    if llm_base_url:
+        monkeypatch.setenv("AGENT_ASSIST_LLM_MODEL_NAME", "external-model")
+        monkeypatch.setenv("AGENT_ASSIST_LLM_API_KEY", "test-key")
+        monkeypatch.setenv("AGENT_ASSIST_LLM_BASE_URL", llm_base_url)
 
-
-def test_spec_examples_use_canonical_model_names() -> None:
-    """The worked examples are what an agent imitates, so they have to be shaped
-    like values setup_template.py accepts: prefixed, and naming a real provider."""
-    examples = (SCRIPTS_DIR.parent / "references/agent-spec-examples.md").read_text()
-    models = [
-        line.split(":", 1)[1].strip().strip("\"'")
-        for line in examples.splitlines()
-        if line.startswith("model:")
-    ]
-    assert models, "no model: lines found in agent-spec-examples.md"
-    for model in models:
-        assert model.startswith("datarobot/"), f"{model} is missing the prefix"
-        bare = list_llm_models.normalize_gateway_model(model)
-        # A catalog model is a provider path. A bare name is an llmId.
-        assert "/" in bare, model
-        provider = bare.split("/", 1)[0]
-        assert provider in CATALOG_PROVIDERS, f"{model} names no real provider"
+    assert (
+        setup_template.setup_and_run(llm_model, tmp_path, deployment_id, llm_base_url)
+        == 1
+    )
+    assert not (tmp_path / ".env").exists()
 
 
 # -- the rehearsal still resolves it --------------------------------------------
@@ -355,23 +377,15 @@ def _model_catalog(monkeypatch: pytest.MonkeyPatch, entries: list[Any]) -> Any:
 def test_rehearsal_resolves_the_canonical_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Writing the prefixed form must not cost an exact match in the rehearsal."""
     model_catalog = _model_catalog(monkeypatch, [_gateway_model()])
-
     resolved, substituted = model_catalog.pick_available(CANONICAL)
-
     assert substituted is False
-    # Still the bare form on the wire, whatever spelling the spec carried.
     assert resolved.api_model == API_MODEL
 
 
 def test_rehearsal_keeps_the_provider_guard_on_a_prefixed_spec(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A near-miss spec falls through to slug matching, which reads a provider off
-    the front of the request. Left unprefixed, every request reads as provider
-    'datarobot', the cross-provider guard stops applying, and the rehearsal runs
-    against whichever model happens to be first in the catalog."""
     anthropic = list_llm_models._map_gateway_catalog_entry(
         {
             "llmId": "anthropic-1p-claude-sonnet-4-5",
@@ -382,12 +396,9 @@ def test_rehearsal_keeps_the_provider_guard_on_a_prefixed_spec(
         }
     )
     model_catalog = _model_catalog(monkeypatch, [_gateway_model(), anthropic])
-
-    # Dots where the catalog has dashes, so the exact match misses on purpose.
     resolved, substituted = model_catalog.pick_available(
         "datarobot/anthropic/claude-sonnet-4.5-20250929"
     )
-
     assert substituted is True
     assert resolved.api_model == "anthropic/claude-sonnet-4-5-20250929"
 
@@ -396,9 +407,7 @@ def test_model_was_substituted_false_for_exact_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model_catalog = _model_catalog(monkeypatch, [_gateway_model()])
-
     expected, _ = model_catalog.pick_available(CANONICAL)
-
     assert rehearsal._model_was_substituted(model_catalog, CANONICAL, expected) is False
 
 
@@ -415,10 +424,8 @@ def test_model_was_substituted_true_after_runtime_fallback(
         }
     )
     model_catalog = _model_catalog(monkeypatch, [_gateway_model(), anthropic])
-
     expected, _ = model_catalog.pick_available(CANONICAL)
     fallback, _ = model_catalog.pick_available(CANONICAL, exclude_id=expected.id)
-
     assert rehearsal._model_was_substituted(model_catalog, CANONICAL, expected) is False
     assert rehearsal._model_was_substituted(model_catalog, CANONICAL, fallback) is True
 
@@ -426,12 +433,10 @@ def test_model_was_substituted_true_after_runtime_fallback(
 def test_agent_model_was_substituted_uses_deployment_id_from_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    deployed = list_llm_models._map_deployed_entry(DEPLOYED_ENTRY)
-    assert deployed is not None
+    deployed = map_deployed_listing(list_llm_models)
     model_catalog = _model_catalog(monkeypatch, [_gateway_model(), deployed])
-
     config = {
-        "requested_model": "datarobot/datarobot-deployed-llm",
+        "requested_model": DEPLOYED_PLACEHOLDER,
         "requested_deployment_id": deployed["id"],
     }
     fallback, _ = model_catalog.pick_available(
@@ -439,7 +444,6 @@ def test_agent_model_was_substituted_uses_deployment_id_from_config(
         prefer_source="deployed",
         exclude_id=deployed["id"],
     )
-
     assert (
         rehearsal._agent_model_was_substituted(model_catalog, config, fallback) is True
     )
