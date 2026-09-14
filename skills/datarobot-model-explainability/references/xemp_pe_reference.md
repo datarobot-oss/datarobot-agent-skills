@@ -28,9 +28,13 @@ All must be satisfied before calling `PredictionExplanations.create()`:
    job.wait_for_completion()
    ```
 
-2. **PredictionExplanationsInitialization created** (one-time per model):
+2. **PredictionExplanationsInitialization created** (one-time per model; `.create()` returns an
+   async `Job` — wait for it):
    ```python
-   dr.PredictionExplanationsInitialization.create(project_id=project_id, model_id=model_id)
+   init_job = dr.PredictionExplanationsInitialization.create(
+       project_id=project_id, model_id=model_id
+   )
+   init_job.wait_for_completion()
    ```
 
 3. **Scoring dataset uploaded** to the AI Catalog (`dataset_id` passed to `.create()`).
@@ -47,9 +51,10 @@ One-time initialization. Safe to call multiple times; check first with `.get()`.
 
 Check whether initialization exists. Raises `ClientError` if not found.
 
-### `PredictionExplanationsInitialization.delete(project_id, model_id)`
+### `PredictionExplanationsInitialization.get(project_id, model_id).delete()`
 
-Delete initialization (forces re-initialization on next `.create()`).
+Delete initialization (forces re-initialization on next `.create()`). `.delete()` is an instance
+method with no arguments — retrieve the instance with `.get()` first.
 
 ---
 
@@ -70,9 +75,12 @@ Submit an async job to compute explanations on a dataset. Call
 | `threshold_low` | float | None | Only explain rows with prediction <= this |
 | `mode` | `TopPredictionsMode` or `ClassListMode` | predicted class only | For multiclass/clustering: which classes to explain |
 
-### `PredictionExplanations.create_on_training_data(project_id, model_id, ...)`
+### `PredictionExplanations.create_on_training_data(project_id, model_id, dataset_id, ...)`
 
-Same as `.create()` but runs on the model's training data instead of an uploaded dataset.
+Same as `.create()` but runs on the model's training data. `dataset_id` (a prediction dataset ID)
+is still a required positional argument. For OTV and time series projects,
+`datetime_prediction_partition` is also required, limited to the first backtest (`"0"`) or
+`"holdout"`.
 
 ### `PredictionExplanations.get(project_id, prediction_explanations_id)`
 
@@ -99,7 +107,7 @@ Each row from `.get_rows()` has:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `row_index` | int | Position in dataset |
+| `row_id` | int | Position in dataset |
 | `prediction` | float | Model's prediction for this row |
 | `adjusted_prediction` | float | Exposure-adjusted prediction (if applicable) |
 | `prediction_explanations` | list[dict] | Feature explanations |
@@ -109,7 +117,7 @@ Each entry in `prediction_explanations`:
 ```python
 {
     "feature": "income",  # feature name
-    "featureValue": "85000",  # actual value of the feature
+    "feature_value": "85000",  # actual value of the feature
     "strength": 0.18,  # XEMP contribution (positive = increases prediction)
     "label": "income",  # display label
     "qualitative_strength": "++",  # qualitative indicator

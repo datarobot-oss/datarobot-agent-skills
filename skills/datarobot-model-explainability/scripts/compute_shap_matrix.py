@@ -48,7 +48,10 @@ def compute_shap_matrix(
 
     print(f"  Features:   {len(result.columns)}")
     print(f"  Rows:       {len(result.matrix)}")
-    print(f"  Base value: {result.base_value:.6f}")
+    # base_value arrives as a single-element list (e.g. [0.4653255]) despite the float annotation
+    bv: Any = result.base_value
+    bv = bv[0] if isinstance(bv, (list, tuple)) else bv
+    print(f"  Base value: {float(bv):.6f}")
     print(f"  Link:       {result.link_function}")
 
     if output_path:

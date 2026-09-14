@@ -50,6 +50,11 @@ def configure_otel():
     # Metrics — direct exporter config (no env vars!)
     # Use a shorter export_interval_millis for serverless/short-lived workers.
     # Default 60s may miss metrics on Agent Engine playground or single-turn requests.
+    preferred_temporality = {
+        Counter: AggregationTemporality.DELTA,
+        Histogram: AggregationTemporality.DELTA,
+        ObservableCounter: AggregationTemporality.DELTA,
+    }
     metric_exporter = OTLPMetricExporter(
         endpoint=f"{endpoint}/v1/metrics",
         headers=headers,

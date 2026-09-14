@@ -37,17 +37,18 @@ Go to: **Settings → Secrets and variables → Actions → Secrets tab → New 
 
 Both secrets are required. The workflows will not run without them.
 
-### 4. (Optional) Set a custom CI stack name
+### 4. (Optional) Set repository variables
 
-The `cd.yml` workflow deploys to a Pulumi stack named `ci` by default. To use a different name, add a repository variable:
+The `cd.yml` workflow deploys to a Pulumi stack named `ci` by default, and all workflows default to the US multi-tenant endpoint `https://app.datarobot.com/api/v2`. To override either, add a repository variable:
 
 **Settings → Secrets and variables → Actions → Variables tab → New repository variable**
 
 | Variable name | Value |
 |---------------|-------|
 | `PULUMI_STACK_CI_NAME` | Your preferred stack name (e.g. `ci`, `prod`, `staging`) |
+| `DATAROBOT_ENDPOINT` | Your DataRobot API endpoint — needed for EU (e.g. `https://app.eu.datarobot.com/api/v2`) or on-prem installs; defaults to `https://app.datarobot.com/api/v2` |
 
-Skip this step if `ci` is fine.
+Skip this step if the `ci` stack name and the default US endpoint are fine.
 
 ## How to trigger deployments
 

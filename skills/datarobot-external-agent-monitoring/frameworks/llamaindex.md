@@ -50,15 +50,13 @@ The auto-instrumentor captures:
 opentelemetry-instrumentation-llamaindex
 ```
 
-## Alternative: LlamaIndex Built-in Callback
+## Alternative: OpenInference Callback
 
-LlamaIndex also has a built-in OpenTelemetry callback handler. If the auto-instrumentor package is unavailable or incompatible:
+LlamaIndex also supports an OpenInference callback handler, shipped as a separate integration package (`pip install llama-index-callbacks-openinference`). If the auto-instrumentor package is unavailable or incompatible:
 
 ```python
+from llama_index.callbacks.openinference import OpenInferenceCallbackHandler
 from llama_index.core.callbacks import CallbackManager
-from llama_index.core.callbacks.open_inference_callback import (
-    OpenInferenceCallbackHandler,
-)
 
 callback_manager = CallbackManager([OpenInferenceCallbackHandler()])
 # Pass callback_manager to your index/query engine

@@ -1,11 +1,11 @@
 # Schema reference (non-spec content)
 
-The public OpenAPI spec at `${DATAROBOT_ENDPOINT}/openapi.yaml` is the source of truth for all schemas and endpoints. **The spec is ~5 MB — never load it whole into agent context.** Save once and extract targeted slices with `yq`:
+The public OpenAPI spec at `https://docs.datarobot.com/en/docs/api/reference/public-api/openapi.yaml` is the source of truth for all schemas and endpoints — the endpoint-served `${DATAROBOT_ENDPOINT}/openapi.yaml` does **not** include the workload/artifact namespace. **The spec is ~6 MB — never load it whole into agent context.** Save once and extract targeted slices with `yq`:
 
 ```bash
-curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
+curl -sS "https://docs.datarobot.com/en/docs/api/reference/public-api/openapi.yaml" -o /tmp/wapi-spec.yaml
 yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml     # schema body
-yq '.paths."/workloads/{workloadId}/".patch'    /tmp/wapi-spec.yaml     # endpoint params
+yq '.paths."/api/v2/workloads/{workload_id}".patch' /tmp/wapi-spec.yaml   # endpoint params
 yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i otel   # discover names
 ```
 
@@ -23,7 +23,7 @@ The only path a regular user has is **`GET /account/info/`**, which returns the 
 {"limits": {"maxConcurrentWorkloads": 50, "maxWorkloadReplicas": 3}}
 ```
 
-Or run `python scripts/check_limits.py`. Value `0` means unlimited; any non-zero is enforced. Exceeding either limit on `POST /workloads/`, `PATCH /workloads/{id}/settings/`, or autoscaling `maxCount` returns **HTTP 403** with body `{"detail": "Requested replicas (N) exceeds the maximum allowed (M)."}`. Both fields were added in spec v2.46.
+Or run `python scripts/check_limits.py`. Value `0` means unlimited; any non-zero is enforced. Exceeding either limit on `POST /workloads/`, `PATCH /workloads/{id}/settings/`, or autoscaling `maxReplicaCount` returns **HTTP 403** with body `{"detail": "Requested replicas (N) exceeds the maximum allowed (M)."}`. Both fields were added in spec v2.46.
 
 ## Public-spec path-key prefix quirk
 
@@ -40,7 +40,7 @@ When grepping `spec["paths"]`, try both shapes if the first miss. Runtime calls 
 
 ## Credential types and `key` field names
 
-Used in `environmentVars` entries shaped as `{"source": "dr-credential", "name": "<env var>", "drCredentialId": "<id>", "key": "<key below>"}`. This table aggregates fields the agent would otherwise have to look up by grepping each `*Credentials` schema individually.
+Used in `environmentVars` entries shaped as `{"source": "dr-credential", "name": "<env var>", "drCredentialId": "<id>", "key": "<key below>"}`. This table aggregates fields the agent would otherwise have to look up by grepping the `CredentialsBody` variants individually.
 
 | `credentialType` | Available `key` field names |
 |---|---|
@@ -55,13 +55,13 @@ Used in `environmentVars` entries shaped as `{"source": "dr-credential", "name":
 | `databricks_access_token_account` | `databricksAccessToken` |
 | `snowflake_key_pair_user_account` | `privateKeyStr`, `passphrase`, `user` |
 
-For any credential type not listed: fetch the spec and look up `<Type>Credentials` (e.g. `S3Credentials`, `BasicCredentials`, `OAuthCredentials`) — the schema's properties are the valid `key` values.
+For any credential type not listed: fetch the spec and look up the `CredentialsBody` schema (the `POST /credentials/` request body — present in both the endpoint-served and docs-site specs); find the `oneOf` variant whose `credentialType` enum matches — its property names (excluding `name`, `description`, `credentialType`) are the stored field names and thus the valid `key` values. Do **not** use the `<Type>CredentialsFields` schemas — those are inline data-source credential shapes whose field names can differ from the stored keys.
 
 ## Schemas where the read model and write model diverge
 
 The spec defines these but the naming/divergence is non-obvious:
 
-- **Artifacts:** the read body is `ArtifactFormatted`; the PATCH write body is `UpdateArtifactRequest` and **does NOT accept `spec.type`** (that's a read-only discriminator). The `MultiContainerArtifactSpec` schema covers the `spec` object both ways.
-- **Artifact creation:** there is **no** `CreateArtifactRequest` schema. Artifacts are created either inline via `CreateWorkloadRequest.artifact`, or by cloning via `ArtifactCloneRequest` (note the word order — not `CloneArtifactRequest`).
+- **Artifacts:** the read body is `ArtifactFormatted`; the PATCH write body is `UpdateArtifactRequest` and **does NOT accept `spec.type`** (that's a read-only discriminator). The `spec` object is a discriminated union on `type` — look up `ServiceArtifactSpec`, `NimArtifactSpec`, or `AgentArtifactSpec` (`mcp` maps to `ServiceArtifactSpec`).
+- **Artifact creation:** there is **no** `CreateArtifactRequest` schema. Artifacts are created directly via `POST /artifacts/` (request body schema `InputArtifact`), inline via `CreateWorkloadRequest.artifact`, or by cloning via `ArtifactCloneRequest` (note the word order — not `CloneArtifactRequest`).
 - **Replacement:** `POST` body is `StartReplacementRequest`; the optional `config` block is `ReplacementConfig`. Only `strategy: "rolling"` is supported.
-- **Image builds:** read body is `ImageBuildFormatted`; build config on the artifact is `ImageBuildConfig`. Success status can be either `BUILT` or `COMPLETED` depending on platform version — treat both as terminal-success.
+- **Image builds:** read body is `ImageBuildFormatted`; build config on the artifact is `ImageBuildConfig`. Only `COMPLETED` is terminal-success (image pushed and deployable); `BUILT` is intermediate (built but not pushed — keep polling); `FAILED` and `CANCELLED` are terminal failures.
