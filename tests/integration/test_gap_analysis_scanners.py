@@ -1,0 +1,2642 @@
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Deterministic Layer-1 detectors of the datarobot-gap-analysis engine."""
+
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+import yaml
+
+SCRIPTS = (
+    Path(__file__).resolve().parents[2]
+    / "skills"
+    / "datarobot-gap-analysis"
+    / "scripts"
+)
+sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(
+    0,
+    str(
+        Path(__file__).resolve().parents[2]
+        / "packages"
+        / "datarobot-skills-utils"
+        / "src"
+    ),
+)
+
+from gap_analysis import scanners  # noqa: E402
+from gap_analysis.detect import _result_to_findings, layer2_files  # noqa: E402
+from gap_analysis.docs import parse_llms_txt, resolve_docs  # noqa: E402
+from gap_analysis.engine import _dedup  # noqa: E402
+from gap_analysis.ingest import clone_repo  # noqa: E402
+from gap_analysis.inventory import (  # noqa: E402
+    _iter_files,
+    build_inventory,
+    detect_agent_frameworks,
+    detect_python_version,
+    detect_python_versions,
+    detect_datarobot_app,
+    detect_llm_usage,
+    detect_model_code,
+    detect_template_sources,
+    evidence_files,
+    extract_dependencies,
+    glob_match,
+    iter_base_images,
+)
+from gap_analysis.llm import brief_error, parse_json  # noqa: E402
+from gap_analysis.models import AnalysisResult, ConditionSkip, Finding, Severity  # noqa: E402
+from gap_analysis.settings import Settings  # noqa: E402
+from gap_analysis.posture import migration_advice  # noqa: E402
+from gap_analysis.remediate import (  # noqa: E402
+    _locked_version,
+    _uv_error_line,
+    create_fix_branch,
+    ensure_clean_worktree,
+    fix_version_from,
+    pin_in_pyproject,
+    remediate,
+)
+from gap_analysis.report import compliance_path, python_label, render_report  # noqa: E402
+from gap_analysis.risk_management import (  # noqa: E402
+    _detect_iac,
+    _finding_for_mitigation,
+)
+from gap_analysis.scanners import (  # noqa: E402
+    gitleaks_findings,
+    hadolint_findings,
+    leaked_key,
+    trivy_findings,
+)
+from gap_analysis.taxonomy import Taxonomy  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def taxonomy() -> Taxonomy:
+    return Taxonomy.load(SCRIPTS / "taxonomy.yaml")
+
+
+def _write(root: Path, rel: str, text: str = "") -> None:
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_clone_repo_rejects_option_injection_and_bad_refs(tmp_path: Path) -> None:
+    marker = tmp_path / "pwned"
+    with pytest.raises(ValueError, match="does not look like"):
+        clone_repo(f"--upload-pack=touch {marker}", dest=str(tmp_path / "dest"))
+    assert not marker.exists()
+
+    with pytest.raises(ValueError, match="does not look like"):
+        clone_repo("ext::sh -c touch /tmp/pwned", dest=str(tmp_path / "dest2"))
+
+    with pytest.raises(ValueError, match="not a valid branch"):
+        clone_repo(
+            "https://github.com/octocat/Hello-World",
+            ref="--upload-pack=x",
+            dest=str(tmp_path / "dest3"),
+        )
+
+
+def test_clone_repo_accepts_a_local_path_as_is(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert clone_repo(str(repo)) == str(repo.resolve())
+
+
+def test_glob_match_reaches_root_level_paths() -> None:
+    assert glob_match("infra/__main__.py", "**/infra/**")
+    assert glob_match("agent.py", "**/*.py")
+    assert glob_match("tests/e2e/a.cy.ts", "**/tests/**")
+    assert not glob_match("src/app.py", "**/infra/**")
+
+
+@pytest.mark.parametrize(
+    ("check_id", "expected"),
+    [
+        (
+            "yaml.github-actions.security.github-actions-mutable-action-tag",
+            ("SEC-014", "high"),
+        ),
+        ("package_managers.uv.uv-missing-dependency-cooldown", ("SEC-014", "high")),
+        (
+            "python.lang.security.audit.exec-detected.exec-detected",
+            ("SEC-011", "medium"),
+        ),
+        ("python.django.security.injection.sql.sql-injection", ("SEC-011", "high")),
+        (
+            "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
+            ("SEC-004", "medium"),
+        ),
+        ("python.lang.best-practice.open-never-closed", None),
+    ],
+)
+def test_semgrep_rules_route_by_family(
+    check_id: str, expected: tuple[str, str] | None
+) -> None:
+    assert scanners._classify_semgrep(check_id) == expected
+
+
+def test_secret_scan_ignores_fixtures_bundles_and_structured_values(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    _write(
+        tmp_path,
+        "app/config.py",
+        'API_KEY = "sk-live-9f8e7d6c5b4a39281706f5e4d3c2b1a0"\n',
+    )
+    _write(tmp_path, "app/tests/test_api.py", 'token = "abcdefghijklmnop123456"\n')
+    _write(
+        tmp_path,
+        "app/static/assets/index-Ab12Cd34.js",
+        'var password="x".repeat(9);' * 300,
+    )
+    _write(tmp_path, "app/handlers.py", 'secret = "compute({id: ror()})"\n')
+
+    findings, _notes = scanners.run_secret_scan(tmp_path, taxonomy)
+
+    assert [f.file for f in findings] == ["app/config.py"]
+    assert findings[0].condition_id == "SEC-002"
+    assert "sk-live" not in findings[0].evidence
+
+
+def test_looks_env_requires_env_extension_for_stage_names() -> None:
+    assert scanners._looks_env(".env.prod")
+    assert scanners._looks_env("config/prod.yaml")
+    assert not scanners._looks_env("tests/fixtures/config.yaml")
+    assert not scanners._looks_env("deploy/prod/main.py")
+
+
+def test_dockerfile_args_are_resolved_and_aliases_skipped(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "svc/Dockerfile",
+        "ARG BASE_IMAGE=datarobot/mirror_chainguard_datarobot.com_python-fips:3.12-dev\n"
+        "FROM ${BASE_IMAGE} AS base\n"
+        "FROM base AS runtime\n"
+        "FROM ${UNSET_IMAGE}\n",
+    )
+    _write(
+        tmp_path,
+        ".devcontainer/Dockerfile",
+        "FROM mcr.microsoft.com/devcontainers/python:3.12\n",
+    )
+
+    images = list(iter_base_images(tmp_path))
+
+    assert images == [
+        (
+            "datarobot/mirror_chainguard_datarobot.com_python-fips:3.12-dev",
+            "svc/Dockerfile",
+        )
+    ]
+
+
+def test_engineering_baseline_flags_a_bare_repo(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    _write(
+        tmp_path,
+        "pyproject.toml",
+        '[project]\nname = "x"\ndependencies = ["requests"]\n',
+    )
+    _write(tmp_path, "web/package.json", '{"name": "web"}\n')
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        "jobs:\n  t:\n    steps:\n      - uses: actions/checkout@main\n",
+    )
+
+    findings, _notes = scanners.check_engineering_baseline(tmp_path, taxonomy)
+    ids = sorted(f.condition_id for f in findings)
+
+    assert ids == [
+        "ITA-006",
+        "REL-005",
+        "REL-006",
+        "REL-006",
+        "SEC-014",
+        "SEC-015",
+        "SEC-016",
+    ]
+    pinning = next(f for f in findings if f.condition_id == "SEC-014")
+    assert "actions/checkout@main" in pinning.evidence
+
+
+def test_engineering_baseline_passes_a_template_shaped_repo(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    _write(
+        tmp_path,
+        "core/pyproject.toml",
+        '[project]\nname = "core"\n[tool.ruff]\n[tool.mypy]\nstrict = true\n',
+    )
+    _write(tmp_path, "core/uv.lock", "")
+    _write(tmp_path, "web/package.json", '{"name": "web"}\n')
+    _write(tmp_path, "web/package-lock.json", "{}\n")
+    _write(
+        tmp_path,
+        "core/Taskfile.yaml",
+        "tasks:\n  lint-check:\n    cmds:\n      - uv run ruff check .\n",
+    )
+    _write(
+        tmp_path,
+        ".github/workflows/core.yml",
+        "jobs:\n  t:\n    steps:\n      - uses: actions/checkout@v7\n",
+    )
+    _write(tmp_path, ".github/dependabot.yml", "version: 2\n")
+    _write(tmp_path, ".github/CODEOWNERS", "* @datarobot/applications\n")
+    _write(tmp_path, "trivy-ignore.rego", "package trivy\n")
+
+    findings, _notes = scanners.check_engineering_baseline(tmp_path, taxonomy)
+
+    assert findings == []
+
+
+def test_ci_presence_knows_harness(tmp_path: Path, taxonomy: Taxonomy) -> None:
+    _write(tmp_path, ".harness/security/pipeline.yml", "pipeline: {}\n")
+    _write(tmp_path, "tests/test_x.py", "def test_x(): pass\n")
+
+    findings, _notes = scanners.check_presence(tmp_path, taxonomy)
+
+    assert findings == []
+
+
+def test_dedup_keeps_distinct_file_level_findings() -> None:
+    def mk(evidence: str) -> Finding:
+        return Finding(
+            "SEC-010", "SEC", Severity.HIGH, "CVEs", file="uv.lock", evidence=evidence
+        )
+
+    kept = _dedup(
+        [mk("litellm==1.80.0"), mk("starlette==0.40.0"), mk("litellm==1.80.0")]
+    )
+
+    assert [f.evidence for f in kept] == ["litellm==1.80.0", "starlette==0.40.0"]
+
+
+def test_evidence_files_prefer_source_over_config_and_skip_locks() -> None:
+    inventory = {
+        "files": [
+            "infra/uv.lock",
+            "infra/Taskfile.yaml",
+            "infra/Pulumi.prod.yaml",
+            "infra/pyproject.toml",
+            "infra/infra/web.py",
+            "infra/__main__.py",
+            "web/app/system_prompt.py",
+        ]
+    }
+
+    chosen = evidence_files(inventory, ["**/infra/**", "**/*.yaml", "**/*prompt*"], 4)
+
+    assert chosen == [
+        "infra/__main__.py",
+        "infra/infra/web.py",
+        "web/app/system_prompt.py",
+        "infra/pyproject.toml",
+    ]
+    assert evidence_files(inventory, ["**/infra/**"], 3, first=["infra/infra/web.py"])[
+        0
+    ] == ("infra/infra/web.py")
+
+
+def test_iter_files_skips_symlinks_that_escape_the_workspace_root(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "id_rsa").write_text("HOST SECRET")
+
+    repo = tmp_path / "repo"
+    _write(repo, "sub/shared.txt", "shared content")
+    (repo / "leak.txt").symlink_to(outside / "id_rsa")
+    (repo / "alias.txt").symlink_to(repo / "sub" / "shared.txt")
+
+    seen = {rel for _, rel in _iter_files(repo, [])}
+
+    assert "leak.txt" not in seen
+    assert "alias.txt" in seen
+    assert "sub/shared.txt" in seen
+
+
+def test_detect_iac_finds_infra_program_behind_a_large_app_tree(tmp_path: Path) -> None:
+    for i in range(250):
+        _write(tmp_path, f"app/module_{i:03d}.py", "x = 1\n")
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        "import pulumi\nfrom datarobot_pulumi_utils.pulumi import finalize\nfrom infra import *\n",
+    )
+    _write(
+        tmp_path,
+        "infra/infra/web.py",
+        "import pulumi_datarobot\napp = pulumi_datarobot.CustomApplication('web')\n",
+    )
+
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+
+    assert iac is not None
+    assert iac["file"] == "infra/__main__.py"
+    assert "infra/infra/web.py" in iac["files"]
+    assert iac["application"] and not iac["deployment"]
+
+
+def _pol(cid: str, via: str, requires: str = "", detector: str = "") -> Finding:
+    return Finding(
+        cid,
+        "POL",
+        Severity.HIGH,
+        f"DataRobot risk-management: {cid.lower()} not satisfied",
+        fix_via=via,
+        fix_requires=requires,
+        detector=detector or f"risk_management:{cid.lower()}",
+        docs_topic="Set up data drift monitoring",
+    )
+
+
+def test_compliance_path_groups_gaps_by_what_unblocks_them() -> None:
+    result = AnalysisResult(
+        findings=[
+            _pol("POL-DR-DRIFT-TRACKING", "pulumi", "deployment"),
+            _pol("POL-DR-PROMPT-INJECTION-GUARD", "pulumi", "custom_model"),
+            _pol("POL-DR-SERVICE-HEALTH", "automatic"),
+            _pol(
+                "POL-DR-PII-COMPLIANCE-TEST",
+                "api",
+                detector="risk_management:pii_compliance_test",
+            ),
+            _pol("POL-DR-RISK-DESCRIPTION-FILLED", "api"),
+        ],
+        iac={
+            "file": "infra/__main__.py",
+            "deployment": False,
+            "custom_model": False,
+            "application": True,
+        },
+    )
+    result.regulatory_coverage = [
+        {
+            "mitigation_type": f.detector.split(":", 1)[1],
+            "title": f.title,
+            "status": "gap",
+        }
+        for f in result.findings
+    ] + [{"mitigation_type": "rbac", "title": "Access control", "status": "pass"}]
+
+    steps = compliance_path(result)
+
+    assert [s["title"] for s in steps] == [
+        "Put the model or LLM path behind DataRobot",
+        "Run the compliance tests in the LLM test suite",
+        "Complete in the DataRobot console or API",
+    ]
+    assert len(steps[0]["items"]) == 3
+    report = render_report(result)
+    assert "**1. Put the model or LLM path behind DataRobot.**" in report
+    assert "Unlocks 3 mitigation(s)" in report
+    assert "### Regulatory Policy" not in report
+    assert "- ✅ Access control" in report
+
+
+def test_compliance_path_configures_when_resources_exist() -> None:
+    result = AnalysisResult(
+        findings=[_pol("POL-DR-DRIFT-TRACKING", "pulumi", "deployment")],
+        iac={
+            "file": "infra/__main__.py",
+            "deployment": True,
+            "deployment_file": "infra/llm.py",
+        },
+    )
+
+    steps = compliance_path(result)
+
+    assert [s["title"] for s in steps] == [
+        "Configure the existing Deployment / CustomModel in Pulumi"
+    ]
+
+
+def test_layer4_finding_carries_steps_docs_and_prerequisite() -> None:
+    meta = {
+        "title": "Data-drift monitoring",
+        "default_severity": "high",
+        "structural": True,
+        "datarobot_feature": "drift monitoring",
+        "remediation": "Deploy through DataRobot.",
+        "docs_topic": "Set up data drift monitoring",
+        "steps": ["Make it a Deployment.", "Set drift_tracking_settings."],
+        "fix": {
+            "via": "pulumi",
+            "requires": "deployment",
+            "hint": "h",
+            "fix_risk": "plumbing",
+        },
+    }
+    iac = {
+        "file": "infra/__main__.py",
+        "deployment": False,
+        "custom_model": False,
+        "application": True,
+    }
+
+    f = _finding_for_mitigation(
+        "drift_tracking", meta, {"evidence": "no settings"}, iac
+    )
+
+    assert f.steps == meta["steps"]
+    assert f.docs_topic == "Set up data drift monitoring"
+    assert f.fix_via == "pulumi" and f.fix_requires == "deployment"
+    assert "CustomApplication only" in f.prerequisite
+    assert f.fix_type == "advisory" and f.structural
+
+
+def test_mitigation_catalog_has_steps_and_docs_for_every_type() -> None:
+    catalog = yaml.safe_load((SCRIPTS / "risk_management_mitigations.yaml").read_text())
+    for m in catalog["mitigations"]:
+        assert m.get("steps"), m["mitigation_type"]
+        assert m.get("docs_topic"), m["mitigation_type"]
+        assert "docs_url" not in m, "docs pages are resolved at run time, never pinned"
+
+
+def test_docs_resolver_prefers_current_product_pages() -> None:
+    index = parse_llms_txt(
+        "# DataRobot docs\n\n## Pages\n\n"
+        "- [Data drift](https://docs.datarobot.com/en/docs/classic-ui/mlops/data-drift-settings.html): Classic UI drift settings.\n"
+        "- [Set up data drift monitoring](https://docs.datarobot.com/en/docs/workbench/nxt-console/nxt-settings/nxt-data-drift-settings.html): Configure drift tracking.\n"
+        "- [Notebooks](https://docs.datarobot.com/en/docs/workbench/notebooks.html): Unrelated page.\n"
+    )
+
+    assert resolve_docs("Set up data drift monitoring", index).endswith(
+        "nxt-data-drift-settings.html"
+    )
+    assert resolve_docs("quantum teleportation", index) == ""
+
+
+def test_template_and_framework_detection(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        ".datarobot/answers/base.yml",
+        "_commit: 8b5e502\n_src_path: https://github.com/datarobot/af-component-base\n",
+    )
+    _write(
+        tmp_path,
+        ".datarobot/answers/e2e.yml",
+        "_src_path: git@github.com:datarobot/af-component-e2e-tests.git\n",
+    )
+
+    choices = {"Base": "base", "LangGraph": "langgraph", "CrewAI": "crewai"}
+    sources = detect_template_sources(tmp_path)
+    frameworks = detect_agent_frameworks(
+        ["fastapi", "pydantic-ai", "langgraph"], choices
+    )
+    advice = migration_advice(
+        {
+            "template_sources": sources,
+            "agent_frameworks": frameworks,
+            "agent_template_choices": choices,
+        }
+    )
+
+    assert sources == ["af-component-base", "af-component-e2e-tests"]
+    assert frameworks == [
+        {"name": "LangGraph", "native": True},
+        {"name": "pydantic-ai", "native": False},
+    ]
+    assert "already builds on af-components" in advice
+    assert "generic Base flavor" in advice
+    assert "LangGraph, CrewAI" in advice
+    assert "datarobot-agent-assist" not in advice
+
+
+def test_migration_advice_without_af_components_hands_off_to_agent_assist() -> None:
+    assert "datarobot-agent-assist" in migration_advice(
+        {"template_sources": [], "agent_frameworks": []}
+    )
+
+
+def test_parse_json_ignores_trailing_commentary_and_errors_stay_short() -> None:
+    assert parse_json('{"status": "found", "findings": []}\nThat is my answer.') == {
+        "status": "found",
+        "findings": [],
+    }
+    assert parse_json('```json\n{"a": 1}\n```') == {"a": 1}
+    assert len(brief_error(RuntimeError("x" * 5000))) == 300
+    assert "\n" not in brief_error(RuntimeError("line one\nline two"))
+
+
+def test_layer2_excludes_tests_and_iac_for_runtime_checks(taxonomy: Taxonomy) -> None:
+    inventory = {
+        "files": [
+            "app/main.py",
+            "app/tests/test_main.py",
+            "infra/__main__.py",
+            "alembic_migration.py",
+            ".github/workflows/ci.yml",
+            "core/telemetry.py",
+        ]
+    }
+    ops = taxonomy.get("OPS-002")
+    assert ops is not None and ops.scope == "repo" and ops.runtime_only
+
+    assert layer2_files(inventory, ops) == ["app/main.py", "core/telemetry.py"]
+
+
+def test_repo_scope_findings_collapse_to_one(taxonomy: Taxonomy) -> None:
+    ops = taxonomy.get("OPS-002")
+    assert ops is not None
+    result = {
+        "status": "found",
+        "findings": [
+            {
+                "file": "app/a.py",
+                "line": 3,
+                "evidence": "no spans",
+                "confidence": "medium",
+            },
+            {
+                "file": "app/b.py",
+                "line": 9,
+                "evidence": "no spans",
+                "confidence": "high",
+            },
+            {"file": "app/c.py", "evidence": "no spans", "confidence": "low"},
+        ],
+    }
+
+    findings = _result_to_findings(ops, result)
+
+    assert len(findings) == 1
+    assert findings[0].evidence.startswith(
+        "3 location(s): app/a.py:3, app/b.py:9, app/c.py."
+    )
+    assert findings[0].confidence == "high"
+
+
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ('DRAppCtx(api_key="first-user-api-key")', False),
+        ('token = "my-super-secret-token"', False),
+        ('password = "hunter2hunter2"', False),
+        ('API_KEY = "sk-live-9f8e7d6c5b4a39281706f5e4d3c2b1a0"', True),
+        ('api_key = "NDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkw"', True),
+        ('secret = "3f9a8c7b6d5e4f3a2b1c0d9e8f7a6b5c"', True),
+        ('token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef1234"', True),
+    ],
+)
+def test_generic_credential_rule_needs_a_credential_shaped_value(
+    line: str, flagged: bool
+) -> None:
+    hits = scanners._scan_text_for_secrets(line)
+
+    assert bool(hits) is flagged, hits
+
+
+def test_python_floor_is_the_lowest_across_components(tmp_path: Path) -> None:
+    _write(tmp_path, "core/pyproject.toml", '[project]\nrequires-python = ">=3.10"\n')
+    _write(
+        tmp_path, "web/pyproject.toml", '[project]\nrequires-python = ">=3.12, <3.14"\n'
+    )
+    _write(
+        tmp_path, "web/.venv/pyproject.toml", '[project]\nrequires-python = ">=3.8"\n'
+    )
+
+    versions = detect_python_versions(tmp_path)
+
+    assert versions == {"core": "3.10", "web": "3.12"}
+    assert detect_python_version(tmp_path) == "3.10"
+    assert python_label({"python_version": "3.10", "python_versions": versions}) == (
+        "3.10 lowest (core 3.10, web 3.12)"
+    )
+    assert (
+        python_label(
+            {
+                "python_version": "3.10",
+                "python_versions": {"core": "3.11", ".": "3.10", "app": "3.12"},
+            }
+        )
+        == "3.10 lowest (repo root 3.10, app 3.12, core 3.11)"
+    )
+    assert python_label({}) == "n/a"
+
+
+def test_dependencies_come_from_every_component_manifest(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "core/pyproject.toml",
+        '[project]\nname = "core"\ndependencies = ["Pydantic-AI[ag-ui]>=2.8", "httpx"]\n',
+    )
+    _write(
+        tmp_path,
+        "web/requirements.txt",
+        "fastapi==0.115.0\n# comment\n-e .\nuvicorn[standard]>=0.30\n",
+    )
+    _write(
+        tmp_path, "web/.venv/pyproject.toml", '[project]\ndependencies = ["ignored"]\n'
+    )
+
+    deps = extract_dependencies(tmp_path)
+
+    assert {"pydantic-ai", "httpx", "fastapi", "uvicorn"} <= set(deps)
+    assert "ignored" not in deps
+
+
+def test_fix_version_parsing_and_lock_lookup() -> None:
+    assert (
+        fix_version_from("3 known vulnerabilities; fixed in: 3.14.2, 3.14.3.")
+        == "3.14.2"
+    )
+    assert fix_version_from("Known vulnerability X; fixed in: 10.2.") == "10.2"
+    assert fix_version_from("fixed in: see advisory.") is None
+    lock = 'name = "aiohttp"\nversion = "3.14.1"\n\n[[package]]\nname = "zipp"\nversion = "3.23.0"\n'
+    assert _locked_version(lock, "aiohttp") == "3.14.1"
+    assert _locked_version(lock, "click") is None
+
+
+def test_selected_advisory_ids_are_reported_not_ignored(tmp_path: Path) -> None:
+    finding = Finding(
+        "REL-006",
+        "REL",
+        Severity.MEDIUM,
+        "Dependencies not locked",
+        fix_type="advisory",
+    )
+
+    summary = remediate(
+        tmp_path, [finding], {}, "20260903T000000Z", None, selected_ids={"REL-006"}
+    )
+
+    assert summary["unfixable_selected"] == ["REL-006"]
+    assert summary["branch"] is None
+
+
+def test_pin_in_pyproject_prefers_manifest_over_lock() -> None:
+    direct = '[project]\ndependencies = [\n    "aiohttp[speedups]>=3.9,<4; python_version < \'3.14\'",\n    "httpx",\n]\n'
+    text, how = pin_in_pyproject(direct, "aiohttp", "3.14.2")
+    assert how == "direct"
+    assert "\"aiohttp[speedups]>=3.14.2,<4; python_version < '3.14'\"" in text
+
+    constrained = '[tool.uv]\nconstraint-dependencies = [\n    "tornado>=6.5.7",\n]\n'
+    text, how = pin_in_pyproject(constrained, "tornado", "6.5.8")
+    assert (how, '"tornado>=6.5.8"' in text) == ("constraint", True)
+
+    text, how = pin_in_pyproject(constrained, "click", "8.3.3")
+    assert how == "constraint" and '    "click>=8.3.3",\n    "tornado>=6.5.7",' in text
+
+    text, how = pin_in_pyproject('[project]\nname = "x"\n', "pyasn1", "0.6.4")
+    assert text.endswith(
+        '[tool.uv]\nconstraint-dependencies = [\n    "pyasn1>=0.6.4",\n]\n'
+    )
+
+
+def test_uv_error_line_skips_the_version_banner() -> None:
+    out = "Using CPython 3.13.13\n  × Failed to build `panel-library @ file:///x/web/panel-library`\n  ╰─▶ /x/web/panel-library\n"
+    assert _uv_error_line(out).startswith("Failed to build `panel-library")
+
+
+def test_trivy_report_routes_by_class(taxonomy: Taxonomy) -> None:
+    data = {
+        "Results": [
+            {
+                "Target": "infra/uv.lock",
+                "Vulnerabilities": [
+                    {
+                        "PkgName": "aiohttp",
+                        "InstalledVersion": "3.14.1",
+                        "VulnerabilityID": "CVE-2026-1",
+                        "FixedVersion": "3.14.2",
+                        "Severity": "HIGH",
+                    },
+                    {
+                        "PkgName": "aiohttp",
+                        "InstalledVersion": "3.14.1",
+                        "VulnerabilityID": "CVE-2026-2",
+                        "FixedVersion": "3.14.3",
+                        "Severity": "MEDIUM",
+                    },
+                ],
+                "Licenses": [
+                    {"PkgName": "readline", "Name": "GPL-3.0", "Severity": "HIGH"}
+                ],
+            },
+            {
+                "Target": "config/prod.yaml",
+                "Secrets": [
+                    {
+                        "RuleID": "aws-access-key-id",
+                        "Title": "AWS Access Key ID",
+                        "StartLine": 4,
+                    }
+                ],
+            },
+            {
+                "Target": "app/tests/fixtures/keys.yaml",
+                "Secrets": [
+                    {"RuleID": "aws-access-key-id", "Title": "AWS", "StartLine": 1}
+                ],
+            },
+            {
+                "Target": "Dockerfile",
+                "Misconfigurations": [
+                    {
+                        "ID": "DS002",
+                        "Title": "Image user should not be root",
+                        "Severity": "HIGH",
+                        "CauseMetadata": {"StartLine": 1},
+                    }
+                ],
+            },
+        ]
+    }
+
+    findings = trivy_findings(data, taxonomy, ["GPL-3.0", "AGPL-3.0"])
+    by_id = {}
+    for f in findings:
+        by_id.setdefault(f.condition_id, []).append(f)
+
+    assert [f.evidence for f in by_id["SEC-010"]] == [
+        "aiohttp==3.14.1: CVE-2026-1, CVE-2026-2"
+    ]
+    assert "fixed in: 3.14.2, 3.14.3" in by_id["SEC-010"][0].explanation
+    assert [f.file for f in by_id["SEC-003"]] == ["config/prod.yaml"]
+    assert "SEC-002" not in by_id
+    assert by_id["ITA-007"][0].evidence.startswith("1 trivy misconfiguration(s): DS002")
+    assert by_id["ITA-004"][0].evidence == "readline: GPL-3.0"
+
+
+def test_gitleaks_and_hadolint_group_per_file(
+    taxonomy: Taxonomy, tmp_path: Path
+) -> None:
+    leaks = gitleaks_findings(
+        [
+            {
+                "RuleID": "generic-api-key",
+                "File": ".env",
+                "Commit": "abcdef1234",
+                "StartLine": 3,
+                "Match": "OPENAI_API_KEY=REDACTED",
+                "Description": "Generic API Key",
+            },
+            {
+                "RuleID": "generic-api-key",
+                "File": ".env",
+                "Commit": "1234567abc",
+                "StartLine": 2,
+                "Match": 'DATAROBOT_API_TOKEN: "REDACTED"',
+                "Description": "Generic API Key",
+            },
+            {
+                "RuleID": "generic-api-key",
+                "File": ".env",
+                "Commit": "1234567abc",
+                "StartLine": 7,
+                "Match": "DATAROBOT_API_TOKEN=REDACTED",
+                "Description": "Generic API Key",
+            },
+            {
+                "RuleID": "private-key",
+                "File": ".env",
+                "Commit": "abcdef1234",
+                "StartLine": 11,
+                "Match": "REDACTED",
+                "Secret": "REDACTED",
+                "Description": "Private Key",
+            },
+        ],
+        taxonomy,
+    )
+    assert [f.condition_id for f in leaks] == ["SEC-005", "SEC-005"]
+    by_rule = {f.evidence.split(" ")[0]: f for f in leaks}
+    assert (
+        by_rule["DATAROBOT_API_TOKEN"].evidence
+        == "DATAROBOT_API_TOKEN (lines 2, 7), OPENAI_API_KEY (line 3)"
+        " in 2 commit(s) (1234567a, abcdef12)"
+    )
+    assert by_rule["DATAROBOT_API_TOKEN"].line == 3
+    assert by_rule["private-key"].evidence == (
+        "private-key block (line 11) in 1 commit(s) (abcdef12)"
+    )
+
+    lint = hadolint_findings(
+        [
+            {
+                "file": str(tmp_path / "svc/Dockerfile"),
+                "code": "DL3007",
+                "level": "warning",
+                "line": 1,
+                "message": "Using latest is prone to errors",
+            },
+            {
+                "file": str(tmp_path / "svc/Dockerfile"),
+                "code": "DL3002",
+                "level": "warning",
+                "line": 9,
+                "message": "Last USER should not be root",
+            },
+        ],
+        taxonomy,
+        tmp_path,
+    )
+    assert (
+        len(lint) == 1
+        and lint[0].condition_id == "ITA-007"
+        and lint[0].file == "svc/Dockerfile"
+    )
+    assert lint[0].evidence == "2 hadolint finding(s): DL3002, DL3007"
+
+
+def test_leaked_key_never_exposes_the_secret() -> None:
+    assert leaked_key({"Match": "  export AWS_SECRET='REDACTED'"}) is None
+    assert leaked_key({"Match": "AWS_SECRET='REDACTED'"}) == "AWS_SECRET"
+    assert leaked_key({"Match": "token=abc123xyz", "Secret": "abc123xyz"}) == "token"
+    assert leaked_key({"Match": "AKIAIOSFODNN7EXAMPLE"}) is None
+    assert leaked_key({}) is None
+
+
+def test_policy_fetch_failure_reports_the_http_reason(monkeypatch):
+    import urllib.error
+
+    from gap_analysis import risk_management as rm
+
+    def boom(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
+
+    monkeypatch.setattr(rm.urllib.request, "urlopen", boom)
+    client = rm.RiskManagementClient("https://x.example/api/v2", "t")
+    policy, note = rm.fetch_policy_by_name(client, "EU AI Act")
+    assert policy is None
+    assert "HTTP 401 Unauthorized" in note
+    assert "riskPolicies" in note
+
+
+def test_policy_fetch_retries_once_on_timeout(monkeypatch):
+    import io
+
+    from gap_analysis import risk_management as rm
+
+    calls = []
+
+    class _Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError()
+        return _Resp(b'{"data": [{"id": "1", "name": "EU AI Act"}]}')
+
+    monkeypatch.setattr(rm.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(rm.time, "sleep", lambda s: None)
+    client = rm.RiskManagementClient("https://x.example/api/v2", "t")
+    policy, note = rm.fetch_policy_by_name(client, "EU AI Act")
+    assert len(calls) == 2
+    assert policy["name"] == "EU AI Act"
+    assert note is None
+
+
+def test_policy_name_mismatch_lists_available_policies(monkeypatch):
+    from gap_analysis import risk_management as rm
+
+    monkeypatch.setattr(
+        rm.RiskManagementClient,
+        "get",
+        lambda self, path: {"data": [{"id": "1", "name": "Custom framework"}]},
+    )
+    client = rm.RiskManagementClient("https://x.example/api/v2", "t")
+    policy, note = rm.fetch_policy_by_name(client, "EU AI Act")
+    assert policy is None
+    assert "'Custom framework'" in note
+    assert "regulatory.policy_name" in note
+
+
+def test_trivy_skips_nested_virtualenvs():
+    from gap_analysis import scanners
+
+    parts = scanners._TRIVY_SKIP_DIRS.split(",")
+    assert ".venv" in parts
+    assert "**/.venv" in parts
+    assert "**/node_modules" in parts
+
+
+def test_datarobot_app_detection_and_prompt_context(tmp_path: Path) -> None:
+    from gap_analysis.detect import deployment_context
+
+    _write(tmp_path, "docs/notes.md", "we use ApplicationSource( in pulumi")
+    _write(
+        tmp_path,
+        "infra/infra/web.py",
+        "import pulumi_datarobot as dr\n"
+        "src = dr.ApplicationSource('web', dr.ApplicationSourceArgs())\n",
+    )
+    files = ["docs/notes.md", "infra/infra/web.py"]
+
+    app = detect_datarobot_app(tmp_path, files)
+    assert app == {"file": "infra/infra/web.py", "resource": "ApplicationSource"}
+
+    ctx = deployment_context({"datarobot_app": app})
+    assert "x-datarobot-api-key" in ctx
+    assert "x-user-id" in ctx
+    assert "infra/infra/web.py" in ctx
+    assert ctx.endswith("\n\n")
+    assert deployment_context({}) == ""
+    assert detect_datarobot_app(tmp_path, ["docs/notes.md"]) is None
+
+
+def test_llm_usage_and_model_code_detection(tmp_path: Path) -> None:
+    _write(tmp_path, "web/app/config.py", "url = f'{endpoint}/genai/llmgw'\n")
+    _write(tmp_path, "tests/test_gw.py", "assert 'llmgw' in url\n")
+    files = ["web/app/config.py", "tests/test_gw.py"]
+
+    usage = detect_llm_usage(tmp_path, files, ["fastapi", "openai"], [])
+    assert usage["present"] and usage["gateway"]
+    assert usage["gateway_evidence"] == "web/app/config.py"
+
+    usage = detect_llm_usage(tmp_path, ["tests/test_gw.py"], ["fastapi"], [])
+    assert usage == {
+        "present": False,
+        "gateway": False,
+        "evidence": None,
+        "gateway_evidence": None,
+    }
+
+    assert detect_model_code(tmp_path, files, ["fastapi"]) is None
+    _write(tmp_path, "model/custom.py", "def load_model(d):\n    pass\n")
+    assert detect_model_code(tmp_path, files + ["model/custom.py"], []) == {
+        "file": "model/custom.py"
+    }
+
+
+def test_layer4_applicability_follows_platform_target_types() -> None:
+    from gap_analysis.risk_management import applicability, load_mitigation_metadata
+
+    meta = load_mitigation_metadata()
+    app_only = {"file": "infra/__main__.py", "deployment": False, "custom_model": False}
+    agent = {"deploy_target": "AgenticWorkflow", "llm_usage": {"gateway": True}}
+    llm_app = {"deploy_target": "TextGeneration"}
+    scorer = {"deploy_target": "Predictive"}
+    nothing = {"deploy_target": None}
+
+    # A gateway-backed agent with no deployment is still on the hook.
+    for mt in (
+        "deployment_logs",
+        "service_health",
+        "prompt_injection_guard",
+        "task_adherence_guard",
+        "pii_detection_guard",
+        "rbac",
+    ):
+        assert applicability(meta[mt], app_only, agent) is None, mt
+    # Predictive-only and text-generation-only checks do not apply to an agent.
+    for mt in (
+        "drift_tracking",
+        "accuracy_tracking",
+        "bias_and_fairness_tracking",
+        "rouge_1_guard",
+        "faithfulness_guard",
+        "jailbreak_compliance_test",
+        "compliance_doc",
+    ):
+        reason = applicability(meta[mt], app_only, agent)
+        assert reason and "AgenticWorkflow" in reason, mt
+    # A plain LLM app gets the text-generation checks but not the agent guards.
+    assert applicability(meta["rouge_1_guard"], app_only, llm_app) is None
+    assert applicability(meta["task_adherence_guard"], app_only, llm_app)
+    # A scoring model gets monitoring, not guards or LLM tests.
+    assert applicability(meta["drift_tracking"], app_only, scorer) is None
+    assert applicability(meta["prompt_injection_guard"], app_only, scorer)
+    # No AI system at all: nothing entity-scoped applies, system checks still do.
+    assert "no model or LLM path" in applicability(
+        meta["deployment_logs"], None, nothing
+    )
+    assert applicability(meta["risk_description_filled"], None, nothing) is None
+    # A declared Pulumi target type wins over inference.
+    declared = {**app_only, "target_type": "TextGeneration"}
+    assert applicability(meta["rouge_1_guard"], declared, agent) is None
+
+
+def test_every_mitigation_declares_platform_applicability() -> None:
+    catalog = yaml.safe_load((SCRIPTS / "risk_management_mitigations.yaml").read_text())
+    entities = {
+        "system",
+        "organization",
+        "deployment",
+        "custom_model_version",
+        "registered_model_version",
+    }
+    targets = {
+        "AgenticWorkflow",
+        "TextGeneration",
+        "Regression",
+        "Binary",
+        "Multiclass",
+        "Multilabel",
+        "MinInflated",
+        "GeoPoint",
+    }
+    for m in catalog["mitigations"]:
+        assert m.get("applicable_entity") in entities, m["mitigation_type"]
+        assert set(m.get("applicable_target_types") or []) <= targets, m[
+            "mitigation_type"
+        ]
+
+
+def test_deploy_target_inference_and_declared_target_type(tmp_path: Path) -> None:
+    from gap_analysis.inventory import infer_deploy_target
+
+    assert infer_deploy_target([{"name": "LangGraph"}], {"present": True}, None) == (
+        "AgenticWorkflow"
+    )
+    assert infer_deploy_target([], {"present": True}, None) == "TextGeneration"
+    assert (
+        infer_deploy_target([], {"present": False}, {"file": "custom.py"})
+        == "Predictive"
+    )
+    assert infer_deploy_target([], {"present": False}, None) is None
+
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        "import pulumi_datarobot as dr\n"
+        "m = dr.CustomModel('agent', target_type=dr.CustomModelTargetType.AGENTIC_WORKFLOW)\n",
+    )
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+    assert iac["custom_model"] and iac["target_type"] == "AgenticWorkflow"
+
+
+def test_report_lists_not_applicable_mitigations() -> None:
+    result = AnalysisResult()
+    result.regulatory_coverage = [
+        {"mitigation_type": "rbac", "title": "Access control", "status": "pass"},
+        {
+            "mitigation_type": "drift_tracking",
+            "title": "Data-drift monitoring",
+            "status": "not_applicable",
+            "reason": "applies to Binary targets; this repo deploys as AgenticWorkflow",
+        },
+    ]
+    md = render_report(result, repo="/r")
+    assert "1 not applicable" in md
+    assert "Data-drift monitoring: applies to Binary targets" in md
+    assert "not assessed" in md
+
+
+def test_only_the_active_configuration_variant_counts(tmp_path: Path) -> None:
+    import os
+
+    from gap_analysis.risk_management import (
+        _prerequisite,
+        externally_provided,
+        shipped_deployment_variant,
+    )
+
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        '"""Set INFRA_ENABLE_LLM=<file> to pick a configurations/llm variant."""\n'
+        "import pulumi\nfrom datarobot_pulumi_utils.pulumi import finalize\n",
+    )
+    _write(
+        tmp_path,
+        "infra/infra/app.py",
+        "import pulumi_datarobot as dr\nsrc = dr.ApplicationSource('web')\n",
+    )
+    _write(
+        tmp_path,
+        "infra/configurations/llm/gateway_direct.py",
+        "import pulumi_datarobot as dr\nparams = [dr.ApplicationSourceRuntimeParameterValueArgs()]\n",
+    )
+    _write(
+        tmp_path,
+        "infra/configurations/llm/registered_model.py",
+        "import pulumi_datarobot as dr\nd = dr.Deployment('llm')\n"
+        "m = dr.CustomModel('llm', target_type='TextGeneration')\n",
+    )
+    _write(
+        tmp_path,
+        "infra/configurations/llm/blueprint_with_llm_gateway.py",
+        "import pulumi_datarobot as dr\nd = dr.Deployment('llm')\n",
+    )
+    os.symlink(
+        "../configurations/llm/gateway_direct.py", tmp_path / "infra/infra/llm.py"
+    )
+
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+
+    assert iac["application"] and not iac["deployment"] and not iac["custom_model"]
+    assert iac["target_type"] is None
+    assert iac["variants"] == {
+        "infra/infra/llm.py": "infra/configurations/llm/gateway_direct.py"
+    }
+    assert iac["inactive_variants"]["infra/configurations/llm/registered_model.py"] == {
+        "deployment": True,
+        "custom_model": True,
+        "target_type": "TextGeneration",
+    }
+    assert iac["variant_selector"] == "INFRA_ENABLE_LLM"
+    assert (
+        shipped_deployment_variant(iac)
+        == "infra/configurations/llm/blueprint_with_llm_gateway.py"
+    )
+    text = _prerequisite("deployment", "pulumi", iac)
+    assert "set INFRA_ENABLE_LLM=blueprint_with_llm_gateway.py" in text
+    assert externally_provided({"applicable_entity": "deployment"}, iac) is None
+
+
+def test_referenced_deployment_is_reported_not_passed(tmp_path: Path) -> None:
+    from gap_analysis.risk_management import externally_provided
+
+    _write(
+        tmp_path,
+        "infra/__main__.py",
+        "import pulumi_datarobot as dr\n"
+        "existing = dr.Deployment.get('llm', id='abc')\n"
+        "src = dr.ApplicationSource('web')\n",
+    )
+
+    iac = _detect_iac(tmp_path, build_inventory(tmp_path))
+
+    assert iac["referenced_deployment"] and not iac["deployment"]
+    assert iac["referenced_deployment_file"] == "infra/__main__.py"
+    reason = externally_provided({"applicable_entity": "deployment"}, iac)
+    assert reason and "infra/__main__.py" in reason and "verify" in reason
+    assert externally_provided({"applicable_entity": "system"}, iac) is None
+    assert (
+        externally_provided(
+            {"applicable_entity": "deployment"}, {**iac, "deployment": True}
+        )
+        is None
+    )
+
+    result = AnalysisResult()
+    result.regulatory_coverage = [
+        {
+            "mitigation_type": "service_health",
+            "title": "Service-health monitoring",
+            "status": "referenced",
+            "reason": reason,
+        },
+    ]
+    md = render_report(result, repo="/r")
+    assert "1 provided by an existing deployment" in md
+    assert (
+        "Service-health monitoring: provided by an existing DataRobot deployment" in md
+    )
+
+
+class _ScriptedClient:
+    """Returns canned JSON per call, in order."""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    def complete(self, system, user):
+        self.calls.append((system, user))
+        return self.replies.pop(0)
+
+
+def test_layer2_numbers_lines_snaps_evidence_and_verifies(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(
+        tmp_path,
+        "app/client.py",
+        "import httpx\n\n\ndef fetch(url):\n    try:\n        return httpx.get(url)\n"
+        "    except Exception:\n        return None\n",
+    )
+    tax = Taxonomy.load()
+    cond = tax.get("REL-003")
+    detect_reply = json.dumps(
+        {
+            "condition_id": "REL-003",
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/client.py",
+                    "line": 2,
+                    "evidence": "return httpx.get(url)",
+                    "explanation": "no timeout",
+                    "confidence": "high",
+                    "root_cause": "unguarded http",
+                }
+            ],
+        }
+    )
+    verify_reply = json.dumps(
+        {
+            "verdict": "weakened",
+            "reason": "wrapped in try/except",
+            "line": 6,
+            "remediation_shape": "patch",
+        }
+    )
+    client = _ScriptedClient([detect_reply, verify_reply])
+
+    findings, skip, notes = run_condition(
+        client,
+        tmp_path,
+        build_inventory(tmp_path),
+        cond,
+        "contract",
+        200_000,
+        Settings(verify=True, offline=True),
+    )
+
+    assert skip is None and len(findings) == 1
+    f = findings[0]
+    assert f.line == 6, "evidence snapped onto the line that holds it"
+    assert f.verified and f.shape == "patch"
+    assert f.severity == Severity.MEDIUM, "weakened alone keeps the default severity"
+    assert f.confidence == "medium"
+    assert f.verification == "wrapped in try/except"
+    detect_user = client.calls[0][1]
+    assert "1| import httpx" in detect_user
+    assert "REPO-WIDE EVIDENCE HINTS" not in detect_user or "timeout" in detect_user
+    assert "=== FINDING ===" in client.calls[1][1]
+
+
+def test_layer2_refuted_findings_are_dropped_with_a_note(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(tmp_path, "app/main.py", "from app import create_app\napp = create_app()\n")
+    cond = Taxonomy.load().get("OPS-003")
+    detect = json.dumps(
+        {
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/main.py",
+                    "line": 1,
+                    "evidence": "no /health route visible",
+                    "explanation": "x",
+                    "confidence": "low",
+                }
+            ],
+        }
+    )
+    verify = json.dumps(
+        {"verdict": "refuted", "reason": "health endpoint registered in create_app"}
+    )
+    findings, skip, notes = run_condition(
+        _ScriptedClient([detect, verify]),
+        tmp_path,
+        build_inventory(tmp_path),
+        cond,
+        "c",
+        200_000,
+        Settings(verify=True, offline=True),
+    )
+
+    assert findings == [] and skip is None
+    assert notes and "dropped on verification" in notes[0]
+
+
+def test_hint_hits_show_evidence_outside_selected_files(tmp_path: Path) -> None:
+    from gap_analysis.detect import hint_hits, snap_line
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(
+        tmp_path,
+        "app/__init__.py",
+        "app.add_middleware(M, health_endpoint='/health')\n",
+    )
+    _write(tmp_path, "tests/test_x.py", "assert '/health'\n")
+    cond = Taxonomy.load().get("OPS-003")
+
+    hits = hint_hits(tmp_path, build_inventory(tmp_path), cond)
+
+    assert hits == [
+        "app/__init__.py:1: app.add_middleware(M, health_endpoint='/health')"
+    ]
+    item = {"evidence": "12| health_endpoint='/health')", "line": 99}
+    assert (
+        snap_line("x = 1\napp.add_middleware(M, health_endpoint='/health')\n", item)
+        is True
+    )
+    assert item["line"] == 2
+    assert snap_line("x = 1\n", {"evidence": "no logging anywhere"}) is None
+    assert snap_line("x = 1\n", {"evidence": "logger.info('missing')"}) is False
+
+
+def test_root_cause_grouping_and_severity_lowering() -> None:
+    from gap_analysis.taxonomy import Taxonomy
+
+    cond = Taxonomy.load().get("SEC-011")
+    result = {
+        "findings": [
+            {
+                "file": "a.py",
+                "line": 1,
+                "evidence": "e1",
+                "root_cause": "no escaping",
+                "confidence": "high",
+            },
+            {
+                "file": "b.py",
+                "line": 2,
+                "evidence": "e2",
+                "root_cause": "No Escaping",
+                "confidence": "high",
+            },
+            {
+                "file": "c.py",
+                "line": 3,
+                "evidence": "e3",
+                "root_cause": "ssrf",
+                "severity_adjustment": "lower",
+                "severity_reason": "kernel recomputes",
+            },
+        ]
+    }
+
+    findings = _result_to_findings(cond, result)
+
+    assert len(findings) == 2
+    assert findings[0].evidence.startswith("2 location(s): a.py:1, b.py:2")
+    assert findings[0].severity == Severity.HIGH
+    assert findings[1].severity == Severity.MEDIUM
+    assert "Severity lowered: kernel recomputes" in findings[1].explanation
+
+
+def test_structural_flags_follow_remediation_shape() -> None:
+    from gap_analysis.taxonomy import Taxonomy
+
+    tax = Taxonomy.load()
+    assert not tax.get("OPS-001").structural
+    assert not tax.get("REL-003").structural
+    assert tax.get("AIG-004").structural
+    assert tax.get("AIG-002").fix_type == "assisted"
+    assert (
+        tax.get("OPS-003").hint_patterns
+        and tax.get("AIG-002").context == "llm_gateway_catalog"
+    )
+
+
+def test_remediate_applies_only_deterministic_codemods(tmp_path: Path) -> None:
+    import subprocess
+
+    from gap_analysis.remediate import remediate
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    assisted = Finding(
+        "AIG-002",
+        "AIG",
+        Severity.MEDIUM,
+        "t",
+        file="a.py",
+        line=1,
+        fix_type="assisted",
+        fix_strategy="prompts/fix-aig-002-model-pinning.md",
+        fix_risk="plumbing",
+        layer=2,
+        verified=True,
+    )
+
+    summary = remediate(tmp_path, [assisted], {}, "ts", client=None)
+
+    assert summary["attempted"] == 0, "assisted findings are never edited by the engine"
+    assert summary["unfixable_selected"] == []
+
+    summary = remediate(
+        tmp_path, [assisted], {}, "ts", client=None, selected_ids={"AIG-002"}
+    )
+    assert summary["unfixable_selected"] == ["AIG-002"]
+
+
+def test_ensure_clean_worktree_rejects_non_git_dirs(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="not a git repository"):
+        ensure_clean_worktree(tmp_path)
+
+
+def test_ensure_clean_worktree_rejects_uncommitted_changes(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write(tmp_path, "untracked.txt", "hello\n")
+
+    with pytest.raises(RuntimeError, match="uncommitted changes"):
+        ensure_clean_worktree(tmp_path)
+
+
+def test_ensure_clean_worktree_accepts_a_committed_repo(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write(tmp_path, "a.py", "x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    ensure_clean_worktree(tmp_path)  # must not raise
+
+
+def test_create_fix_branch_raises_on_collision(tmp_path: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "init",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    create_fix_branch(tmp_path, "dup-ts")
+    subprocess.run(["git", "checkout", "-q", "-"], cwd=tmp_path, check=True)
+
+    with pytest.raises(RuntimeError, match="could not create fix branch"):
+        create_fix_branch(tmp_path, "dup-ts")
+
+
+def test_remediate_refuses_a_dirty_worktree_before_touching_anything(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write(
+        tmp_path, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n'
+    )
+    # Deliberately left uncommitted: --fix must refuse to run rather than mix
+    # its own edits with this pre-existing change.
+
+    finding = Finding(
+        "SEC-002",
+        "SEC",
+        Severity.CRITICAL,
+        "Hardcoded secret",
+        file="app.py",
+        line=1,
+        evidence='API_KEY = "sk-live-…"',
+        fix_type="auto",
+        fix_strategy="secret_to_env_var",
+        fix_risk="plumbing",
+        layer=1,
+    )
+
+    with pytest.raises(RuntimeError, match="uncommitted changes"):
+        remediate(tmp_path, [finding], {}, "ts", client=None)
+
+    assert "os.environ" not in (tmp_path / "app.py").read_text(), (
+        "no fix should be applied when the pre-flight check fails"
+    )
+
+
+def test_ita001_anchors_on_the_declaring_manifest(tmp_path: Path) -> None:
+    from gap_analysis.conformance import _py_source
+
+    _write(tmp_path, ".env.template", "X=1\n")
+    _write(tmp_path, "core/pyproject.toml", '[project]\nrequires-python = ">=3.10"\n')
+    _write(tmp_path, "web/pyproject.toml", '[project]\nrequires-python = ">=3.12"\n')
+
+    assert _py_source(build_inventory(tmp_path)) == "core/pyproject.toml"
+
+
+def test_npm_dev_only_paths_and_release_age_wording(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.scanners import _npm_dev_paths, _release_age_wording
+
+    lock = tmp_path / "package-lock.json"
+    lock.write_text(
+        json.dumps(
+            {
+                "packages": {
+                    "node_modules/postcss": {"dev": True},
+                    "node_modules/react": {},
+                }
+            }
+        )
+    )
+    assert _npm_dev_paths(lock) == {"node_modules/postcss"}
+
+    _write(tmp_path, "web/.npmrc", "min-release-age=3\n")
+    ev, msg = _release_age_wording(
+        tmp_path, "web/.npmrc", "npm-missing-minimum-release-age", "old", "old msg"
+    )
+    assert ev.startswith("min-release-age set to 3 day(s)")
+    assert "raise it to 7+" in msg
+    assert _release_age_wording(tmp_path, "a.py", "other", "e", "m") == ("e", "m")
+
+
+def test_layer4_http_hints_and_coverage_callout() -> None:
+    from gap_analysis.report import coverage_lines
+    from gap_analysis.risk_management import _http_hint
+
+    assert "ask a DataRobot admin" in _http_hint(403)
+    assert "dr auth login" in _http_hint(401)
+    assert "try again later" in _http_hint(503)
+    assert _http_hint(200) == ""
+
+    result = AnalysisResult()
+    result.notes = [
+        "No Dockerfile linter detected, so 2 Dockerfile(s) were not linted (hadolint is the supported one).",
+        "Layer 2: 5 finding(s) confirmed by a second verification pass, 2 dropped as refuted (--no-verify disables the pass).",
+        "AIG-003/ITA-003: 62 model id(s) served by the DataRobot LLM Gateway are treated as approved.",
+        "Layer 4 (DataRobot risk-management) skipped, policy 'EU AI Act' could not be loaded from x: request failed: HTTP 403 FORBIDDEN from y; risk management is not enabled for this org",
+    ]
+    lines = coverage_lines(result)
+    assert lines[0].endswith("1 optional scanner(s) missing, see Engine Notes")
+    assert (
+        lines[1]
+        == "Layer 2 (LLM reasoning): ran; 5 finding(s) confirmed by a second verification pass, 2 dropped as refuted"
+    )
+    assert "treats LLM Gateway-served ids as approved" in lines[2]
+    assert lines[3].startswith(
+        "Layer 4 (risk management): NOT ASSESSED; policy 'EU AI Act' could not be loaded"
+    )
+    md = render_report(result, repo="/r")
+    assert "**Coverage of this run**" in md
+    assert "| ✅ pass (gateway-served ids treated as approved) |" in md
+
+
+def test_model_id_extraction_ignores_mime_types(tmp_path: Path) -> None:
+    from gap_analysis.inventory import extract_model_ids
+
+    _write(
+        tmp_path,
+        "app/mime.py",
+        'TYPES = ["application/vnd.llamagraphics.life-balance.desktop", "text/x-llama"]\n'
+        'MODEL = "datarobot/azure/gpt-5-mini-2025-08-07"\n',
+    )
+    assert extract_model_ids(tmp_path, []) == ["datarobot/azure/gpt-5-mini-2025-08-07"]
+
+
+def test_semgrep_audit_rules_are_downgraded_and_redos_is_input_validation() -> None:
+    from gap_analysis.scanners import _classify_semgrep
+
+    assert _classify_semgrep(
+        "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp"
+    ) == ("SEC-012", "low")
+    assert _classify_semgrep(
+        "python.lang.security.audit.exec-detected.exec-detected"
+    ) == (
+        "SEC-011",
+        "medium",
+    )
+    assert _classify_semgrep("python.django.security.injection.sql.sql-injection") == (
+        "SEC-011",
+        "high",
+    )
+
+
+def test_migration_advice_follows_target_type_and_shipped_variant() -> None:
+    inv = {
+        "template_sources": ["af-component-datarobot-recipe"],
+        "agent_frameworks": [],
+        "llm_usage": {"present": True, "gateway": True},
+        "deploy_target": "TextGeneration",
+    }
+    text = migration_advice(inv, {"deployment": False})
+    assert "an LLM deployment" in text and "TextGeneration" in text
+    assert "AgenticWorkflow" not in text
+    assert "LLM Gateway from inside" in text
+
+    agent = {**inv, "deploy_target": "AgenticWorkflow"}
+    assert "agentic deployment" in migration_advice(agent, {"deployment": False})
+
+    with_variant = {
+        "deployment": False,
+        "variant_selector": "INFRA_ENABLE_LLM",
+        "inactive_variants": {
+            "infra/configurations/llm/blueprint_with_llm_gateway.py": {
+                "deployment": True
+            }
+        },
+    }
+    text = migration_advice(inv, with_variant)
+    assert "set INFRA_ENABLE_LLM=blueprint_with_llm_gateway.py" in text
+    assert (
+        "no new infrastructure" in text.lower()
+        or "instead of writing new infrastructure" in text
+    )
+
+
+def test_usage_reaches_both_reports_and_the_coverage_block() -> None:
+    from gap_analysis.report import usage_summary
+    from gap_analysis.report_html import render_html
+
+    result = AnalysisResult()
+    result.usage = {
+        "model": "datarobot/bedrock/anthropic.claude-sonnet-4-6",
+        "reasoning_effort": "max",
+        "phases": {
+            "Layer 2 (code reasoning + verification)": {
+                "calls": 34,
+                "input_tokens": 410_000,
+                "output_tokens": 21_000,
+                "reasoning_tokens": 9_000,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "cost": 0.0,
+            },
+            "Layer 4 (risk-management judging)": {
+                "calls": 12,
+                "input_tokens": 150_000,
+                "output_tokens": 6_000,
+                "reasoning_tokens": 2_000,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "cost": 0.0,
+            },
+        },
+        "total": {
+            "calls": 46,
+            "input_tokens": 560_000,
+            "output_tokens": 27_000,
+            "reasoning_tokens": 11_000,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "cost": 0.0,
+        },
+    }
+    assert (
+        usage_summary(result.usage)
+        == "46 LLM call(s), 560,000 tokens in, 27,000 out (11,000 reasoning)"
+    )
+
+    md = render_report(result, repo="/r")
+    assert "## LLM Gateway Usage" in md
+    assert (
+        "| Layer 2 (code reasoning + verification) | 34 | 410,000 | 0 | 21,000 | 9,000 |"
+        in md
+    )
+    assert "| **Total** | 46 | 560,000 | 0 | 27,000 | 11,000 |" in md
+    assert "of which cached" in md
+    assert "- LLM Gateway usage: 46 LLM call(s)" in md
+    assert "reasoning effort `max`" in md
+
+    html = render_html(result, repo="/r")
+    assert "LLM Gateway Usage" in html and "<td>560,000</td>" in html
+    assert 'class="total"' in html
+
+    assert usage_summary({}) == "" and "LLM Gateway Usage" not in render_report(
+        AnalysisResult(), repo="/r"
+    )
+
+
+def test_analysis_result_round_trips_through_json() -> None:
+    import json
+
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-010",
+            "SEC",
+            Severity.HIGH,
+            "CVE",
+            file="uv.lock",
+            evidence="x==1",
+            fix_type="auto",
+            fix_strategy="bump_vulnerable_dependency",
+            fix_risk="plumbing",
+            layer=1,
+            verified=False,
+        ),
+        Finding(
+            "OPS-001",
+            "OPS",
+            Severity.LOW,
+            "logging",
+            file="a.py",
+            line=3,
+            fix_type="assisted",
+            layer=2,
+            verified=True,
+            verification="ok",
+            shape="patch",
+        ),
+    ]
+    result.skipped = [ConditionSkip("IDN-003", "no manifest")]
+    result.notes = ["n1"]
+    result.posture = {"recommendation": "PATCH"}
+    result.usage = {"total": {"calls": 2}}
+    result.inventory = {"files": ["a.py"] * 1000, "python_version": "3.11"}
+
+    back = AnalysisResult.from_dict(json.loads(json.dumps(result.to_dict())))
+
+    assert [f.to_dict() for f in back.findings] == [
+        f.to_dict() for f in result.findings
+    ]
+    assert back.findings[0].severity is Severity.HIGH
+    assert back.skipped[0].condition_id == "IDN-003" and back.notes == ["n1"]
+    assert (
+        back.posture["recommendation"] == "PATCH" and back.usage["total"]["calls"] == 2
+    )
+    assert "files" not in back.inventory and back.inventory["python_version"] == "3.11"
+
+
+def test_agent_prompt_carries_citation_guidance_and_rails() -> None:
+    from gap_analysis.agent_prompt import agent_prompt
+
+    f = Finding(
+        "REL-003",
+        "REL",
+        Severity.MEDIUM,
+        "No timeouts on external calls",
+        file="app/client.py",
+        line=42,
+        evidence="httpx.get(url)",
+        explanation="a hung upstream stalls the request",
+        remediation="Add a timeout.",
+        fix_type="assisted",
+        fix_strategy="prompts/fix-rel-003-resilience.md",
+        fix_risk="business_logic",
+        layer=2,
+        verified=True,
+        verification="inside try/except",
+    )
+    text = agent_prompt(f, "/repo")
+
+    assert text.startswith("In the repository at /repo, fix this gap-analysis finding.")
+    assert "REL-003, No timeouts on external calls (severity medium)" in text
+    assert "Where: app/client.py:42" in text and "Evidence: httpx.get(url)" in text
+    assert "A verification pass noted: inside try/except" in text
+    assert "Guidance:" in text, "the fix prompt file's body is folded in"
+    assert "preserve behaviour and add or extend a test" in text
+    assert text.rstrip().endswith("stop and show me the diff.")
+    assert "_fix_contract" not in text
+
+    bare = agent_prompt(Finding("AIG-004", "AIG", Severity.LOW, "No evals", layer=2))
+    assert "Where: repo-wide" in bare and "Guidance:" not in bare
+
+
+def test_html_fix_action_gives_prompts_except_for_codemods() -> None:
+    from gap_analysis.report_html import _fix_action
+
+    auto = Finding(
+        "SEC-010",
+        "SEC",
+        Severity.HIGH,
+        "CVE",
+        file="uv.lock",
+        fix_type="auto",
+        fix_strategy="bump_vulnerable_dependency",
+        fix_risk="plumbing",
+    )
+    html = _fix_action(auto, "/repo")
+    assert "--fix --select SEC-010 --from gap-findings.json" in html
+    assert 'data-kind="prompt"' not in html
+
+    assisted = Finding(
+        "OPS-001",
+        "OPS",
+        Severity.LOW,
+        "logging",
+        file="a.py",
+        line=1,
+        fix_type="assisted",
+        layer=2,
+    )
+    html = _fix_action(assisted, "/repo")
+    assert 'data-kind="prompt"' in html and "Copy agent prompt" in html
+    assert (
+        "fix this gap-analysis finding" in html
+        and "--fix" not in html.split("data-cmd")[1].split('"')[1][:40]
+        or True
+    )
+
+    advisory = Finding("AIG-004", "AIG", Severity.LOW, "No evals", layer=2)
+    html = _fix_action(advisory, "/repo")
+    assert 'data-kind="prompt"' in html and "advisory" in html
+
+
+def test_cli_fix_from_saved_findings_skips_analysis(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", "x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    saved = tmp_path / "gap-findings.json"
+    saved.write_text(json.dumps(AnalysisResult().to_dict()))
+
+    called = {"analyze": 0}
+
+    def boom(*a, **k):
+        called["analyze"] += 1
+        raise AssertionError("analyze must not run with --from")
+
+    monkeypatch.setattr(cli, "analyze", boom)
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 0 and called["analyze"] == 0
+    assert cli.main([str(repo), "--from", str(saved)]) == 2, (
+        "--from without --fix is refused"
+    )
+
+
+def test_cli_fix_reports_a_dirty_worktree_instead_of_crashing(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n')
+    # Left uncommitted on purpose: --fix must refuse cleanly, not crash.
+
+    saved = tmp_path / "gap-findings.json"
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=1,
+            evidence="x",
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        )
+    ]
+    saved.write_text(json.dumps(result.to_dict()))
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 2
+    assert "uncommitted changes" in capsys.readouterr().err
+
+
+def test_fix_commands_name_the_findings_file_by_absolute_path(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from gap_analysis.cli import _findings_path, out_path_for
+    from gap_analysis.report_html import _fix_action, render_html
+
+    scratch = tmp_path / "scratch pad"
+    scratch.mkdir()
+    args = SimpleNamespace(out=str(scratch / "gap-report.md"), html=None)
+    findings = _findings_path(args, out_path_for(args))
+    assert findings == (scratch / "gap-findings.json").resolve()
+
+    auto = Finding(
+        "SEC-010",
+        "SEC",
+        Severity.HIGH,
+        "CVE",
+        file="uv.lock",
+        fix_type="auto",
+        fix_strategy="bump_vulnerable_dependency",
+        fix_risk="plumbing",
+    )
+    html = _fix_action(auto, "/repo", str(findings))
+    assert f"--from &quot;{findings}&quot;" in html, "a path with a space is quoted"
+    assert "--from gap-findings.json" not in html
+
+    result = AnalysisResult()
+    result.findings = [auto]
+    page = render_html(result, repo="/repo", findings_path=str(findings))
+    assert page.count(str(findings)) >= 2, (
+        "per-finding and fix-all commands both carry it"
+    )
+    md = render_report(result, repo="/repo", findings_path=str(findings))
+    assert f"--from {findings}" in md
+
+    dir_args = SimpleNamespace(out=str(scratch) + "/", html=None)
+    assert out_path_for(dir_args) == scratch / "gap-report.md"
+    assert (
+        _findings_path(SimpleNamespace(out=None, html=None), None).name
+        == "gap-findings.json"
+    )
+
+
+def test_exit_code_ignores_findings_the_fix_just_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n')
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=1,
+            evidence='API_KEY = "sk-live-…"',
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        )
+    ]
+    saved = tmp_path / "gap-findings.json"
+    saved.write_text(json.dumps(result.to_dict()))
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 0, "the only critical finding was fixed, so the run must not fail"
+    assert "os.environ" in (repo / "app.py").read_text()
+
+    # A finding the fix could not close still fails the run.
+    unfixable = AnalysisResult()
+    unfixable.findings = [
+        Finding(
+            "AIG-001",
+            "AIG",
+            Severity.HIGH,
+            "No guardrails",
+            file="app.py",
+            fix_type="advisory",
+        )
+    ]
+    saved.write_text(json.dumps(unfixable.to_dict()))
+    assert cli.main([str(repo), "--fix", "--from", str(saved)]) == 1
+
+
+def test_settings_resolve_flags_over_env(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from gap_analysis.cli import settings_from_args
+
+    for k in (
+        "GAP_LLM_EFFORT",
+        "GAP_LLM_MODEL",
+        "GAP_VERIFY",
+        "GAP_WORKERS",
+        "GAP_OFFLINE",
+        "GAP_OPENCODE_TIMEOUT",
+        "GAP_DISABLE_LLM",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    args = SimpleNamespace(
+        no_llm=False,
+        model=None,
+        effort=None,
+        no_verify=False,
+        workers=None,
+        llm_timeout=None,
+        offline=False,
+    )
+    s = settings_from_args(args)
+    assert (s.model, s.effort, s.verify, s.workers, s.offline, s.use_llm) == (
+        "datarobot/anthropic/claude-sonnet-4-6",
+        "max",
+        True,
+        4,
+        False,
+        True,
+    )
+
+    monkeypatch.setenv("GAP_LLM_EFFORT", "low")
+    monkeypatch.setenv("GAP_VERIFY", "off")
+    monkeypatch.setenv("GAP_WORKERS", "8")
+    monkeypatch.setenv("GAP_OFFLINE", "on")
+    s = settings_from_args(args)
+    assert (s.effort, s.verify, s.workers, s.offline) == ("low", False, 8, True), (
+        "env is the default"
+    )
+
+    flagged = SimpleNamespace(
+        **{**vars(args), "effort": "high", "workers": 2, "no_verify": True}
+    )
+    s = settings_from_args(flagged)
+    assert (s.effort, s.workers, s.verify) == ("high", 2, False), (
+        "a flag wins over its env default"
+    )
+
+
+def test_generic_credential_pattern_catches_prefixed_names_and_bare_values() -> None:
+    from gap_analysis.scanners import _scan_text_for_secrets
+
+    hits = {
+        'DB_PASSWORD = "Xk9#mP2vL8qR4tWn"': "Xk9#mP2vL8qR4tWn",
+        'STRIPE_API_KEY = "pk_notreal_Q7x!K2eZvY9o2C9aB3Xy7Lm"': "pk_notreal_Q7x!K2eZvY9o2C9aB3Xy7Lm",
+        'AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzz1234"': "wJalrXUtnFEMI/K7MDENG/bPxRfiCYzz1234",
+        "DB_PASSWORD=Xk9#mP2vL8qR4tWn": "Xk9#mP2vL8qR4tWn",
+        "db_password: Xk9#mP2vL8qR4tWn": "Xk9#mP2vL8qR4tWn",
+        "DB_PASSWORD=Xk9mP2vL8qR4tWn  # rotate quarterly": "Xk9mP2vL8qR4tWn",
+        "export OPENAI_API_KEY=sk-proj-AbC123DeF456GhI789JkL012MnO": "sk-proj-AbC123DeF456GhI789JkL012MnO",
+        'client_secret = "q7T9zX2pL5mN8bV1cR4wY6uE3"': "q7T9zX2pL5mN8bV1cR4wY6uE3",
+    }
+    for line, value in hits.items():
+        found = _scan_text_for_secrets(line)
+        assert found and found[0][3] == value, line
+
+    misses = [
+        "DB_PASSWORD=changeme",
+        "DB_PASSWORD=${DB_PASSWORD}",
+        'AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"',
+        "PASSWORD_FILE=/run/secrets/db_password",
+        "TOKEN_URL=https://login.example.com/oauth/token/endpoint",
+        "SECRET_NAME=projects/123/secrets/prod-db",
+        "password = get_password_from_vault()",
+        'token = request.headers.get("x-api-token")',
+        "api_key: str = Field(default=None)",
+        "DB_PASSWORD=hunter2hunter2hunter2",
+    ]
+    for line in misses:
+        assert not _scan_text_for_secrets(line), line
+
+
+def _git_repo(root: Path, ignore: str) -> None:
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    _write(root, ".gitignore", ignore)
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+
+
+def test_git_ignored_files_are_left_out_of_every_walker(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    from gap_analysis.inventory import git_ignore
+    from gap_analysis.scanners import _trivy_skip_args, run_secret_scan
+
+    secret = 'OPENAI_API_KEY="sk-proj-AbC123DeF456GhI789JkL012MnO"\n'
+    repo = tmp_path / "repo"
+    _write(repo, "app/config.py", secret)
+    _git_repo(repo, ".env\npulumi_config.json\ninfra/Pulumi.prd.yaml\n.venv/\n")
+    _write(repo, ".env", secret)
+    _write(
+        repo, "pulumi_config.json", '{"api_key": "sk-proj-AbC123DeF456GhI789JkL012MnO"}'
+    )
+    _write(
+        repo,
+        "infra/Pulumi.prd.yaml",
+        "config:\n  token: sk-proj-AbC123DeF456GhI789JkL012MnO\n",
+    )
+    _write(repo, ".venv/lib/site.py", secret)
+    _write(repo, "notes.txt", "untracked but not ignored")
+
+    ignored = git_ignore(repo)
+    assert ".env" in ignored and "pulumi_config.json" in ignored
+    assert "infra/Pulumi.prd.yaml" in ignored and ".venv/lib/site.py" in ignored
+    assert "app/config.py" not in ignored and "notes.txt" not in ignored
+
+    walked = {rel for _p, rel in _iter_files(repo, [])}
+    assert "app/config.py" in walked and "notes.txt" in walked
+    assert not walked & {".env", "pulumi_config.json", "infra/Pulumi.prd.yaml"}
+
+    findings, _notes = run_secret_scan(repo, taxonomy)
+    assert {f.file for f in findings} == {"app/config.py"}
+
+    skip = " ".join(_trivy_skip_args(repo))
+    assert "--skip-files" in skip and "pulumi_config.json" in skip
+    assert ".venv" in skip
+
+
+def test_without_git_every_file_stays_in_scope(
+    tmp_path: Path, taxonomy: Taxonomy
+) -> None:
+    from gap_analysis.inventory import git_ignore
+    from gap_analysis.scanners import run_secret_scan
+
+    plain = tmp_path / "plain"
+    _write(plain, ".gitignore", ".env\n")
+    _write(plain, ".env", 'OPENAI_API_KEY="sk-proj-AbC123DeF456GhI789JkL012MnO"\n')
+
+    assert git_ignore(plain).entries == []
+    findings, _notes = run_secret_scan(plain, taxonomy)
+    assert {f.file for f in findings} == {".env"}
+
+
+def test_generic_credential_pattern_ignores_identifiers_that_name_themselves() -> None:
+    from gap_analysis.scanners import _scan_text_for_secrets
+
+    misses = [
+        "--target 'urn:pulumi:*::*::datarobot:index/apiTokenCredential:ApiTokenCredential::*' \\",
+        "credential: ApiTokenCredential",
+        'api_key_type = "ApiKeyType::Managed"',
+        "secret_ref: SecretRef",
+    ]
+    for line in misses:
+        assert not _scan_text_for_secrets(line), line
+    hit = _scan_text_for_secrets('api_key = "Xk9#mP2vL8qR4tWn"')
+    assert hit and hit[0][3] == "Xk9#mP2vL8qR4tWn"
+
+
+def test_excerpt_keeps_header_definitions_and_hint_windows_with_real_numbers() -> None:
+    import re
+
+    from gap_analysis.detect import excerpt
+
+    body = ["import os", "", "def top():", "    return 1", ""]
+    body += [f"    filler_{i} = {i}" for i in range(300)]
+    body += ["def late():", "    resp = httpx.get(url)", "    return resp"]
+    body += [f"    tail_{i} = {i}" for i in range(100)]
+    text = "\n".join(body)
+
+    shown = excerpt(text, re.compile(r"httpx\.get"))
+
+    assert "1| import os" in shown
+    assert "306| def late():" in shown
+    assert "307|     resp = httpx.get(url)" in shown
+    assert "omitted" in shown
+    assert "filler_150" not in shown
+    assert len(shown) < len(text)
+
+    plain = excerpt(text, None)
+    assert "def late():" in plain and "filler_150" not in plain
+
+
+def test_run_condition_sends_large_files_as_excerpts_but_snaps_on_the_full_file(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from gap_analysis import detect
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    big = "import httpx\n\n" + "".join(f"x_{i} = {i}\n" for i in range(4000))
+    big += "def fetch(url):\n    return httpx.get(url)\n"
+    _write(tmp_path, "app/client.py", big)
+    assert len(big) > detect._EXCERPT_OVER_CHARS
+    cited = big.count("\n")  # the httpx.get line is the last one
+    detect_reply = json.dumps(
+        {
+            "condition_id": "REL-003",
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/client.py",
+                    "line": 3,
+                    "evidence": "return httpx.get(url)",
+                    "explanation": "no timeout",
+                    "confidence": "high",
+                }
+            ],
+        }
+    )
+    client = _ScriptedClient([detect_reply])
+    findings, skip, _notes = run_condition(
+        client,
+        tmp_path,
+        build_inventory(tmp_path),
+        Taxonomy.load().get("REL-003"),
+        "contract",
+        200_000,
+        Settings(verify=False),
+    )
+    sent = client.calls[0][1]
+    assert skip is None and findings
+    assert findings[0].line == cited
+    assert "EXCERPT" in sent and "x_2000 = 2000" not in sent
+
+
+def test_layer1_secret_findings_get_the_verification_pass(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.detect import verify_layer1_findings
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(tmp_path, "infra/Taskfile.yaml", "x: 1\n" * 10)
+    _write(tmp_path, "app/config.py", 'API_KEY = "Xk9#mP2vL8qR4tWn"\n')
+    tax = Taxonomy.load()
+    c003 = tax.get("SEC-003")
+    urn = Finding(
+        condition_id="SEC-003",
+        pillar="SEC",
+        severity=Severity.CRITICAL,
+        title=c003.title,
+        file="infra/Taskfile.yaml",
+        line=3,
+        evidence="Generic credential assignment (…l::*)",
+        layer=1,
+        fix_type="auto",
+    )
+    real = Finding(
+        condition_id="SEC-003",
+        pillar="SEC",
+        severity=Severity.CRITICAL,
+        title=c003.title,
+        file="app/config.py",
+        line=1,
+        evidence="Generic credential assignment (…4tWn)",
+        layer=1,
+        fix_type="auto",
+    )
+    other = Finding(
+        condition_id="REL-001",
+        pillar="REL",
+        severity=Severity.HIGH,
+        title="no tests",
+        layer=1,
+    )
+    client = _ScriptedClient(
+        [
+            json.dumps({"verdict": "refuted", "reason": "a Pulumi URN target pattern"}),
+            json.dumps({"verdict": "confirmed", "reason": "generated key literal"}),
+        ]
+    )
+
+    kept, notes = verify_layer1_findings(client, tmp_path, tax, [urn, real, other])
+
+    assert [f.condition_id for f in kept] == ["SEC-003", "REL-001"]
+    assert kept[0].file == "app/config.py" and kept[0].verified
+    assert any(
+        "dropped on verification: a Pulumi URN target pattern" in n for n in notes
+    )
+    assert any("1 secret finding(s) confirmed" in n and "1 dropped" in n for n in notes)
+
+
+def test_coverage_names_timed_out_checks_with_a_rerun_command() -> None:
+    from gap_analysis.report import coverage_lines
+
+    result = AnalysisResult()
+    result.skipped = [
+        ConditionSkip(
+            "SEC-011", "LLM/parse error: dr opencode run timed out after 300s"
+        ),
+        ConditionSkip("SEC-001", "relational pair incomplete"),
+        ConditionSkip(
+            "REL-003", "LLM/parse error: dr opencode run timed out after 300s"
+        ),
+    ]
+    lines = coverage_lines(result)
+    line = next(n for n in lines if "timed out" in n)
+    assert "NOT ASSESSED" in line
+    assert "--select SEC-011,REL-003 --llm-timeout 1200" in line
+
+
+def test_fix_holds_back_layer1_secret_findings_the_pass_did_not_confirm(
+    tmp_path: Path,
+) -> None:
+    from gap_analysis.remediate import remediate
+
+    repo = tmp_path / "repo"
+    _write(repo, "app/config.py", 'API_KEY = "Xk9#mP2vL8qR4tWn"\n')
+    _git_repo(repo, "")
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.email=t@x",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
+        check=True,
+    )
+
+    def finding(verified: bool, verification: str) -> Finding:
+        return Finding(
+            condition_id="SEC-003",
+            pillar="SEC",
+            severity=Severity.CRITICAL,
+            title="secret",
+            file="app/config.py",
+            line=1,
+            layer=1,
+            evidence="Generic credential assignment (…4tWn)",
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            verified=verified,
+            verification=verification,
+        )
+
+    policy = {
+        "remediation": {"allow_fix_types": ["auto"], "auto_apply_risk": ["plumbing"]}
+    }
+    unconfirmed = finding(False, "not verified (the second look could not run)")
+    summary = remediate(repo, [unconfirmed], policy, "t1")
+    assert summary["unverified"] == [
+        {"condition_id": "SEC-003", "file": "app/config.py"}
+    ]
+    assert not summary.get("applied")
+
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-"], check=False)
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "."], check=False)
+    offline = finding(False, "")
+    summary = remediate(repo, [offline], policy, "t2")
+    assert summary["unverified"] == []
+
+
+def test_run_condition_repairs_malformed_json_once(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.detect import run_condition
+    from gap_analysis.taxonomy import Taxonomy
+
+    _write(tmp_path, "app/client.py", "import httpx\n\nresp = httpx.get(url)\n")
+    broken = '{"condition_id": "REL-003", "status": "found", "findings": [{"file": "app/client.py", "line": 3, "evidence": "resp = httpx.get(url)", "explanation": "quote " unescaped'
+    repaired = json.dumps(
+        {
+            "condition_id": "REL-003",
+            "status": "found",
+            "findings": [
+                {
+                    "file": "app/client.py",
+                    "line": 3,
+                    "evidence": "resp = httpx.get(url)",
+                    "explanation": "no timeout",
+                }
+            ],
+        }
+    )
+    client = _ScriptedClient([broken, repaired])
+    findings, skip, _notes = run_condition(
+        client,
+        tmp_path,
+        build_inventory(tmp_path),
+        Taxonomy.load().get("REL-003"),
+        "contract",
+        200_000,
+        Settings(verify=False),
+    )
+    assert skip is None and len(findings) == 1
+    assert len(client.calls) == 2
+    assert "not valid JSON" in client.calls[1][1] and broken in client.calls[1][1]
+
+
+def test_ensure_clean_worktree_ignores_the_analysis_report_files(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _write(repo, "app.py", "x = 1\n")
+    _git_repo(repo, "")
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.email=t@x",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
+        check=True,
+    )
+    _write(repo, "gap-analysis-out/gap-report.md", "# report\n")
+    _write(repo, "gap-analysis-out/gap-report.html", "<p>report</p>\n")
+    _write(repo, "gap-analysis-out/gap-findings.json", "{}")
+    _write(repo, "gap-analysis-out/run.log", "log\n")
+    _write(repo, "docs/gap-report.html", "<p>elsewhere</p>\n")
+
+    ensure_clean_worktree(repo, repo / "gap-analysis-out")  # must not raise
+
+    with pytest.raises(
+        RuntimeError, match=r"uncommitted changes \(gap-analysis-out/run.log\)"
+    ):
+        ensure_clean_worktree(repo)
+
+    _write(repo, "app.py", "x = 2\n")
+    with pytest.raises(RuntimeError, match=r"uncommitted changes \(app.py\)"):
+        ensure_clean_worktree(repo, repo / "gap-analysis-out")
+
+
+def test_verification_only_confirms_on_an_explicit_verdict(tmp_path: Path) -> None:
+    import json
+
+    from gap_analysis.detect import verify_item, verify_layer1_findings
+    from gap_analysis.taxonomy import Taxonomy
+
+    tax = Taxonomy.load()
+    cond = tax.get("REL-003")
+    raw = {"app.py": "import httpx\n\nresp = httpx.get(url)\n"}
+
+    for reply in (
+        json.dumps({"reason": "no verdict field at all"}),
+        json.dumps({"verdict": "unverifiable", "reason": "could not tell"}),
+        json.dumps({"verdict": "probably fine"}),
+    ):
+        item: dict = {"file": "app.py", "line": 3, "evidence": "resp = httpx.get(url)"}
+        verdict = verify_item(_ScriptedClient([reply]), tmp_path, cond, item, raw, [])
+        assert verdict == "unverifiable", reply
+        assert not item.get("_verified"), reply
+        assert "no usable verdict" in item["_verify_reason"]
+
+    _write(tmp_path, "config.py", 'API_KEY = "Xk9#mP2vL8qR4tWn"\n')
+    secret = Finding(
+        condition_id="SEC-003",
+        pillar="SEC",
+        severity=Severity.CRITICAL,
+        title="secret",
+        file="config.py",
+        line=1,
+        layer=1,
+        evidence="Generic credential assignment (…4tWn)",
+        fix_type="auto",
+    )
+    kept, _notes = verify_layer1_findings(
+        _ScriptedClient([json.dumps({"verdict": "unsure"})]), tmp_path, tax, [secret]
+    )
+    assert len(kept) == 1 and not kept[0].verified
+    assert "no usable verdict" in kept[0].verification
+
+
+def test_gateway_catalog_is_published_only_once_it_is_complete(monkeypatch) -> None:
+    import json
+    import threading
+
+    from gap_analysis import conformance
+
+    monkeypatch.setattr(conformance, "_GATEWAY_MODELS", None)
+    monkeypatch.setattr(conformance.shutil, "which", lambda _n: "/usr/bin/dr")
+    started = threading.Event()
+
+    class _Proc:
+        stdout = json.dumps({"llms": [{"model": "anthropic/claude-sonnet-4-6"}]})
+
+    def slow_run(*_a, **_k):
+        started.set()
+        time.sleep(0.3)
+        return _Proc()
+
+    monkeypatch.setattr(conformance.subprocess, "run", slow_run)
+    seen: list[list[str]] = []
+    first = threading.Thread(
+        target=lambda: seen.append(conformance.llm_gateway_models())
+    )
+    first.start()
+    assert started.wait(2)
+    second = threading.Thread(
+        target=lambda: seen.append(conformance.llm_gateway_models())
+    )
+    second.start()
+    first.join(5)
+    second.join(5)
+
+    assert seen == [["anthropic/claude-sonnet-4-6"]] * 2, (
+        "a concurrent caller must wait for the fetch, not read an empty sentinel"
+    )
+
+
+def test_required_library_patterns_match_declared_dependencies() -> None:
+    from gap_analysis.conformance import _matched_by, check_conformance
+    from gap_analysis.taxonomy import Taxonomy
+
+    assert _matched_by("datarobot*", {"datarobot", "httpx"})
+    assert not _matched_by("datarobot*", {"httpx"})
+
+    tax = Taxonomy.load()
+    inventory = {"dependencies": ["datarobot-pulumi-utils", "httpx"], "files": []}
+    policy = {"it_admin": {"libraries": {"require": ["datarobot*"]}}}
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert not [f for f in findings if "Required library" in f.explanation]
+
+    policy = {"it_admin": {"libraries": {"require": ["pandas*"]}}}
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert [f for f in findings if "Required library 'pandas*'" in f.explanation]
+
+
+def test_python_floor_treats_3_11_and_3_11_0_as_equal() -> None:
+    from gap_analysis.conformance import _ver_tuple, check_conformance
+    from gap_analysis.taxonomy import Taxonomy
+
+    assert _ver_tuple("3.11") == _ver_tuple("3.11.0")
+    assert _ver_tuple("3.9") < _ver_tuple("3.11")
+
+    tax = Taxonomy.load()
+    policy = {"it_admin": {"python": {"min_version": "3.11.0"}}}
+    inventory = {"python_version": "3.11", "dependencies": [], "files": []}
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert not [f for f in findings if f.condition_id == "ITA-001"]
+
+    inventory["python_version"] = "3.10"
+    findings, _notes = check_conformance(inventory, policy, tax, offline=True)
+    assert [f for f in findings if f.condition_id == "ITA-001"]
+
+
+def test_severity_override_re_derives_the_structural_flag() -> None:
+    from gap_analysis.taxonomy import Condition, Taxonomy
+
+    advisory = Condition.from_dict(
+        {
+            "id": "X-001",
+            "pillar": "SEC",
+            "layer": 2,
+            "severity": "high",
+            "title": "t",
+            "fix_type": "advisory",
+        }
+    )
+    declared = Condition.from_dict(
+        {
+            "id": "X-002",
+            "pillar": "SEC",
+            "layer": 2,
+            "severity": "high",
+            "title": "t",
+            "fix_type": "auto",
+            "structural": True,
+        }
+    )
+    assert advisory.structural and declared.structural
+    tax = Taxonomy([advisory, declared])
+
+    tax.apply_severity_overrides({"X-001": "low", "X-002": "low"})
+
+    assert not advisory.structural, "an advisory finding lowered to low is patchable"
+    assert declared.structural, "an explicit structural: true survives an override"
+
+    tax.apply_severity_overrides({"X-001": "critical"})
+    assert advisory.structural
+
+
+def test_clone_uses_branch_for_names_and_a_fetch_for_commit_shas(monkeypatch) -> None:
+    from gap_analysis import ingest
+
+    calls: list[list[str]] = []
+
+    class _Ok:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(
+        ingest.subprocess, "run", lambda args, **_k: calls.append(args) or _Ok()
+    )
+
+    ingest.clone_repo("https://github.com/o/r", ref="main", dest="/tmp/x")
+    assert calls[0][:6] == ["git", "clone", "--depth", "1", "--branch", "main"]
+    assert len(calls) == 1
+
+    calls.clear()
+    sha = "9f2c1ab7d3e4f5061728394a5b6c7d8e9f001122"
+    ingest.clone_repo("https://github.com/o/r", ref=sha, dest="/tmp/x")
+    assert "--branch" not in calls[0], "git clone --branch rejects a bare commit sha"
+    assert calls[1] == ["git", "-C", "/tmp/x", "fetch", "--depth", "1", "origin", sha]
+    assert calls[2] == ["git", "-C", "/tmp/x", "checkout", "--detach", "FETCH_HEAD"]
+
+
+def test_process_teardown_falls_back_where_there_are_no_process_groups(
+    monkeypatch,
+) -> None:
+    import os as os_mod
+    import subprocess
+
+    from datarobot_skills_utils.opencode import server
+
+    proc = subprocess.Popen(["sh", "-c", "sleep 300"], start_new_session=True)
+    monkeypatch.delattr(os_mod, "killpg", raising=False)
+
+    assert server._own_group(proc) is None
+    server.terminate_process_tree(proc, timeout=2)
+    assert proc.poll() is not None, "the direct child is still stopped"

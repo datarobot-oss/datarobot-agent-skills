@@ -123,6 +123,8 @@ Every merge bumps **minor** (`x.N.0`) by default&mdash;this is a skills/marketpl
 task version:bump -- --bump patch
 ```
 
+`packages/datarobot-skills-utils` is versioned on its own (`version` in its `pyproject.toml`, starting at 0.1.0) and is not touched by the automated bump. Bump it in the PR that changes the package; every GitHub Release then runs `publish-pypi.yml`, which uploads that version to PyPI and skips silently when it is already published.
+
 ## Changelog
 
 Every PR that touches anything under `skills/` adds a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under the `[Unreleased]` section, prefixed with the affected skill folder name, under one of `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` (see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)). The category header is required, not optional&mdash;always nest the bullet under one. For example:
