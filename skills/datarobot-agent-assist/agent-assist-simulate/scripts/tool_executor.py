@@ -112,7 +112,7 @@ def main() -> None:
         if callable(fn):
             result = fn(**call_args)
             if inspect.isawaitable(result):
-                result = asyncio.run(result)
+                result = asyncio.run(result)  # type: ignore[arg-type]
             if hasattr(result, "model_dump"):
                 result = result.model_dump()
             return_value = result
