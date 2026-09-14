@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Fixed
+
+- `datarobot-agent-assist-simulate`: `tool_executor.py` now re-execs into the nearest `.venv` beside the tools file before importing it, so `selective_e2e` correctly resolves the agent's dependencies rather than the swarm's interpreter. Also handles async tool functions (via `asyncio.run`) and Pydantic return values (via `model_dump`) that previously caused serialization errors.
+
 ## [1.8.0] - 2026-09-02
 
 ### Added

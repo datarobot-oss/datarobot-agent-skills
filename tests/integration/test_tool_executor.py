@@ -3,6 +3,7 @@
 
 import importlib
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -244,3 +245,33 @@ def test_tool_executor_replaces_fixture_worker_in_full_pipeline(
         {"id": 1, "value": 2},
         {"id": 2, "value": 4},
     ]
+
+
+def test_tool_executor_reexecs_into_project_venv(
+    tmp_path: Path, input_package: Path
+) -> None:
+    venv_dir = tmp_path / ".venv"
+    created = subprocess.run(
+        [sys.executable, "-m", "venv", str(venv_dir)],
+        capture_output=True,
+        text=True,
+    )
+    assert created.returncode == 0, created.stderr
+    venv_python = venv_dir / "bin" / "python3"
+    assert venv_python.is_file()
+
+    tools_path = tmp_path / "tools.py"
+    tools_path.write_text(
+        textwrap.dedent("""\
+            import sys
+
+            def fetch_records(limit: int = 10):
+                return {"prefix": sys.prefix, "executable": sys.executable}
+        """),
+        encoding="utf-8",
+    )
+    result, response_path = run_executor(tmp_path, tools_path, input_package)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(response_path.read_text(encoding="utf-8"))
+    prefix = payload["return_value"]["prefix"]
+    assert os.path.samefile(prefix, venv_dir)
