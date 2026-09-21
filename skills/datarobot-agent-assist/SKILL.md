@@ -281,6 +281,14 @@ Field definitions: [agent-assist-build/references/agent-spec-schema.md](agent-as
 
 ---
 
+## Tool/Helper Scripts Timeouts
+
+- Allow up to 25 minutes for any helper script to complete before timing out and returning an error
+- Allow up to 25 minutes for any shell command or tool to return a response before timing out and returning an error
+- Allow up to 60 minutes for deployment-related shell commands to complete before timing out and returning an error
+
+---
+
 
 ## Behavioral Rules
 
