@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-21
+
 - `datarobot-agent-assist`: Increased timeouts to prevent failing some of the long running scripts/tools.
 
 ## [1.8.0] - 2026-09-02
