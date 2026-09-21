@@ -12,8 +12,8 @@ This skill provides guidance for preparing and managing data in DataRobot, inclu
 **Most common use case**: Upload and validate a dataset
 
 1. **Upload dataset**: `upload_dataset(file_path, dataset_name)` to upload data
-2. **Validate data**: `validate_dataset(dataset_id)` to check data quality
-3. **Check schema**: `get_dataset_schema(dataset_id)` to review structure
+2. **Validate data**: iterate `dataset.get_all_features()` and check each feature's `na_count` and `unique_count` for quality issues (both can be `None` for some feature types; `target_leakage` is only populated on *project* features after EDA2 — it is never set on catalog datasets, which have no target yet)
+3. **Check schema**: `dr.Dataset.get(dataset_id).get_all_features()` to review each column's `name` and `feature_type`
 
 **Example**: "Upload sales_data.csv and check if it's ready for training"
 
@@ -88,7 +88,7 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Key SDK Operations
@@ -96,11 +96,13 @@ pip install datarobot
 Use these DataRobot SDK methods for data management:
 
 **Dataset Operations**:
-- `dr.Dataset.create_from_file(file_path, name)` - Upload dataset
+- `dr.Dataset.create_from_file(file_path)` - Upload dataset (no `name` parameter; rename afterwards with `dataset.modify(name=...)`)
 - `dr.Dataset.get(dataset_id)` - Get dataset details
 - `dr.Dataset.list()` - List all datasets
 - `dataset.row_count` - Get row count
-- `dataset.column_count` - Get column count
+- `len(dataset.get_all_features())` - Get column count
+
+Note: `create_from_file` blocks until the server finishes ingesting the file (default `max_wait=600` seconds); run it in a way that tolerates several minutes (or raise `max_wait`).
 
 **Dataset Information**:
 - `dataset.name` - Dataset name
@@ -141,13 +143,12 @@ import datarobot as dr
 # Initialize client
 dr.Client()
 
-# Upload dataset
-dataset = dr.Dataset.create_from_file(
-    file_path="sales_data.csv", name="Sales Data Q4 2024"
-)
+# Upload dataset (blocking: waits for ingestion, default max_wait=600s)
+dataset = dr.Dataset.create_from_file(file_path="sales_data.csv")
+dataset.modify(name="Sales Data Q4 2024")
 
 print(f"Dataset ID: {dataset.id}")
-print(f"Rows: {dataset.row_count}, Columns: {dataset.column_count}")
+print(f"Rows: {dataset.row_count}, Columns: {len(dataset.get_all_features())}")
 
 # Get dataset details
 dataset_info = dr.Dataset.get(dataset.id)
@@ -171,7 +172,7 @@ for dataset in datasets:
 # Get specific dataset
 dataset = dr.Dataset.get("abc123")
 print(f"Dataset: {dataset.name}")
-print(f"Size: {dataset.row_count} rows x {dataset.column_count} columns")
+print(f"Size: {dataset.row_count} rows x {len(dataset.get_all_features())} columns")
 ```
 
 ## Data format requirements
@@ -216,7 +217,7 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Initialize Client

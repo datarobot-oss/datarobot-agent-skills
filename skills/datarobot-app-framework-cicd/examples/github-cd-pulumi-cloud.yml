@@ -5,8 +5,10 @@
 #   DATAROBOT_API_TOKEN  — DataRobot service account API key
 #   PULUMI_ACCESS_TOKEN  — from https://app.pulumi.com/account/tokens
 #
-# Optional GitHub Variable (defaults to "ci" if not set):
-#   PULUMI_STACK_CI_NAME — stack name for the CI environment (e.g. "ci", "prod")
+# Optional GitHub Variables:
+#   PULUMI_STACK_CI_NAME — stack name for the CI environment (e.g. "ci", "prod"; defaults to "ci")
+#   DATAROBOT_ENDPOINT   — DataRobot API endpoint; set for EU or on-prem installs
+#                          (defaults to https://app.datarobot.com/api/v2)
 #
 # Pulumi Cloud uses PULUMI_ACCESS_TOKEN automatically — no explicit login step needed.
 
@@ -30,6 +32,7 @@ jobs:
         working-directory: infra
         env:
           DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
+          DATAROBOT_ENDPOINT: ${{ vars.DATAROBOT_ENDPOINT || 'https://app.datarobot.com/api/v2' }}
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           PULUMI_STACK: ${{ vars.PULUMI_STACK_CI_NAME || 'ci' }}
         run: |

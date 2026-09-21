@@ -44,7 +44,7 @@ list grouped by resource type:
 | `application/ai-agent+json` | Agent |
 | anything else | Resource |
 
-For each entry show: **name**, **type**, **description**, and whether it came from
+For each entry show: **displayName**, **type**, **description**, and whether it came from
 the public catalog or the user's instance. Relevance to the user's task comes
 first — don't just dump the full list alphabetically.
 
@@ -52,10 +52,11 @@ first — don't just dump the full list alphabetically.
 
 Never install or configure anything automatically. When the user picks a result:
 
-**Skill** — install via the DataRobot skills plugin:
+**Skill** — install via the ai-agent-skills installer, pointing at the DataRobot skills repo:
 ```bash
-npx ai-agent-skills install <skill-name>
+npx ai-agent-skills install datarobot-oss/datarobot-agent-skills/skills/<skill-name>
 ```
+(use `npx ai-agent-skills install datarobot-oss/datarobot-agent-skills` to install all skills).
 Or point directly to the `url` field from the catalog entry (the SKILL.md file).
 
 **MCP Server** — show the MCP connector config using the `url` from the catalog:

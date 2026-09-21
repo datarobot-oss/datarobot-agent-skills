@@ -44,11 +44,14 @@ That's it. Do **not** add anything to `infra/Taskfile.yaml` or create `infra/scr
 | `DATAROBOT_API_TOKEN` | Secret |
 | `PULUMI_ACCESS_TOKEN` | Secret |
 
-**Optional GitHub Variable** (defaults to `ci` if not set):
+**Optional GitHub Variables** (defaults apply if not set):
 
 | Name | Kind | Default |
 |------|------|---------|
 | `PULUMI_STACK_CI_NAME` | Variable | `ci` |
+| `DATAROBOT_ENDPOINT` | Variable | `https://app.datarobot.com/api/v2` |
+
+Set `DATAROBOT_ENDPOINT` only for EU (e.g. `https://app.eu.datarobot.com/api/v2`) or on-prem/self-managed DataRobot installs.
 
 **When to use the advanced approach (GPG + DIY backends) instead:**
 - You have many secrets (GPG encrypts all of `.env` behind a single passphrase — only one GitHub Secret needed)

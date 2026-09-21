@@ -15,8 +15,8 @@ Build progression: pending → in-progress → BUILT (built, not yet pushed)
 comparison.
 
 Reads DATAROBOT_ENDPOINT (must include /api/v2) and DATAROBOT_API_TOKEN
-from the environment.  Exits 0 on COMPLETED, 2 on FAILED (prints last
-2KB of build logs to stderr), 3 on timeout.
+from the environment.  Exits 0 on COMPLETED, 2 on FAILED or CANCELLED
+(prints last 2KB of build logs to stderr), 3 on timeout.
 
 Usage:
     python wait_for_build.py <artifact_id> <build_id> [--timeout SECONDS] [--interval SECONDS]
@@ -35,7 +35,7 @@ import httpx
 # Only COMPLETED means the image is pushed to the registry and deployable.
 # BUILT is intermediate (built locally, not yet pushed) — keep polling.
 SUCCESS = {"COMPLETED"}
-FAILURE = {"FAILED"}
+FAILURE = {"FAILED", "CANCELLED"}
 
 Headers = dict[str, str]
 Json = dict[str, Any]
@@ -75,7 +75,7 @@ def wait_for_build(
                 timeout=30,
             ).text
             print(f"--- last 2KB of build logs ---\n{logs[-2000:]}", file=sys.stderr)
-            raise RuntimeError(f"Build {build_id} FAILED")
+            raise RuntimeError(f"Build {build_id} {status}")
         time.sleep(interval)
     raise TimeoutError(
         f"Build {build_id} did not finish within {timeout}s (last status: {last_status})"

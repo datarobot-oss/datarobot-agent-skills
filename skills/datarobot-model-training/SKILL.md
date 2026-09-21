@@ -91,7 +91,7 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Key SDK Operations
@@ -113,7 +113,7 @@ Use these DataRobot SDK methods for model training:
 - `project.wait_for_autopilot()` - Block until AutoPilot finishes
 - `project.get_status()` - Check training status
 - `dr.Model.list(project_id)` - List trained models
-- `dr.Model.get(model_id)` - Get model details
+- `dr.Model.get(project_id, model_id)` - Get model details
 - `dr.ModelRecommendation.get(project.id).get_model()` - Get DataRobot's recommended model
 
 **Model Analysis**:
@@ -180,10 +180,11 @@ use_case = (
     else dr.UseCase.create(name="Sales Prediction")
 )
 
-# Upload dataset
+# Upload dataset (create_from_file has no name parameter; rename afterwards)
 dataset = dr.Dataset.create_from_file(
-    file_path="training_data.csv", name="Sales Data", use_cases=[use_case]
+    file_path="training_data.csv", use_cases=[use_case]
 )
+dataset.modify(name="Sales Data")
 
 # Create project
 project = dr.Project.create_from_dataset(
@@ -224,10 +225,9 @@ use_case = (
     else dr.UseCase.create(name="Sales Forecast")
 )
 
-# Upload dataset
-dataset = dr.Dataset.create_from_file(
-    "sales_data.csv", "Sales Forecast Data", use_cases=[use_case]
-)
+# Upload dataset (create_from_file has no name parameter; rename afterwards)
+dataset = dr.Dataset.create_from_file("sales_data.csv", use_cases=[use_case])
+dataset.modify(name="Sales Forecast Data")
 
 # Create project
 project = dr.Project.create_from_dataset(
@@ -235,21 +235,24 @@ project = dr.Project.create_from_dataset(
 )
 
 # Configure time series settings
-project.set_target(
-    target="sales",
-    mode=dr.AUTOPILOT_MODE.COMPREHENSIVE,
-    partitioning_method=dr.PARTITIONING_METHOD.DATETIME,
+spec = dr.DatetimePartitioningSpecification(
     datetime_partition_column="date",
+    use_time_series=True,
     multiseries_id_columns=["store_id"],
     forecast_window_start=1,
     forecast_window_end=7,
 )
 
-# Start training
-project.start(autopilot_on=True, max_wait=7200)
+# Set the target and start AutoPilot with time series partitioning
+project.analyze_and_model(
+    target="sales",
+    mode=dr.AUTOPILOT_MODE.COMPREHENSIVE,
+    partitioning_method=spec,
+    max_wait=7200,
+)
 
 # Wait for completion and get results
-project.wait_for_completion()
+project.wait_for_autopilot()
 models = dr.Model.list(project.id)
 ```
 
@@ -271,14 +274,14 @@ Common errors and solutions:
 - **"Dataset does not contain enough rows"**: DataRobot requires a minimum of 20 rows to create a project from a dataset — sample/demo data must meet this
 - **Target errors**: Ensure target column exists and has appropriate values
 - **Training failures**: Check data quality, feature types, missing values
-- **Timeout errors**: Adjust time limits or use Quick mode for initial exploration
+- **Timeout errors**: Adjust time limits or use Quick mode for initial exploration. `Dataset.create_from_file` and `project.analyze_and_model` block for up to `max_wait` seconds (default 600); pass a larger `max_wait` for big datasets or slow environments
 
 ## SDK Setup
 
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Initialize Client

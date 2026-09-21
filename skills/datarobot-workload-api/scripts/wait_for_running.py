@@ -13,15 +13,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
 
-TERMINAL_FAILURES = ("errored", "failed", "terminated")
+TERMINAL_FAILURES = ("errored", "terminated")
 
 
 def wait_for_running(
@@ -47,9 +47,10 @@ def wait_for_running(
         if status == "running":
             return w
         if status in TERMINAL_FAILURES:
+            diagnose = Path(__file__).parent / "diagnose_workload.py"
             raise RuntimeError(
                 f"Workload {workload_id} entered terminal state {status!r}. "
-                f"statusDetails={json.dumps(w.get('statusDetails'), default=str)[:500]}"
+                f"Run: python {diagnose} {workload_id}"
             )
         time.sleep(interval)
     raise TimeoutError(

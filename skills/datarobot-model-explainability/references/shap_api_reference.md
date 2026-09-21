@@ -52,7 +52,7 @@ List all computed ShapMatrix objects for a model (one per partition computed).
 |-----------|------|-------------|
 | `matrix` | list[list[float]] | 2D array: rows x features |
 | `columns` | list[str] | Feature names (same order as matrix columns) |
-| `base_value` | float | Model's mean prediction (baseline) |
+| `base_value` | list[float] | Model's mean prediction (baseline); single element for regression/binary — index `[0]` for the scalar baseline |
 | `link_function` | str | Link function: `'identity'` for regression, `'logit'` for binary classification |
 | `source` | str | Partition this matrix was computed on |
 
@@ -118,9 +118,8 @@ Retrieve existing ShapImpact results. Pass the same `source` used when computing
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `shap_impacts` | list | Each entry is `[feature_name, normalized, unnormalized]` or a dict with `feature_name`, `impact_normalized`, `impact_unnormalized` |
-| `base_value` | float or list[float] | Baseline prediction value(s) |
-| `row_count` | int | Number of rows used for computation |
-| `capping` | bool | Whether extreme SHAP values were capped |
+| `base_value` | list[float] | Baseline prediction value(s) |
+| `capping` | dict or None | Cap bounds dict with `left`/`right` keys; `None` when no capping applies |
 | `link` | str | Link function |
 
 ### Notes

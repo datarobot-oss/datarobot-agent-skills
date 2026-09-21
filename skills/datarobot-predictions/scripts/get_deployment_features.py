@@ -31,41 +31,69 @@ def get_deployment_features(deployment_id: str) -> dict:
     dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
-    model = dr.Model.get(deployment.model["id"])
-    project = dr.Project.get(model.project_id)
+    target_name = deployment.model.get(
+        "target_name"
+    )  # None for unsupervised/anomaly deployments
+    target_type = deployment.model["target_type"]
 
-    # Get feature information
-    features = model.get_features()
-    feature_importance = model.get_feature_impact()
+    # Get feature information: a list of plain dicts with keys name, feature_type,
+    # importance, date_format, known_in_advance. `importance` is a model-independent
+    # measure of the feature/target relationship strength (not Feature Impact).
+    try:
+        features = deployment.get_features()
+    except dr.errors.ClientError as e:
+        sys.exit(f"Deployment feature metadata unavailable ({e})")
 
     # Build feature list
     feature_list = []
     for feature in features:
-        importance = 0.0
-        for fi in feature_importance:
-            if fi["featureName"] == feature.name:
-                importance = fi.get("impactNormalized", 0.0)
-                break
-
         feature_list.append(
             {
-                "feature_name": feature.name,
-                "feature_type": feature.feature_type,
-                "importance": importance,
-                "is_target": feature.name == model.target_name,
+                "feature_name": feature["name"],
+                "feature_type": feature["feature_type"],
+                "importance": feature["importance"],
+                "date_format": feature["date_format"],
+                "is_target": feature["name"] == target_name,
             }
         )
 
-    # Get time series config if applicable
+    # Get time series config if applicable. deployment.model has "project_id" only
+    # for deployments of leaderboard models (absent for custom-model deployments),
+    # and the backing project may since have been deleted.
     time_series_config = None
-    if project.use_time_series:
+    project_id = deployment.model.get("project_id")
+    try:
+        use_time_series = (
+            bool(project_id) and dr.Project.get(project_id).use_time_series
+        )
+    except dr.errors.ClientError as e:
+        use_time_series = False
+        print(f"Note: training project not accessible: {e}", file=sys.stderr)
+    if use_time_series:
         try:
-            time_series_info = project.get_time_series_info()
+            partitioning = dr.DatetimePartitioning.get(project_id)
+            # Retrained-on-actuals TS projects suffix training column names with
+            # " (actual)"; prediction input uses the unsuffixed names, so map back
+            # when the unsuffixed name is what the deployment's features carry.
+            feature_names = {f["name"] for f in features}
+
+            def to_input_name(name: str | None) -> str | None:
+                if name and name.endswith(" (actual)") and name not in feature_names:
+                    stripped = name[: -len(" (actual)")]
+                    if stripped in feature_names:
+                        return stripped
+                return name
+
             time_series_config = {
-                "datetime_column": time_series_info.datetime_partition_column,
-                "forecast_window_start": time_series_info.forecast_window_start,
-                "forecast_window_end": time_series_info.forecast_window_end,
-                "series_id_columns": time_series_info.multiseries_id_columns or [],
+                "datetime_column": to_input_name(
+                    partitioning.datetime_partition_column
+                ),
+                "forecast_window_start": partitioning.forecast_window_start,
+                "forecast_window_end": partitioning.forecast_window_end,
+                "series_id_columns": [
+                    to_input_name(c)
+                    for c in (partitioning.multiseries_id_columns or [])
+                ],
             }
         except dr.errors.ClientError as e:
             print(
@@ -75,9 +103,9 @@ def get_deployment_features(deployment_id: str) -> dict:
 
     return {
         "deployment_id": deployment_id,
-        "model_type": model.target_type,
-        "target": model.target_name,
-        "target_type": model.target_type,
+        "model_type": target_type,
+        "target": target_name,
+        "target_type": target_type,
         "features": feature_list,
         "time_series_config": time_series_config,
     }
