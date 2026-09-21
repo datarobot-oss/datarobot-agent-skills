@@ -379,9 +379,9 @@ See [references/agent-spec-examples.md](references/agent-spec-examples.md) for c
 
 ## Tool/Helper Scripts Timeouts
 
-- Allow up to 10 minutes for any helper script to complete before timing out and returning an error
-- Allow up to 5 minutes for any tool to return a response before timing out and returning an error
-- Allow up to 30 minutes for deployment-related shell commands to complete before timing out and returning an error
+- Allow up to 25 minutes for any helper script to complete before timing out and returning an error
+- Allow up to 25 minutes for any shell command or tool to return a response before timing out and returning an error
+- Allow up to 60 minutes for deployment-related shell commands to complete before timing out and returning an error
 
 ---
 
