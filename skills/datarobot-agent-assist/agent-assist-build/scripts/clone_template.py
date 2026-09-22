@@ -59,7 +59,10 @@ def cleanup_git_dir(target_dir: Path) -> None:
 
 
 def run_git_command(
-    command: list[str], description: str, target_dir: Path, timeout: int = GIT_COMMAND_TIMEOUT
+    command: list[str],
+    description: str,
+    target_dir: Path,
+    timeout: int = GIT_COMMAND_TIMEOUT,
 ) -> tuple[bool, str]:
     """
     Run a git command and return success status and output.

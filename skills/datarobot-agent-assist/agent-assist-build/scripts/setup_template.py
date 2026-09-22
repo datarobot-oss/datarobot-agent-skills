@@ -278,7 +278,9 @@ def create_env_file(
 
 
 def initialize_pulumi(
-    target_dir: Path, pulumi_passphrase: str = "", timeout: int = DEFAULT_COMMAND_TIMEOUT
+    target_dir: Path,
+    pulumi_passphrase: str = "",
+    timeout: int = DEFAULT_COMMAND_TIMEOUT,
 ) -> tuple[bool, str]:
     """
     Initialize Pulumi stack with a passphrase from .env or generated.
