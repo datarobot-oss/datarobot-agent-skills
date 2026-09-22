@@ -46,6 +46,8 @@ from list_llm_models import (
 # directly. See the template's infra/configurations/llm/deployed_llm.py and
 # docs/llm.md ("DataRobot Deployed LLM").
 DEPLOYED_LLM_CONFIGURATION = "deployed_llm.py"
+DEFAULT_COMMAND_TIMEOUT = 300
+TASK_START_COMMAND_TIMEOUT = 1500
 
 
 def generate_random_secret(length: int = 32) -> str:
@@ -276,7 +278,9 @@ def create_env_file(
 
 
 def initialize_pulumi(
-    target_dir: Path, pulumi_passphrase: str = "", timeout: int = 300
+    target_dir: Path,
+    pulumi_passphrase: str = "",
+    timeout: int = DEFAULT_COMMAND_TIMEOUT,
 ) -> tuple[bool, str]:
     """
     Initialize Pulumi stack with a passphrase from .env or generated.
@@ -361,14 +365,16 @@ def initialize_pulumi(
         return False, error_msg
 
 
-def run_command(command: str, target_dir: Path, timeout: int = 300) -> tuple[bool, str]:
+def run_command(
+    command: str, target_dir: Path, timeout: int = DEFAULT_COMMAND_TIMEOUT
+) -> tuple[bool, str]:
     """
     Run a shell command and capture its output.
 
     Args:
         command: Shell command to execute
         target_dir: Directory where command should be executed
-        timeout: Timeout in seconds (default: 300)
+        timeout: Timeout in seconds
 
     Returns:
         Tuple of (success, output)
@@ -557,7 +563,9 @@ def setup_and_run(
         return 1
 
     # Step 4: Run task start-non-interactive
-    success, _ = run_command("task start-non-interactive", target_dir)
+    success, _ = run_command(
+        "task start-non-interactive", target_dir, timeout=TASK_START_COMMAND_TIMEOUT
+    )
     if not success:
         print("\n⚠ Command 'task start-non-interactive' failed")
         print("See output above for details")
