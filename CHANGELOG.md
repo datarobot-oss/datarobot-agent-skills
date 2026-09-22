@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-22
+
 - `datarobot-agent-assist`: Unified and increased timeouts for git commands and long running task commands in helper scripts.
 
 ## [1.9.0] - 2026-09-21
