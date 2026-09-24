@@ -25,6 +25,7 @@ VERSION_FILE_FIXTURES = {
         "plugins": [{"name": "example-plugin", "version": "1.0.0"}]
     },
     ".cursor-plugin/plugin.json": {"name": "example-plugin", "version": "1.0.0"},
+    ".codex-plugin/plugin.json": {"name": "example-plugin", "version": "1.0.0"},
     "gemini-extension.json": {"name": "example-plugin", "version": "1.0.0"},
 }
 
@@ -81,7 +82,7 @@ def _read_version(tmp_path: Path, relative_path: str, jq_path: str) -> str:
     return result.stdout.strip()
 
 
-def test_bump_updates_all_five_files_to_the_same_version(tmp_path: Path) -> None:
+def test_bump_updates_all_six_files_to_the_same_version(tmp_path: Path) -> None:
     repo = _write_fixture_repo(tmp_path, CHANGELOG_WITH_ENTRY)
 
     exit_code = version_bump.main(["--repo-root", str(repo), "--bump", "minor"])

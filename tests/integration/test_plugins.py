@@ -2,19 +2,25 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Validate plugin/marketplace definitions for Gemini, Claude, and Cursor:
-- Gemini: structural checks on gemini-extension.json entries
+Validate plugin/marketplace definitions for Gemini, Claude, Codex, and Cursor:
+- Gemini: runs `gemini extensions validate .` plus structural checks
 - Claude: runs `claude plugin validate .` (official CLI)
+- Codex: structural checks on .codex-plugin/plugin.json and optional `codex plugin validate .`
 - Cursor: structural checks on .cursor-plugin/plugin.json
 """
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
+CODEX_PLUGIN_FILE = REPO_ROOT / ".codex-plugin" / "plugin.json"
+CURSOR_PLUGIN_FILE = REPO_ROOT / ".cursor-plugin" / "plugin.json"
+_CODEX_REQUIRED_FIELDS = {"name", "description", "version", "license"}
+_CURSOR_REQUIRED_FIELDS = {"name", "description", "version", "skills_directory"}
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
@@ -106,8 +112,57 @@ def test_claude_plugin_validate() -> None:
     )
 
 
-CURSOR_PLUGIN_FILE = REPO_ROOT / ".cursor-plugin" / "plugin.json"
-_CURSOR_REQUIRED_FIELDS = {"name", "description", "version", "skills_directory"}
+@pytest.fixture(scope="module")
+def codex_plugin() -> dict:
+    """Load and return the parsed .codex-plugin/plugin.json manifest."""
+    assert CODEX_PLUGIN_FILE.exists(), (
+        f".codex-plugin/plugin.json not found at {CODEX_PLUGIN_FILE}"
+    )
+    with open(CODEX_PLUGIN_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+@pytest.mark.parametrize("field", sorted(_CODEX_REQUIRED_FIELDS))
+def test_codex_plugin_has_required_field(codex_plugin: dict, field: str) -> None:
+    assert field in codex_plugin, (
+        f".codex-plugin/plugin.json is missing required field '{field}'"
+    )
+
+
+def test_codex_plugin_name_prefix(codex_plugin: dict) -> None:
+    name = codex_plugin.get("name", "")
+    assert name.startswith("datarobot-"), (
+        f".codex-plugin/plugin.json name '{name}' does not start with 'datarobot-'"
+    )
+
+
+def test_codex_plugin_version_matches_package_json(codex_plugin: dict) -> None:
+    with open(REPO_ROOT / "package.json", encoding="utf-8") as f:
+        package = json.load(f)
+    assert codex_plugin.get("version") == package.get("version"), (
+        ".codex-plugin/plugin.json version does not match package.json version"
+    )
+
+
+def test_codex_cli_supports_plugin_commands_if_available() -> None:
+    """Check that the installed Codex CLI exposes plugin management commands."""
+    codex_path = shutil.which("codex")
+    if codex_path is None:
+        pytest.skip("codex CLI not installed in test environment")
+
+    result = subprocess.run(
+        [codex_path, "plugin", "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"`codex plugin --help` failed:\n{result.stdout}\n{result.stderr}"
+    )
+    assert (
+        "add" in result.stdout and "list" in result.stdout and "remove" in result.stdout
+    ), "Installed Codex CLI does not expose the expected plugin subcommands"
 
 
 @pytest.fixture(scope="module")
@@ -142,9 +197,10 @@ def test_cursor_plugin_skills_directory_exists(cursor_plugin: dict) -> None:
 
 
 def test_all_plugin_versions_match() -> None:
-    """Assert that all plugin manifests (Claude, Cursor, Gemini) declare the same version."""
+    """Assert that all plugin manifests (Claude, Codex, Cursor, Gemini) declare the same version."""
     claude_plugin_file = REPO_ROOT / ".claude-plugin" / "plugin.json"
     claude_marketplace_file = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+    codex_plugin_file = REPO_ROOT / ".codex-plugin" / "plugin.json"
     cursor_plugin_file = REPO_ROOT / ".cursor-plugin" / "plugin.json"
     gemini_file = REPO_ROOT / "gemini-extension.json"
 
@@ -152,6 +208,8 @@ def test_all_plugin_versions_match() -> None:
         claude_plugin_version = json.load(f)["version"]
     with open(claude_marketplace_file, encoding="utf-8") as f:
         claude_marketplace_version = json.load(f)["plugins"][0]["version"]
+    with open(codex_plugin_file, encoding="utf-8") as f:
+        codex_version = json.load(f)["version"]
     with open(cursor_plugin_file, encoding="utf-8") as f:
         cursor_version = json.load(f)["version"]
     with open(gemini_file, encoding="utf-8") as f:
@@ -160,6 +218,7 @@ def test_all_plugin_versions_match() -> None:
     versions = {
         ".claude-plugin/plugin.json": claude_plugin_version,
         ".claude-plugin/marketplace.json (plugins[0])": claude_marketplace_version,
+        ".codex-plugin/plugin.json": codex_version,
         ".cursor-plugin/plugin.json": cursor_version,
         "gemini-extension.json": gemini_version,
     }
