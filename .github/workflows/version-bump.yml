@@ -2,8 +2,8 @@
 name: Version Bump
 
 # Bumps the shared plugin version, tags, and cuts a GitHub Release whenever a
-# merge to main changes anything under skills/. See scripts/version_bump.py
-# and CONTRIBUTING.md for the full flow.
+# merge to main changes anything under skills/ or Codex plugin metadata. See
+# scripts/version_bump.py and CONTRIBUTING.md for the full flow.
 #
 # Pushing directly to main (a protected, review-required branch) requires a
 # GitHub App installed on this repo and added to main's ruleset bypass list.
@@ -50,7 +50,7 @@ jobs:
           else
             RANGE="$LAST_TAG"
           fi
-          if git diff --quiet "${RANGE}..HEAD" -- skills/; then
+          if git diff --quiet "${RANGE}..HEAD" -- skills/ .codex-plugin/; then
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"

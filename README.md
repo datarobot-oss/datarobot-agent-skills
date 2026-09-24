@@ -117,13 +117,29 @@ For example:
 
 <details><summary><strong>Codex</strong></summary>
 
-Codex identifies the skills through the `AGENTS.md` file. You can verify that the instructions are loaded by running:
+This repository includes a Codex plugin manifest at `.codex-plugin/plugin.json` and also exposes instructions through `AGENTS.md`.
+
+**Use as a repository workspace**
+
+When you open this repository in Codex, Codex reads the `AGENTS.md` file automatically.
+
+You can verify that the instructions are loaded by running:
 
 ```bash
 codex --ask-for-approval never "Summarize the current instructions."
 ```
 
-For more details, see the [Codex `AGENTS.md`](https://developers.openai.com/codex/guides/agents-md) documentation.
+**Install from GitHub**
+
+You can also install this repository as a Codex plugin from GitHub:
+
+```bash
+codex plugin install https://github.com/datarobot-oss/datarobot-agent-skills.git
+```
+
+After installation, Codex loads the plugin metadata from `.codex-plugin/plugin.json`.
+
+For more details, see the [Build plugins for Codex](https://developers.openai.com/plugins/build/plugins) and [Codex `AGENTS.md`](https://developers.openai.com/codex/guides/agents-md) documentation.
 
 </details>
 
