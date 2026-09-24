@@ -31,13 +31,48 @@ target cluster, but they held on MTSaaS as of this writing:
    `401 {"message": "Invalid API key"}` **from the edge — the request never
    reaches the container** (it won't appear in `dr workload logs`).
 4. **Responses are NOT rewritten.** The edge does not re-add the prefix to the
-   app's redirect `Location` headers, HTML, or asset URLs; and it does not
-   inject `X-Forwarded-Prefix` you can rely on. What the app emits is what the
-   browser gets.
+   app's redirect `Location` headers, HTML, or asset URLs. What the app emits is
+   what the browser gets — derive the prefix from `WORKLOAD_ID` per the shim
+   below rather than depending on outbound rewriting.
 
 **WebSockets are supported** — `wss://…/workloads/<id>/…` upgrades pass through
 to the container. Real-time UIs work; no special handling beyond the sub-path
 rules below.
+
+## The identity headers the edge forwards
+
+Observed on a request that reached the container through an authenticated
+endpoint call (verify for your cluster — not yet in the public docs or the
+public OpenAPI spec):
+
+| Header | Content |
+|---|---|
+| `X-Datarobot-Username` | Caller's username |
+| `X-User-Email` | Caller's email |
+| `X-Datarobot-User-Id` | Caller's user id |
+| `X-Datarobot-Org-Id` | Caller's org id |
+| `X-Datarobot-Tenant-Id` | Caller's tenant id |
+| `X-Datarobot-Consumer-Type` | `user` for interactive callers |
+| `X-Datarobot-Identity-Token` | HMAC-signed identity token |
+| `X-Forwarded-Prefix` | The exact workload endpoint path — **contrary to earlier guidance in this file, this WAS observed populated correctly and matched `dr workload endpoint <id>`.** Still prefer deriving the prefix from `WORKLOAD_ID` (below) since it's the platform-documented mechanism; treat `X-Forwarded-Prefix` as a secondary confirmation, not the primary source, until this is documented. |
+| `traceparent` / B3 headers | W3C / B3 distributed-tracing context |
+
+**Spoof test (do this before trusting any of the above for an app that makes
+authorization decisions):** forged `X-Datarobot-Username`, `X-User-Email`,
+`X-Datarobot-User-Id`, and `X-Forwarded-Prefix` sent by the caller were all
+overwritten by the edge with the real authenticated values — safe to trust for
+identity/authorization on this cluster. A forged `X-Datarobot-Identity-Token`
+was **not** overwritten — it passed through unchanged. **Do not trust
+`X-Datarobot-Identity-Token` unless the app verifies its HMAC signature; no
+public verification key/endpoint was found at time of writing.** If the app
+doesn't verify it, ignore the header entirely and rely on the other
+edge-overwritten identity headers instead.
+
+This is materially richer (and better) than the visitor-identity story on the
+classic Custom Applications proxy, which only forwards a raw visitor API key
+that the app must resolve itself. On Workloads, an app can read the caller's
+identity straight from these headers and apply its own allowlist/authorization
+— no per-visitor key resolution call needed.
 
 ## The four things a web app must do
 
@@ -195,14 +230,19 @@ anonymous access. Framework examples: Jupyter
 auth by default (fine); a FastAPI/Express app should skip its auth middleware
 on this deployment.
 
-> **Security — confirm the gate before disabling app auth.** Only disable the
-> app's auth once you have confirmed the endpoint genuinely requires a
+> **Security — confirm the gate before disabling app auth, and treat it as the
+> app owner's call, not something the agent does unilaterally.** Only disable
+> the app's auth once you have confirmed the endpoint genuinely requires a
 > DataRobot login (open the URL in a private window with no DataRobot session;
 > you should be blocked). If confirmed, access is gated by the DataRobot login
 > and RBAC on the workload. If NOT (endpoint publicly reachable), keeping the
 > app's auth is required — but then you must solve behaviors #3/#4 another way
 > (e.g. cookie-only auth with unique cookie names and no `Authorization`
 > header). Never leave a code-executing app both reachable and unauthenticated.
+> Even when the gate is confirmed, surface the tradeoff to the user before
+> disabling in-app auth — it's a security-relevant change to the app's own
+> posture (e.g. it also drops per-visitor auth if the app is ever reached a
+> different way), and the owner may prefer to keep it for defense in depth.
 
 ### 3. Neutralize shared-origin cookie/CSRF collisions
 

@@ -2,6 +2,8 @@
 
 The public OpenAPI spec at `${DATAROBOT_ENDPOINT}/openapi.yaml` is the source of truth for all schemas and endpoints. **The spec is ~5 MB — never load it whole into agent context.** Save once and extract targeted slices with `yq`:
 
+> **Some instances don't expose the Workload API in this spec at all.** A spec pull can come back with no `/workloads` or `/artifacts` paths (only e.g. `/files/fromFile/`), even though the endpoints work. If `yq`/grepping the saved spec turns up nothing for a path or schema this skill describes, don't conclude the endpoint doesn't exist — this skill's own operational content (SKILL.md + `references/`) is the fallback source of truth, and the live `GET`/PATCH response shape is the ultimate ground truth. Treat a divergence between the spec and what the API actually returns as expected on some clusters, not a sign to distrust the request you're about to make.
+
 ```bash
 curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
 yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml     # schema body
@@ -56,6 +58,18 @@ Used in `environmentVars` entries shaped as `{"source": "dr-credential", "name":
 | `snowflake_key_pair_user_account` | `privateKeyStr`, `passphrase`, `user` |
 
 For any credential type not listed: fetch the spec and look up `<Type>Credentials` (e.g. `S3Credentials`, `BasicCredentials`, `OAuthCredentials`) — the schema's properties are the valid `key` values.
+
+## Sharing — role values are UPPERCASE, not the lowercase the docs show
+
+`PATCH /workloads/{id}/sharedRoles` (and the equivalent GET) uses roles from the
+wider platform sharing enum. The Sharing and access control docs give lowercase
+examples (`owner`, `user`, `consumer`); the API itself rejects those with
+**`422`** and lists the accepted values in the error body: `OWNER`, `USER`,
+`CONSUMER` (uppercase). Use uppercase.
+
+The call **replaces the entire role list** — it's not a delta/merge. Read the
+current roles first, include the owner (and anyone else who should keep
+access) in the PATCH body, or they lose access.
 
 ## Schemas where the read model and write model diverge
 

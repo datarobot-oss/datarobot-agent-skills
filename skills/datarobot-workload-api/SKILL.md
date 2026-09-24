@@ -26,9 +26,11 @@ Run container images as managed, autoscalable services on DataRobot. One skill, 
 
 Auth works like `gh`: `dr auth login` (or an existing `.env`/`~/.config/datarobot/drconfig.yaml`) persists credentials, so `dr workload`/`dr artifact` commands need no per-run env vars — verify with `dr auth check` before assuming setup is required. Run `datarobot-setup` only if that check fails.
 
+**Keep the CLI current** (like `datarobot-agent-assist`) — `dr self update --force`, never gate on a pinned version. If a `dr workload`/`dr artifact` subcommand still errors `unknown command` after updating (this has happened with `config`/`up` — `references/declarative-cli-deploy.md`), fall back to the raw-REST call given alongside each example below.
+
 `DATAROBOT_ENDPOINT` (must end in `/api/v2`) and `DATAROBOT_API_TOKEN` are only required as **explicit env vars** for the raw-REST path below (bundled `scripts/`, `httpx`/`curl` calls) or CI, since those don't go through the CLI's stored auth. Auth header: `Authorization: Bearer ${DATAROBOT_API_TOKEN}`. The Workload API is not in the `datarobot` Python SDK — call REST directly.
 
-**Transport.** Examples use Python `httpx` (`pip install httpx`). The API is plain HTTP, so equivalent calls work via `curl` or the `pulumi-datarobot` Pulumi provider declaratively. The skill teaches the model; transport is interchangeable.
+**Transport.** Examples use Python `httpx` (`pip install httpx`); equivalent calls work via `curl` or the `pulumi-datarobot` Pulumi provider declaratively.
 
 ## Bundled scripts
 
@@ -42,23 +44,23 @@ Runnable Python in `scripts/` (this skill's folder). Each uses `httpx` and reads
 
 ## Deeper docs in references/
 
-SKILL.md is the operational core; occasional detail lives in `references/`:
+Occasional detail lives in `references/`:
 
-- `status-vocabulary.md` — workload + proton status enums and transitions
-- `common-error-patterns.md` — CrashLoopBackOff / ImagePullBackOff / OOMKilled / probe / exec-format / pending
-- `schema-reference.md` — schemas to look up, credential-type→key maps, public-spec path quirks
-- `lifecycle-flows.md` — artifact draft→lock→prod rules, replacement preconditions, redeploy matrix, `imageUri` gotchas
-- `code-to-workload.md` — deploy from source: `dr` CLI, `codeRef`, Execution Environments, iterate-rebuild loop
-- `web-uis-behind-the-edge.md` — browser-facing web app through the endpoint: prefix stripping, auth gate, `Authorization` hijack, shim, CSRF, WebSockets
+- `status-vocabulary.md` — status enums and transitions
+- `common-error-patterns.md` — CrashLoopBackOff / ImagePullBackOff / OOMKilled / probe / exec-format
+- `schema-reference.md` — schemas, credential-type→key maps, spec quirks
+- `lifecycle-flows.md` — draft→lock→prod rules, replacement preconditions, redeploy matrix
+- `code-to-workload.md` — deploy from source: `dr` CLI, `codeRef`, Execution Environments
+- `declarative-cli-deploy.md` — `dr workload config`/`up`: one-command create/build/deploy
+- `web-uis-behind-the-edge.md` — web UI through the endpoint: prefix, auth gate, CSRF, WebSockets
 
 ## OpenAPI spec is source of truth
 
-At `${DATAROBOT_ENDPOINT}/openapi.yaml`. **~5 MB — never dump it whole.** Save once, then slice with `yq` (or `print()` only the specific key in Python):
+At `${DATAROBOT_ENDPOINT}/openapi.yaml` (some instances omit Workload API paths — see `references/schema-reference.md`). **~5 MB — never dump it whole.** Save once, then slice with `yq` (or `print()` only the specific key in Python):
 
 ```bash
 curl -sS "${DATAROBOT_ENDPOINT}/openapi.yaml" -o /tmp/wapi-spec.yaml
 yq '.components.schemas.CreateWorkloadRequest' /tmp/wapi-spec.yaml
-yq '.components.schemas | keys | .[]' /tmp/wapi-spec.yaml | grep -i workload   # discover
 ```
 
 All workload paths are keyed with the `/api/v2/` prefix — see `references/schema-reference.md`.
@@ -96,11 +98,11 @@ runtime:
 ```
 
 ```bash
-dr workload create --spec-file spec.yaml         # v0.2.74+; 4xx: 400=schema/limit, 403=cap (run check_limits.py), 409=name conflict
+dr workload create --spec-file spec.yaml         # 4xx: 400=schema/limit, 403=cap (run check_limits.py), 409=name conflict
 dr workload get <workload_id>                    # or `dr workload status` — poll until status=running
 ```
 
-Lifecycle one-liners (v0.2.74+): `dr workload {stop|start|delete|endpoint|list} <id>`.
+Lifecycle one-liners: `dr workload {stop|start|delete|endpoint|list} <id>`.
 
 Raw fallback when CLI unavailable: `httpx.post(f"{base}/workloads/", headers=headers, json=spec)` + `r.raise_for_status()` + `r.json()["id"]`. Then `python scripts/wait_for_running.py <workload_id>`.
 
@@ -114,7 +116,7 @@ Raw fallback when CLI unavailable: `httpx.post(f"{base}/workloads/", headers=hea
 
 ## Serving a browser-facing web UI through the endpoint
 
-If the container serves a **web app (UI + its own backend/API/WebSocket)** opened in a browser via `dr workload endpoint <id>` (not a headless service), the DataRobot edge gateway serves it under a path prefix and: **strips the prefix inbound** (no outbound rewrite — the app must be sub-path aware); **is the auth gate** (DataRobot login required) and **hijacks the `Authorization` header** (→ `401 {"message":"Invalid API key"}`, never reaching the container); **passes WebSockets through**. Winning pattern: set the app's base-path to the prefix + re-add it inbound (derive it from the injected `WORKLOAD_ID`), **disable the app's own auth (trust the edge)**, disable CSRF, probe an unauthenticated path. Full guidance, shim code, and per-symptom diagnostics: `references/web-uis-behind-the-edge.md`.
+If the container serves a **web app (UI + its own backend/API/WebSocket)** opened in a browser via `dr workload endpoint <id>` (not a headless service), the DataRobot edge gateway serves it under a path prefix and: **strips the prefix inbound** (no outbound rewrite — the app must be sub-path aware); **is the auth gate** (DataRobot login required) and **hijacks the `Authorization` header** (→ `401 {"message":"Invalid API key"}`, never reaching the container); **passes WebSockets through**. Pattern: base-path = prefix (derived from injected `WORKLOAD_ID`) + inbound shim, CSRF off, unauthenticated probe path; disabling the app's own auth needs the user's sign-off first. Full guidance, shim code, identity headers, and diagnostics: `references/web-uis-behind-the-edge.md`.
 
 ## "Update the workload" disambiguation
 
@@ -176,7 +178,7 @@ DataRobot credentials are stored centrally and injected into `environmentVars` b
 ]
 ```
 
-Workflow: `GET /credentials/?limit=50` → note the credential's `credentialType` → look up the valid `key` field names for that type in `references/schema-reference.md` (covers `s3`, `basic`, `api_token`, `bearer`, `oauth`, `gcp`, `azure_*`, `databricks_*`, `snowflake_*`, …).
+Workflow: `GET /credentials/?limit=50` → note the credential's `credentialType` → look up the valid `key` field names for that type in `references/schema-reference.md`.
 
 ## Create from an existing artifact
 
@@ -235,10 +237,10 @@ Always check `r.status_code` before `.json()`: 401 = bad token; 404 = workload n
 ## Logs
 
 ```bash
-dr workload logs <wid> --level error --limit 100   # v0.2.74+; --follow streams; --output-format json
+dr workload logs <wid> --level error --limit 100   # --follow streams; --output-format json
 ```
 
-`--level` is an EXACT severity match (not a threshold). For substring filtering on the message body, or proton-scoped logs (find proton IDs in section 2), drop to REST — `dr workload logs` doesn't expose those filters:
+`--level` is a MINIMUM severity threshold, not an exact match. For substring filtering on the message body, or proton-scoped logs (find proton IDs in section 2), drop to REST — `dr workload logs` doesn't expose those filters:
 
 ```python
 r = httpx.get(
@@ -315,7 +317,7 @@ The artifact's `imageUri` must point at a registry DataRobot can pull from (imag
 
 Poll builds with `python scripts/wait_for_build.py <artifact_id> <build_id>`; only drafts build. **`imageUri` is build-managed** — never PATCH it by hand (`422` "not permitted on this cluster"), and never PATCH the spec *mid-build* (a whole-spec write clobbers the pending build image → redeploys the old one). Sequence spec edits before `build create` or after `COMPLETED`.
 
-> **C2W is preview / feature-flagged** — `ENABLE_WORKLOAD_API_CONTAINERS=true` (org) + `DATAROBOT_CLI_FEATURE_WORKLOAD=true` (client).
+> **C2W may still need `ENABLE_WORKLOAD_API_CONTAINERS=true`** (org-set; not re-verified this session).
 
 ## Rolling artifact replacement
 

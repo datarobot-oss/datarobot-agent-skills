@@ -61,6 +61,20 @@ If the artifact was created with `imageBuildConfig` referencing source code in D
 - Status sequence: `PENDING` → `IN_PROGRESS` → `BUILT` → `COMPLETED` (or → `FAILED`). **`BUILT` is intermediate** — image built locally but not yet pushed to the registry. Only `COMPLETED` is deployable; scheduling a workload on a `BUILT` artifact returns `422 runtime_image_uri ... None`. `wait_for_build.py` waits for `COMPLETED` specifically.
 - Only drafts can build. Builds for locked artifacts can't be triggered or deleted.
 
+## Watching a rolling roll — track the active proton's id, not the proton count
+
+Both a settings-PATCH roll and a replacement leave the **old proton in
+`GET /workloads/{id}/protons/` as `status: stopped` with no `role`** for some
+time after the new one goes active — the list doesn't shrink back to one entry
+right away. A watcher written to "wait until there's exactly one proton" will
+hang. For a replacement, `scripts/wait_for_replacement.py` sidesteps this by
+polling `GET /workloads/{id}/replacement/`'s own `status` field (and treating
+its 404 as settled) rather than counting protons, so use it as-is. A
+settings-PATCH roll has no equivalent status endpoint and no bundled script —
+if you write a custom watcher for one, poll `GET /workloads/{id}/protons/` and
+watch for the **active proton's id to change** to the new candidate's id
+(`role: "active"`), not for the list to shrink to one entry.
+
 ## Rolling replacement — non-idempotent, 404-after-completion
 
 - **Not idempotent.** Calling `POST /workloads/{id}/replacement/` while one is in progress queues a second swap. Always check via `GET /workloads/{id}/replacement/` (or `scripts/wait_for_replacement.py`) before retrying.
