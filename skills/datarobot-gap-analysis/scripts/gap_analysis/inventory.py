@@ -227,6 +227,11 @@ def build_inventory(
 ) -> dict[str, Any]:
     root = Path(workspace)
     exclude = (exclude or []) + _DEF_EXCLUDE
+    # _DEF_EXCLUDE keeps lockfiles out of content scanning (huge, nothing to
+    # read for secrets/licenses/model ids), but the inventory still needs to
+    # know they exist: it's the only signal of "this repo has a lockfile" for
+    # any check that reads key_files.manifests.
+    walk_exclude = [e for e in exclude if e not in ("**/*.lock", "**/package-lock.json")]
 
     files: list[str] = []
     languages: dict[str, int] = {}
@@ -241,7 +246,7 @@ def build_inventory(
         "env": [],
     }
 
-    for p, rel in _iter_files(root, exclude):
+    for p, rel in _iter_files(root, walk_exclude):
         files.append(rel)
         ext = p.suffix.lower()
         if ext:

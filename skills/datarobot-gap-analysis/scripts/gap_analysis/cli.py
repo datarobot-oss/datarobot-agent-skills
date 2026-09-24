@@ -196,14 +196,11 @@ def _run_fix(
     )
     # A fix that landed no longer counts against the exit code; without
     # --verify this is the only way the run can reflect what it just did.
-    applied = {
-        (r["condition_id"], r.get("file"))
-        for r in summary["results"]
-        if r["status"] == "applied"
-    }
-    final_findings = [
-        f for f in result.findings if (f.condition_id, f.file) not in applied
-    ]
+    # Matched by the finding's own dedup_key (condition, file, line/evidence)
+    # so a second finding of the same condition in the same file isn't also
+    # dropped when only one of them was actually fixed.
+    applied = {r["key"] for r in summary["results"] if r["status"] == "applied"}
+    final_findings = [f for f in result.findings if f.dedup_key not in applied]
     print("\n" + "=" * 60)
     print(
         f"Remediation: applied {summary['applied']}/{summary['attempted']} fixes "
@@ -459,8 +456,19 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        settings = settings_from_args(args)
+        # --verify re-analyzes the fixed branch; without a client here Layers
+        # 2 and 4 would silently be skipped and the deploy-readiness verdict
+        # would look clean even when those layers would still fail.
+        llm_client = (
+            _make_llm_client(settings)
+            if getattr(args, "verify", False) and settings.use_llm
+            else None
+        )
         try:
-            final = _run_fix(args, workspace, result, policy, ts)["final_findings"]
+            final = _run_fix(args, workspace, result, policy, ts, llm_client)[
+                "final_findings"
+            ]
         except RuntimeError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2

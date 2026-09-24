@@ -211,7 +211,7 @@ def _dedup(findings: list[Finding]) -> list[Finding]:
     seen = set()
     out = []
     for f in findings:
-        key = (f.condition_id, f.file, f.line, f.evidence if f.line is None else "")
+        key = f.dedup_key
         if key in seen:
             continue
         seen.add(key)

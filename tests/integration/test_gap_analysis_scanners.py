@@ -280,6 +280,23 @@ def test_dedup_keeps_distinct_file_level_findings() -> None:
     assert [f.evidence for f in kept] == ["litellm==1.80.0", "starlette==0.40.0"]
 
 
+def test_inventory_lists_lockfiles_as_manifests(tmp_path: Path) -> None:
+    """Lockfile *content* is excluded from scanning, but a lockfile's mere
+    presence must still show up in the inventory for anything (e.g. the
+    lockfile-presence gate) that reads key_files.manifests."""
+    _write(tmp_path, "pyproject.toml", '[project]\nname = "x"\n')
+    _write(tmp_path, "uv.lock", "")
+    _write(tmp_path, "web/package.json", '{"name": "web"}\n')
+    _write(tmp_path, "web/package-lock.json", "{}\n")
+
+    inv = build_inventory(tmp_path)
+
+    assert "uv.lock" in inv["files"]
+    assert "web/package-lock.json" in inv["files"]
+    assert "uv.lock" in inv["key_files"]["manifests"]
+    assert "web/package-lock.json" in inv["key_files"]["manifests"]
+
+
 def test_evidence_files_prefer_source_over_config_and_skip_locks() -> None:
     inventory = {
         "files": [
@@ -1869,6 +1886,61 @@ def test_cli_fix_from_saved_findings_skips_analysis(
     )
 
 
+def test_cli_fix_from_saved_findings_with_verify_builds_llm_client(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """--from skips the initial analysis, but --verify re-analyzes the fixed
+    branch and must still get an LLM client, or Layers 2/4 silently go dark
+    and the deploy-readiness verdict looks clean when it might not be."""
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    monkeypatch.delenv("GAP_DISABLE_LLM", raising=False)
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", "x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    saved = tmp_path / "gap-findings.json"
+    saved.write_text(json.dumps(AnalysisResult().to_dict()))
+
+    sentinel = object()
+    seen: dict = {}
+
+    def fake_make_client(settings):
+        seen["make_client_called"] = True
+        return sentinel
+
+    def fake_analyze(workspace, policy_path, llm_client=None, **kwargs):
+        seen["llm_client_used"] = llm_client
+        return AnalysisResult(), {}
+
+    monkeypatch.setattr(cli, "_make_llm_client", fake_make_client)
+    monkeypatch.setattr(cli, "analyze", fake_analyze)
+    # The --from path writes the post-fix report next to the process cwd
+    # regardless of --html (a separate, pre-existing quirk); chdir so this
+    # test doesn't leave a report file behind in the repo.
+    monkeypatch.chdir(tmp_path)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved), "--verify"])
+
+    assert code == 0
+    assert seen.get("make_client_called") is True, (
+        "--from --fix --verify must build an LLM client for the re-analysis"
+    )
+    assert seen.get("llm_client_used") is sentinel, (
+        "the re-analysis must use the built client, not silently skip Layers 2/4"
+    )
+
+
 def test_cli_fix_reports_a_dirty_worktree_instead_of_crashing(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -2009,6 +2081,75 @@ def test_exit_code_ignores_findings_the_fix_just_closed(
     ]
     saved.write_text(json.dumps(unfixable.to_dict()))
     assert cli.main([str(repo), "--fix", "--from", str(saved)]) == 1
+
+
+def test_exit_code_keeps_a_sibling_finding_the_fix_did_not_apply(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Two findings share a condition and file (two secrets in one module);
+    fixing one must not make the exit code treat the other as resolved too."""
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(
+        repo,
+        "app.py",
+        'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n'
+        'OTHER_KEY = "sk-live-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"\n'
+        "# not a secret line\n",
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=1,
+            evidence='API_KEY = "sk-live-…"',
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        ),
+        # Same condition and file as above, but pointed at a line the codemod
+        # can't relocate the secret on, so this one stays un-fixed.
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=3,
+            evidence='OTHER_KEY = "sk-live-…"',
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        ),
+    ]
+    saved = tmp_path / "gap-findings.json"
+    saved.write_text(json.dumps(result.to_dict()))
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
+
+    code = cli.main([str(repo), "--fix", "--from", str(saved)])
+
+    assert code == 1, (
+        "the un-applied sibling finding must still fail the run even though "
+        "the other finding of the same condition, in the same file, was fixed"
+    )
 
 
 def test_settings_resolve_flags_over_env(monkeypatch) -> None:

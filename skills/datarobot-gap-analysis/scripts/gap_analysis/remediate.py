@@ -510,6 +510,7 @@ def _ok(f: Finding, msg: str, manual: str = "") -> dict[str, Any]:
         "status": "applied",
         "condition_id": f.condition_id,
         "file": f.file,
+        "key": f.dedup_key,
         "message": msg,
         "manual": manual,
     }
@@ -520,6 +521,7 @@ def _cannot(f: Finding, reason: str) -> dict[str, Any]:
         "status": "skipped",
         "condition_id": f.condition_id,
         "file": f.file,
+        "key": f.dedup_key,
         "message": reason,
         "manual": "",
     }
