@@ -82,7 +82,12 @@ class Finding:
     def dedup_key(self) -> tuple[str, str | None, int | None, str]:
         """Identity for collapsing/matching findings: file-level findings (no
         line) stay distinct per evidence so N CVEs in one manifest aren't one."""
-        return (self.condition_id, self.file, self.line, self.evidence if self.line is None else "")
+        return (
+            self.condition_id,
+            self.file,
+            self.line,
+            self.evidence if self.line is None else "",
+        )
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Finding":

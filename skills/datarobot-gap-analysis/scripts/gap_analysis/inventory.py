@@ -231,7 +231,9 @@ def build_inventory(
     # read for secrets/licenses/model ids), but the inventory still needs to
     # know they exist: it's the only signal of "this repo has a lockfile" for
     # any check that reads key_files.manifests.
-    walk_exclude = [e for e in exclude if e not in ("**/*.lock", "**/package-lock.json")]
+    walk_exclude = [
+        e for e in exclude if e not in ("**/*.lock", "**/package-lock.json")
+    ]
 
     files: list[str] = []
     languages: dict[str, int] = {}
