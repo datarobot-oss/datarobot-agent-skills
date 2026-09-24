@@ -119,22 +119,13 @@ For example:
 
 This repository includes a Codex plugin manifest at `.codex-plugin/plugin.json` and also exposes instructions through `AGENTS.md`.
 
-**Use as a repository workspace**
-
-When you open this repository in Codex, Codex reads the `AGENTS.md` file automatically.
-
-You can verify that the instructions are loaded by running:
-
-```bash
-codex --ask-for-approval never "Summarize the current instructions."
-```
-
 **Install from GitHub**
 
 You can also install this repository as a Codex plugin from GitHub:
 
 ```bash
-codex plugin install https://github.com/datarobot-oss/datarobot-agent-skills.git
+codex plugin marketplace add https://github.com/datarobot-oss/datarobot-agent-skills.git
+codex plugin add datarobot-agent-skills@datarobot-skills
 ```
 
 After installation, Codex loads the plugin metadata from `.codex-plugin/plugin.json`.
