@@ -380,6 +380,7 @@ integration = [
     { name = "pydantic" },
     { name = "pytest" },
     { name = "python-frontmatter" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -402,6 +403,7 @@ integration = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "python-frontmatter", specifier = ">=1.1" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
