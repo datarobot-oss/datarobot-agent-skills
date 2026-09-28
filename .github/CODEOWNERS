@@ -18,8 +18,8 @@
 # Skills owned by Predictive AI team
 /skills/datarobot-llm-gateway/ @datarobot/predictive-ai
 
-# All App Framework skills are owned by the Applications team
-/skills/datarobot-app-framework-*/ @datarobot-oss/applications
+# All App Framework skills are owned by the Labs team
+/skills/datarobot-app-framework-*/ @datarobot-oss/labs
 
 # OpenCode plugin (theme, install scripts, metadata)
 /.opencode-plugin/ @datarobot-oss/agent-skills-maintainers
