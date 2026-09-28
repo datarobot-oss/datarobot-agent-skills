@@ -6,6 +6,7 @@ import { fileURLToPath } from "url"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const BUNDLED_SKILLS = resolve(__dirname, "..", "skills")
+const BUNDLED_PACKAGES = resolve(__dirname, "..", "packages")
 const BUNDLED_THEMES_DIR = resolve(__dirname, "themes")
 
 function getConfigDir(): string {
@@ -30,6 +31,15 @@ function installSkills(configDir: string): number {
   return installed
 }
 
+function installPackages(configDir: string): void {
+  // Copied next to skills/ so the skills' _bootstrap.py shim finds them.
+  if (!existsSync(BUNDLED_PACKAGES)) {
+    return
+  }
+  const targetDir = join(configDir, "opencode", "packages")
+  cpSync(BUNDLED_PACKAGES, targetDir, { recursive: true, force: true })
+}
+
 function installThemes(configDir: string): number {
   const themesDir = join(configDir, "opencode", "themes")
   mkdirSync(themesDir, { recursive: true })
@@ -44,6 +54,7 @@ function installThemes(configDir: string): number {
 export const DataRobotSkillsPlugin: Plugin = async ({ client }) => {
   const configDir = getConfigDir()
   const skillsInstalled = installSkills(configDir)
+  installPackages(configDir)
   const themesInstalled = installThemes(configDir)
 
   if (skillsInstalled > 0 || themesInstalled > 0) {
