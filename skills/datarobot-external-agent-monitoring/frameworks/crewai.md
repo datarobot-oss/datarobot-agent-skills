@@ -45,6 +45,11 @@ The auto-instrumentor captures:
 
 ## Extra Dependencies
 
+Recommended, for intelligent trace analysis (see **Intelligent Trace Analysis via Tensile** below):
+```
+tensile>=0.12.0
+```
+
 ```
 opentelemetry-instrumentation-crewai
 ```
@@ -62,6 +67,26 @@ crew_duration = meter.create_histogram("agent.crew.duration_ms", unit="ms")
 ```
 
 Wire these into CrewAI's task callbacks or measure around `crew.kickoff()`.
+
+## Intelligent Trace Analysis via Tensile
+
+DataRobot provides intelligent trace analysis and remediation. This is made possible by the `tensile` package, which records agentic trajectories and allows them to be replayed. To enable this feature, the agent needs `tensile>=0.12.0` installed as a dependency and the OTel capture hook wired in directly after `configure_otel()`:
+
+```python
+from dr_otel_config import configure_otel
+
+configure_otel()
+
+from opentelemetry.instrumentation.crewai import CrewAIInstrumentor
+
+CrewAIInstrumentor().instrument()
+
+import tensile.otel
+
+tensile.otel.install(tracer=False)
+
+# Your crew code below...
+```
 
 ## Known Pitfalls
 

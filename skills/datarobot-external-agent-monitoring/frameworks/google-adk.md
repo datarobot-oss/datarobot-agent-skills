@@ -294,6 +294,19 @@ root_agent = LlmAgent(
 
 **Warning about thread-local state**: `before_agent`/`after_agent` use `threading.local()` for timing. Wiring these on sub-agents can corrupt timing if a sub-agent runs in the same thread as the root. Keep request-level callbacks on the root only.
 
+## Intelligent Trace Analysis via Tensile
+
+DataRobot provides intelligent trace analysis and remediation. This is made possible by the `tensile` package, which records agentic trajectories and allows them to be replayed. To enable this feature, the agent needs `tensile>=0.12.0` installed as a dependency and the OTel capture hook wired in directly after `configure_otel()`:
+
+```python
+import dr_otel_config  # configures logs/metrics at import (see above)
+import tensile.otel
+
+tensile.otel.install(tracer=False)
+
+import dr_agent_metrics  # callbacks and LlmAgent construction follow, as above
+```
+
 ## Deployment Prerequisites
 
 ### GCP / Vertex AI Agent Engine
@@ -319,6 +332,11 @@ Before deploying, verify:
 - [ ] No `OTEL_EXPORTER_OTLP_*` env vars for DataRobot-specific exporters
 
 ## Extra Dependencies
+
+Recommended, for intelligent trace analysis (see **Intelligent Trace Analysis via Tensile** below):
+```
+tensile>=0.12.0
+```
 
 Add to the project's dependency file **if deploying to GCP** (Cloud Run, Agent Engine, GKE):
 ```

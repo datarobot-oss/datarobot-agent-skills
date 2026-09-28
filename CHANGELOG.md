@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-external-agent-monitoring`: Recommend intelligent trace analysis via Tensile (`tensile>=0.12.0`). Each framework reference file gains an **Intelligent Trace Analysis via Tensile** section showing where `tensile.otel.install(tracer=False)` goes for that framework.
+
 ## [1.12.0] - 2026-09-29
 
 - `datarobot-agent-assist`: Clarified that the "After Coding" next-steps menu must be reproduced verbatim (same wording, order, and numbers) rather than paraphrased or renumbered, after an observed case where the assistant referenced "option 3" for a menu item that was actually numbered differently.

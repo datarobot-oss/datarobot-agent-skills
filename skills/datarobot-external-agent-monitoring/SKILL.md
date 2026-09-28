@@ -1,6 +1,6 @@
 ---
 name: datarobot-external-agent-monitoring
-description: Instrument any external or existing AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance. Use when the user says "add tracing/observability/monitoring to my agent", wants to instrument an existing agent project in their IDE, or wants to send agent traces, logs, or metrics to DataRobot.
+description: Instrument any external or existing AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance. Use when the user says "add tracing/observability/monitoring to my agent", wants to instrument an existing agent project in their IDE, wants to send agent traces, logs, or metrics to DataRobot, or wants to record and replay agent trajectories (Tensile) from DataRobot traces.
 ---
 
 # DataRobot External Agent Monitoring Skill
@@ -79,6 +79,7 @@ Tell the user what you detected and present the changes you will make:
 - New dependencies to add
 - New files to create (`dr_otel_config.py`, and optionally `dr_agent_metrics.py` for frameworks with custom metrics)
 - Existing files to modify (agent entrypoint, dependency file)
+- Intelligent trace analysis via Tensile (recommended, adds `tensile>=0.12.0`): see the framework reference file's **Intelligent Trace Analysis via Tensile** section. It records full prompt and completion text in DataRobot under the Use Case; include it unless the user declines.
 - Telemetry target: enter an existing Use Case ID, or if user does not have one, generate a net new Use Case container and ID for user. Only list a shell deployment in the plan if the user explicitly asked for deployment-level monitoring; if they chose a Use Case, do not mention or ask about a deployment.
 
 **Wait for user approval before executing.** If the user has already given explicit consent to implement or deploy, that counts as approval — no need to re-ask.
@@ -93,7 +94,7 @@ Tell the user what you detected and present the changes you will make:
 
 2. **Generate `dr_otel_config.py`** using the generic pattern below, adapted per the framework reference file.
 
-3. **Wire into agent entrypoint**: Add import and call to `configure_otel()` at startup. Follow the framework reference file for specific wiring instructions (auto-instrumentors, callbacks, etc.).
+3. **Wire into agent entrypoint**: Add import and call to `configure_otel()` at startup. Follow the framework reference file for specific wiring instructions (auto-instrumentors, callbacks, etc.). Add the `tensile.otel.install(tracer=False)` lines from that file's **Intelligent Trace Analysis via Tensile** section directly after `configure_otel()` unless the user declined it.
 
 4. **Generate `dr_agent_metrics.py`** if the framework reference file specifies custom metrics callbacks.
 
@@ -263,6 +264,11 @@ Required for instrumentation (added to user's project):
 opentelemetry-sdk
 opentelemetry-api
 opentelemetry-exporter-otlp-proto-http
+```
+
+Recommended, for intelligent trace analysis via Tensile (see the framework reference file):
+```
+tensile>=0.12.0
 ```
 
 Required for shell deployment creation (available in the skill's script environment):
