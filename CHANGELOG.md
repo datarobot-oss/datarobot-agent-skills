@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `repo`: Added automated public Codex plugin packaging, release attachment, and manifest synchronization.
+
 ## [1.13.0] - 2026-09-30
 
 ### Added

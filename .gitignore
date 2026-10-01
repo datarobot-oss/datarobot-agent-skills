@@ -43,6 +43,7 @@ Thumbs.db
 !.claude-plugin/plugin.json
 !tests/e2e/skill_hashes.json
 !package.json
+!plugin.json
 !.opencode-plugin/themes/*.json
 !docs/.well-known/ai-catalog.json
 
@@ -58,3 +59,5 @@ evaluation_criteria.md
 # Dress rehearsal session cache (reports under rehearsal_report/ are shareable)
 .datarobot/rehearsal/
 
+# Generated public Codex plugin packages
+datarobot-agent-skills-public-*.zip

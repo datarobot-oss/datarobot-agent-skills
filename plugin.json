@@ -1,0 +1,56 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "datarobot-agent-skills",
+  "version": "1.13.0",
+  "description": "DataRobot skills for AI and machine-learning workflows, including model training, deployment, predictions, monitoring, explainability, data preparation, CI/CD, workload operations, and external-agent observability.",
+  "author": {
+    "name": "DataRobot",
+    "url": "https://www.datarobot.com/"
+  },
+  "homepage": "https://github.com/datarobot-oss/datarobot-agent-skills",
+  "repository": "https://github.com/datarobot-oss/datarobot-agent-skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "datarobot",
+    "machine-learning",
+    "mlops",
+    "automl",
+    "agent-skills"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "DataRobot Skills",
+        "shortDescription": "DataRobot AI/ML workflows",
+        "longDescription": "Bring DataRobot platform capabilities to your coding agent. Use these skills to prepare data, train and explain models, deploy and monitor models, make predictions, automate DataRobot application delivery, operate workloads, and instrument external AI agents for observability. The skills guide DataRobot Python SDK and CLI workflows with practical instructions and supporting utilities for DataRobot users.",
+        "developerName": "DataRobot",
+        "category": "Productivity",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Use DataRobot skills to help me train and deploy a model.",
+          "Help me prepare data and start a DataRobot AutoML project.",
+          "Instrument my external AI agent for DataRobot monitoring."
+        ],
+        "websiteURL": "https://github.com/datarobot-oss/datarobot-agent-skills",
+        "supportURL": "https://github.com/datarobot-oss/datarobot-agent-skills/issues",
+        "privacyPolicyURL": "https://www.datarobot.com/privacy/",
+        "termsOfServiceURL": "https://www.datarobot.com/legal/",
+        "logo": "./assets/datarobot-icon.png",
+        "composerIcon": "./assets/datarobot-icon.png",
+        "brandColor": "#81FBA5"
+      },
+      "review": {
+        "commerce": false,
+        "commerce_description": "The plugin does not offer payments or purchases."
+      },
+      "publication": {
+        "release_notes": "Initial public release of DataRobot agent skills for AI and machine-learning workflows.",
+        "countries": []
+      }
+    }
+  }
+}

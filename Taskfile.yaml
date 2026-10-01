@@ -66,6 +66,11 @@ tasks:
     cmds:
       - uv run scripts/version_bump.py {{.CLI_ARGS}}
 
+  package:codex:
+    desc: Build the public-upload DataRobot Codex plugin ZIP in dist/
+    cmds:
+      - uv run scripts/package_codex_plugin.py {{.CLI_ARGS}}
+
   lint:
     desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + yamlfmt + license)
     deps:
