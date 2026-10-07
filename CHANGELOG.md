@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+- `repo`: Fixed OpenAI plugin listing: the plugin name, display name, and descriptions no longer contain the brand name, which the marketplace validator rejects.
+- `repo`: Changed the release workflow to also run when `plugin.json`, `.codex-plugin/plugin.json`, or `assets/` change, so manifest-only fixes produce a version and a zip.
+- `datarobot-agent-assist`: Required user confirmation before installing the DataRobot CLI, switched the macOS install to Homebrew, and replaced the Windows `irm | iex` installer with a pointer to WSL.
+
 ## [1.16.0] - 2026-10-07
 
 - `repo`: Fixed OpenAI plugin listing: category set to Developer Tools (Coding is not a valid marketplace category).

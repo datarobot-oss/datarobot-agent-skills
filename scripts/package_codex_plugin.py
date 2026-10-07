@@ -17,6 +17,9 @@ from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ARCHIVE_ROOT = "datarobot-agent-skills"
+# The marketplace validator rejects listing names that contain the brand, so
+# the plugin name differs from ARCHIVE_ROOT.
+PLUGIN_NAME = "data-science-skills"
 PUBLIC_MANIFEST = Path("plugin.json")
 CODEX_MANIFEST = Path(".codex-plugin/plugin.json")
 ICON_PATH = Path("assets/datarobot-icon.png")
@@ -81,8 +84,8 @@ def validate_manifest(
         raise ValueError(
             f"plugin.json is missing interface fields: {sorted(missing_fields)}"
         )
-    if manifest.get("name") != ARCHIVE_ROOT:
-        raise ValueError(f"plugin.json name must be '{ARCHIVE_ROOT}'")
+    if manifest.get("name") != PLUGIN_NAME:
+        raise ValueError(f"plugin.json name must be '{PLUGIN_NAME}'")
     if manifest.get("version") != codex_manifest.get("version"):
         raise ValueError(
             "plugin.json and .codex-plugin/plugin.json versions must match"

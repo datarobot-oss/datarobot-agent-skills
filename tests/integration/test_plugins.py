@@ -131,13 +131,6 @@ def test_codex_plugin_has_required_field(codex_plugin: dict, field: str) -> None
     )
 
 
-def test_codex_plugin_name_prefix(codex_plugin: dict) -> None:
-    name = codex_plugin.get("name", "")
-    assert name.startswith("datarobot-"), (
-        f".codex-plugin/plugin.json name '{name}' does not start with 'datarobot-'"
-    )
-
-
 def test_codex_plugin_version_matches_package_json(codex_plugin: dict) -> None:
     with open(REPO_ROOT / "package.json", encoding="utf-8") as f:
         package = json.load(f)

@@ -2,7 +2,8 @@
 name: Version Bump
 
 # Bumps the shared plugin version, tags, and cuts a GitHub Release whenever a
-# merge to main changes anything under skills/. See scripts/version_bump.py
+# merge to main changes anything under skills/ or the public plugin package
+# (plugin.json, .codex-plugin/plugin.json, assets/). See scripts/version_bump.py
 # and CONTRIBUTING.md for the full flow.
 #
 # Pushing directly to main (a protected, review-required branch) requires a
@@ -41,7 +42,7 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Check for skills/ changes since the last release
+      - name: Check for skills/ or public package changes since the last release
         id: check
         run: |
           LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
@@ -50,7 +51,7 @@ jobs:
           else
             RANGE="$LAST_TAG"
           fi
-          if git diff --quiet "${RANGE}..HEAD" -- skills/; then
+          if git diff --quiet "${RANGE}..HEAD" -- skills/ plugin.json .codex-plugin/plugin.json assets/; then
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"

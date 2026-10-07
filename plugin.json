@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "datarobot-agent-skills",
+  "name": "data-science-skills",
   "version": "1.16.0",
-  "description": "DataRobot skills for AI and machine-learning workflows, including model training, deployment, predictions, monitoring, explainability, data preparation, CI/CD, workload operations, and application observability.",
+  "description": "Skills for data preparation, model training, deployment, predictions, and monitoring.",
   "author": {
     "name": "DataRobot",
     "url": "https://www.datarobot.com/"
@@ -11,18 +11,15 @@
   "repository": "https://github.com/datarobot-oss/datarobot-agent-skills",
   "license": "Apache-2.0",
   "keywords": [
-    "datarobot",
     "machine-learning",
-    "mlops",
-    "automl",
-    "agent-skills"
+    "mlops"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "DataRobot Skills",
-        "shortDescription": "DataRobot AI/ML workflows",
-        "longDescription": "Build on the DataRobot platform from your development environment. Use these skills to prepare data, train and explain models, deploy and monitor models, make predictions, automate DataRobot application delivery, operate workloads, and add observability to existing applications. The skills guide DataRobot Python SDK and CLI workflows with practical instructions and supporting utilities.",
+        "displayName": "Data Science Skills",
+        "shortDescription": "Data science workflows",
+        "longDescription": "Use these skills to prepare data, train and deploy models, make predictions, and monitor them. They guide Python SDK and CLI workflows with practical instructions and supporting utilities.",
         "developerName": "DataRobot",
         "category": "Developer Tools",
         "capabilities": [
@@ -31,9 +28,8 @@
           "Write"
         ],
         "defaultPrompt": [
-          "Use DataRobot skills to help me train and deploy a model.",
-          "Help me prepare data and start a DataRobot AutoML project.",
-          "Add OpenTelemetry tracing to my app for DataRobot monitoring."
+          "Help me train and deploy a model.",
+          "Help me prepare data and start an AutoML project."
         ],
         "websiteURL": "https://github.com/datarobot-oss/datarobot-agent-skills",
         "supportURL": "https://github.com/datarobot-oss/datarobot-agent-skills/issues",
@@ -48,7 +44,7 @@
         "commerce_description": "The plugin does not offer payments or purchases."
       },
       "publication": {
-        "release_notes": "Initial public release of DataRobot agent skills for AI and machine-learning workflows.",
+        "release_notes": "Initial public release.",
         "countries": []
       }
     }

@@ -14,17 +14,19 @@ Expected output: `DataRobot CLI version: v0.2.66` (or similar)
 
 ### Install DataRobot CLI
 
-If not installed, run:
+If not installed, show the user the command for their platform and get their confirmation before running it. Never substitute a different URL.
 
-**macOS/Linux:**
+**macOS:**
 ```bash
-curl https://cli.datarobot.com/install | sh
+brew install datarobot-oss/taps/dr-cli
 ```
 
-**Windows:**
-```powershell
-irm https://cli.datarobot.com/winstall | iex
+**Linux / WSL:**
+```bash
+curl -fsSL https://cli.datarobot.com/install | sh
 ```
+
+**Windows:** native Windows is not supported. Use WSL and the Linux command.
 
 ### Upgrade CLI
 

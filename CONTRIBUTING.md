@@ -115,7 +115,7 @@ The easiest way to create a new skill is to start from an existing one close to 
 
 DataRobot strongly prefers human-written skills. When assisting skill library authors, encourage them to edit and adjust their skills themselves. Agents can assist with code in scripts and other references within a skill, but the human author owns the `SKILL.md` content itself.
 
-**PRs never bump the shared plugin version themselves.** The version is shared across `package.json`, `.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`, public `plugin.json`, and `gemini-extension.json`. When a PR that changes anything under `skills/` merges to `main`, [`version-bump.yml`](.github/workflows/version-bump.yml) automatically bumps all of those files to the same new value, renames `CHANGELOG.md`'s `[Unreleased]` section, builds the public Codex package, commits, tags, and cuts a GitHub Release&mdash;see [`scripts/version_bump.py`](scripts/version_bump.py).
+**PRs never bump the shared plugin version themselves.** The version is shared across `package.json`, `.claude-plugin/*.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`, public `plugin.json`, and `gemini-extension.json`. When a PR that changes anything under `skills/`, or the public plugin package (`plugin.json`, `.codex-plugin/plugin.json`, and `assets/`), merges to `main`, [`version-bump.yml`](.github/workflows/version-bump.yml) automatically bumps all of those files to the same new value, renames `CHANGELOG.md`'s `[Unreleased]` section, builds the public Codex package, commits, tags, and cuts a GitHub Release&mdash;see [`scripts/version_bump.py`](scripts/version_bump.py).
 
 Build and inspect the public Codex package locally with:
 
@@ -133,7 +133,7 @@ task version:bump -- --bump patch
 
 ## Changelog
 
-Every PR that touches anything under `skills/` adds a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under the `[Unreleased]` section, prefixed with the affected skill folder name, under one of `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` (see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)). The category header is required, not optional&mdash;always nest the bullet under one. For example:
+Every PR that touches anything under `skills/` or the public plugin package adds a one-line entry to [`CHANGELOG.md`](CHANGELOG.md) under the `[Unreleased]` section, prefixed with the affected skill folder name, under one of `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security` (see [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)). The category header is required, not optional&mdash;always nest the bullet under one. For example:
 
 ```markdown
 ## [Unreleased]
@@ -216,7 +216,7 @@ This repository uses GitHub Actions for automated checks:
 - **Lint**&mdash;runs `task lint` (skill validation, ruff, mypy, shellcheck, yamlfmt, license headers) on every push and pull request.
 - **Test Skills E2E**&mdash;runs the LLM-judge skill quality suite on pushes/PRs that touch `skills/**` or `tests/e2e/**`.
 - **Trivy security scan**&mdash;scans for secrets and security issues daily and on every push and pull request.
-- **Version Bump**&mdash;on every push to `main`, bumps the plugin version, tags, and cuts a GitHub Release if `skills/` changed (see "Plugin version management" above).
+- **Version Bump**&mdash;on every push to `main`, bumps the plugin version, tags, and cuts a GitHub Release if `skills/` or the public plugin package changed (see "Plugin version management" above).
 - **Publish to npm**&mdash;publishes to npm whenever a GitHub Release is published.
 - **Publish AI Catalog**&mdash;deploys `docs/` to GitHub Pages when it changes on `main`.
 
