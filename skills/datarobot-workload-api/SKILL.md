@@ -275,6 +275,8 @@ trace = httpx.get(
 
 > **`duration` is NANOSECONDS**, summaries and spans. Divide by 1,000,000 for ms before display. Empty `data`: app not instrumented — tell the user to wire up OTEL.
 
+> **To make traces land here**, the workload must export spans with `service.name = workload-${WORKLOAD_ID}` (the injected id) — a default/app `service.name` matches no entity and is dropped despite a 200/202 (top "no traces" cause). Endpoint `${DATAROBOT_ENDPOINT%/api/v2}/otel`; needs `DATAROBOT_API_TOKEN`. Full `configure_otel()`: the `datarobot-external-agent-monitoring` skill, with `DATAROBOT_ENTITY_ID=workload-${WORKLOAD_ID}`.
+
 ## Metrics + service stats
 
 Convert before display: `bytes`→MB (`/1024**2`), `nanocores`→cores (`/1_000_000`), `percentage` already %.

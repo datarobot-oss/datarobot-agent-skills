@@ -66,6 +66,13 @@ Follow these steps in order. Present the plan to the user and wait for approval 
    - Ask the user for their **Use Case ID**. DataRobot users typically already organize work in a Use Case.
    - If they don't have one (a brand-new or externally-built project), **offer to create one**. Ask only for a name; the description is auto-generated.
    - Record the choice (existing Use Case ID, or the name for a new one) to use in Step 4. The `create_use_case.py` helper will resolve it to an entity ID of the form `experiment_container-<use_case_id>` at execution time.
+
+   > **Telemetry targets & the `service.name` rule.** The target is an **entity**, referenced as `<entity_type>-<entity_id>`. Three types exist:
+   > - **Use Case** — `experiment_container-<use_case_id>` (the default for this skill; resolved by `create_use_case.py`).
+   > - **Shell deployment** — `deployment-<deployment_id>` (optional; Step 4.6).
+   > - **Workload** — `workload-<workload_id>`, when the agent **runs as a DataRobot Workload** (deployed via the Workload API / `dr workload up`; see the `datarobot-workload-api` skill). The platform injects `WORKLOAD_ID` into the container, so set `DATAROBOT_ENTITY_ID=workload-${WORKLOAD_ID}` — traces then appear in the workload's own **Console → Deployed workloads → Tracing** tab, with no Use Case required.
+   >
+   > **Critical — set `service.name` to the entity.** DataRobot attributes a trace to its entity by parsing the OTLP **`service.name`** resource attribute as `<entity_type>-<entity_id>`. So the exported spans' `service.name` **must equal `DATAROBOT_ENTITY_ID`** (set it on the OTel `Resource` — see `dr_otel_config.py`), in addition to the `X-DataRobot-Entity-Id` header. A default `service.name` (e.g. the agent/app name) matches no entity, so the traces are accepted but **silently never appear in the UI** — the most common "no traces" cause.
 5. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
 6. Check if OTel packages are already in the project's dependencies.
 
@@ -135,7 +142,7 @@ Tell the user what you detected and present the changes you will make:
 
 2. Provide the user with the env vars to set in their runtime environment:
    - `DATAROBOT_API_TOKEN` — DataRobot API key
-   - `DATAROBOT_ENTITY_ID` — `experiment_container-<use_case_id>` (Use Case target; or `deployment-<id>` if a shell deployment was created instead)
+   - `DATAROBOT_ENTITY_ID` — `experiment_container-<use_case_id>` (Use Case target; or `deployment-<id>` for a shell deployment; or `workload-<workload_id>` when the agent runs as a DataRobot Workload — typically `workload-${WORKLOAD_ID}`, the injected id)
    - `DATAROBOT_OTEL_ENDPOINT` — `{DATAROBOT_ENDPOINT}/otel`
 
 3. Explain how to view the telemetry. For a Use Case target, use the `dr` CLI's `xp`
@@ -291,10 +298,11 @@ Common errors and solutions:
 | Error | Cause | Solution |
 |-------|-------|----------|
 | Traces not appearing in DataRobot | Framework overwrites TracerProvider | Use lazy injection pattern (see framework reference) |
+| Uploads return 200/202 but traces never show in the UI | `service.name` ≠ the entity id | Set the OTel `Resource` `service.name` to `DATAROBOT_ENTITY_ID` (`<entity_type>-<entity_id>`); DataRobot files a trace by parsing `service.name`, so a default/app service name matches no entity and is dropped from the UI |
 | 401 Unauthorized from OTel endpoint | Invalid API token | Verify `DATAROBOT_API_TOKEN` is correct |
 | 404 from OTel endpoint | Wrong endpoint URL | Ensure `DATAROBOT_OTEL_ENDPOINT` ends with `/otel` |
 | Metrics not appearing | `OTEL_EXPORTER_OTLP_*` env vars set | Remove env vars, use direct exporter config |
-| `DATAROBOT_ENTITY_ID` format error | Missing entity-type prefix | Must be `experiment_container-<use_case_id>` (Use Case) or `deployment-<id>`, not just `<id>` |
+| `DATAROBOT_ENTITY_ID` format error | Missing entity-type prefix | Must be `experiment_container-<use_case_id>` (Use Case), `deployment-<id>`, or `workload-<workload_id>` (Workload), not just `<id>` |
 
 ## Resources
 
