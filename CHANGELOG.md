@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Changed
+
+- `datarobot-workload-api`: Made `dr workload config`/`up` the default deploy path from a project directory: documented the `.datarobot.yaml` manifest shape and managed-fields rule, `promote`, `--sync-env`, `--spec-file`, `delete --purge`, and added `references/cli-command-map.md` covering `diagnose`, `events`, `settings`, the `logs` filters and `code sync --push-only`.
+
 ## [1.16.0] - 2026-10-07
 
 - `repo`: Fixed OpenAI plugin listing: category set to Developer Tools (Coding is not a valid marketplace category).

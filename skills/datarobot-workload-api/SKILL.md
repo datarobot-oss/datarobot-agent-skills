@@ -25,7 +25,7 @@ Runs containers as managed, autoscalable DataRobot services. Four jobs — pick 
 
 Auth: like `gh`. `dr auth login` (or existing `.env`/`~/.config/datarobot/drconfig.yaml`) persists credentials — no per-run env vars needed. Verify with `dr auth check`. On failure, run `datarobot-setup`.
 
-**Keep the CLI current** (like `datarobot-agent-assist`): `dr self update --force`. Never gate on a pinned version. If a subcommand still errors `unknown command` after update (seen with `config`/`up` — `references/declarative-cli-deploy.md`), use the raw-REST fallback below.
+**Keep the CLI current** (like `datarobot-agent-assist`): `dr self update --force`. Never gate on a pinned version. If a subcommand still errors `unknown command` after update, use the raw-REST fallback below.
 
 `DATAROBOT_ENDPOINT` (must end `/api/v2`) and `DATAROBOT_API_TOKEN`: required as env vars only for raw REST (`scripts/`, `httpx`/`curl`) or CI — these bypass CLI auth. Header: `Authorization: Bearer ${DATAROBOT_API_TOKEN}`. Not in the `datarobot` Python SDK — call REST directly.
 
@@ -50,7 +50,8 @@ In `references/`:
 - `schema-reference.md` — schemas, credential-type→key maps, spec quirks
 - `lifecycle-flows.md` — draft→lock→prod rules, replacement preconditions, redeploy matrix
 - `code-to-workload.md` — deploy from source: `dr` CLI, `codeRef`, Execution Environments
-- `declarative-cli-deploy.md` — `dr workload config`/`up`: one-command create/build/deploy
+- `declarative-cli-deploy.md` — `dr workload config`/`up`: the one-command path from a project directory, and when the granular verbs are the better choice; `.datarobot.yaml`, `promote`, `--sync-env`, `--spec-file`, `delete --purge`
+- `cli-command-map.md` — every `dr workload`/`dr artifact` verb → REST route, incl. `diagnose`, `events`, `settings`, `logs` filters
 - `web-uis-behind-the-edge.md` — web UI through the endpoint: prefix, auth gate, CSRF, WebSockets
 
 ## OpenAPI spec is source of truth
@@ -239,7 +240,7 @@ Check `r.status_code` before `.json()`: 401 bad token, 404 not found, 429 rate-l
 dr workload logs <wid> --level error --limit 100   # --follow streams; --output-format json
 ```
 
-`--level` is a MINIMUM severity threshold, not an exact match. For substring filtering on the message body, or proton-scoped logs (proton IDs: section 2), drop to REST — `dr workload logs` lacks these filters:
+`--level` is a MINIMUM severity threshold, not an exact match. Message filters: `--grep`/`--exclude` (repeatable, case-insensitive), `--trace-id`, `--span-id`, `--since`/`--until` (`15m`, `2h`, a date, RFC 3339). An empty result on a crashed container is normal: `dr workload diagnose <wid>` explains the state. For proton-scoped logs (proton IDs: section 2), drop to REST:
 
 ```python
 r = httpx.get(
@@ -303,7 +304,7 @@ Find the running artifact (`workload["artifactId"]`), check `artifact["status"]`
 - **Same draft (C2W loop) — in-place edit or rebuild.** PATCH/rebuild the draft, roll with `PATCH /workloads/{id}/settings/`: re-send the runtime body (even unchanged — triggers rolling `202`, re-reads current spec + latest `COMPLETED` build). Zero-downtime at ≥2 replicas. (`POST /replacement/` onto the same draft also works.)
 - **Different / locked artifact.** `POST /replacement/` onto the other artifact ID. Locked in-place edit: clone → PATCH clone → lock → replace onto the clone.
 
-**Lock:** `dr artifact lock <id>` (= `PATCH /artifacts/{id}/ {"status":"locked"}`). **Promote** (`POST /workloads/{wid}/promote/`, 200) locks the running draft in place, no restart. Runtime-only changes (replicas/resources/autoscaling) → `PATCH /settings/`; a PATCH to the artifact affects live workloads only on redeploy.
+**Lock:** `dr artifact lock <id>` (= `PATCH /artifacts/{id}/ {"status":"locked"}`). **Promote** (`dr workload promote <wid>` = `POST /workloads/{wid}/promote/`, 200) locks the running draft in place, no restart. Runtime-only changes (replicas/resources/autoscaling) → `PATCH /settings/`; a PATCH to the artifact affects live workloads only on redeploy.
 
 Preconditions (status-match, same-artifact rule) and the full redeploy matrix: `references/lifecycle-flows.md`.
 
