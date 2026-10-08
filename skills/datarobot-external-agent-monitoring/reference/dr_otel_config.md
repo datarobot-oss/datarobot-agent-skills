@@ -109,6 +109,27 @@ def configure_otel():
     )
     existing_provider = trace.get_tracer_provider()
     if hasattr(existing_provider, "add_span_processor"):
+        # A provider already exists, so ITS resource -- not the one built above --
+        # stamps service.name on every span, including the ones this processor
+        # exports to DataRobot. An existing provider's resource can't be rewritten
+        # here, and DataRobot attributes a trace by its service.name, so unless
+        # that provider was created with service.name == DATAROBOT_ENTITY_ID the
+        # spans upload fine but never appear. The fix is ordering: call
+        # configure_otel() BEFORE the framework creates its provider (so the
+        # else-branch below runs and sets the resource), or create that provider
+        # with service.name set to the entity id. Warn loudly when it's wrong.
+        existing_name = getattr(
+            getattr(existing_provider, "resource", None), "attributes", {}
+        ).get("service.name")
+        if entity_id and existing_name != entity_id:
+            logging.warning(
+                "OTel TracerProvider already exists with service.name=%r, but "
+                "DataRobot needs service.name=%r to attribute these traces. Call "
+                "configure_otel() before the framework initializes, or create the "
+                "provider with service.name set to DATAROBOT_ENTITY_ID.",
+                existing_name,
+                entity_id,
+            )
         existing_provider.add_span_processor(dr_span_processor)
     else:
         provider = TracerProvider(resource=resource)
