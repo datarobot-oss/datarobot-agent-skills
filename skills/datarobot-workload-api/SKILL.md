@@ -274,6 +274,16 @@ trace = httpx.get(
 
 > **`duration` is NANOSECONDS**, summaries and spans. Divide by 1,000,000 for ms before display. Empty `data`: app not instrumented — tell the user to wire up OTEL.
 
+### Emitting traces so they appear here
+
+The read endpoint only surfaces spans exported with the **right identity**. DataRobot files a trace under the entity named by the span's OTLP **`service.name`**, parsed as `<entity_type>-<entity_id>`, and a workload's own Tracing tab reads the `workload-<id>` entity — it's what `rootServiceName` shows above. So an agent running as a workload must export with:
+
+- **`service.name` = `workload-${WORKLOAD_ID}`** (the platform injects `WORKLOAD_ID`). A default/app `service.name` (e.g. the agent's own name) matches no entity, so spans upload with 200/202 but **never appear** — the most common "no traces despite instrumentation" cause.
+- **endpoint** = `${DATAROBOT_ENDPOINT%/api/v2}/otel` (the exporter appends `/v1/traces`, `/v1/metrics`, `/v1/logs`) — derive it so export follows the install instead of hardcoding a host.
+- headers `X-DataRobot-Api-Key: $DATAROBOT_API_TOKEN` (required — missing ⇒ every upload 401s) and `X-DataRobot-Entity-Id: workload-${WORKLOAD_ID}`.
+
+Full `configure_otel()` (traces + logs + metrics) lives in the `datarobot-external-agent-monitoring` skill — point its `DATAROBOT_ENTITY_ID` at `workload-${WORKLOAD_ID}` for a workload target.
+
 ## Metrics + service stats
 
 Convert before display: `bytes`→MB (`/1024**2`), `nanocores`→cores (`/1_000_000`), `percentage` already %.

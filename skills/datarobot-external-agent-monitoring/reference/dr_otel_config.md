@@ -7,8 +7,9 @@ This is the core `configure_otel()` function to generate for every project, rega
 2. Be additive — add DataRobot as an additional span processor to any existing TracerProvider, don't replace it
 3. Use `SimpleSpanProcessor` (not Batch) to avoid flush-before-shutdown issues
 4. Use DELTA temporality for metrics (required by DataRobot)
+5. Set the `Resource` `service.name` to `DATAROBOT_ENTITY_ID` — DataRobot files a trace under the entity named by `service.name` (parsed as `<entity_type>-<entity_id>`), so a default/app service name silently drops the trace from the UI even though the upload returns 200/202
 
-The `DATAROBOT_ENTITY_ID` at runtime is the Use Case entity (`experiment_container-<use_case_id>`) by default, or a deployment entity (`deployment-<id>`) if a shell deployment was used instead.
+The `DATAROBOT_ENTITY_ID` at runtime is the Use Case entity (`experiment_container-<use_case_id>`) by default, a deployment entity (`deployment-<id>`) if a shell deployment was used instead, or a **workload** entity (`workload-<workload_id>`) when the agent runs as a DataRobot Workload (the platform injects `WORKLOAD_ID`, so use `workload-${WORKLOAD_ID}`).
 
 ## Template
 
@@ -93,7 +94,14 @@ def configure_otel():
     if not endpoint:
         logging.warning("DATAROBOT_OTEL_ENDPOINT not set — skipping OTel configuration")
         return
-    resource = Resource.create()
+    # DataRobot files each trace under the entity named by the span's
+    # service.name, parsed as "<entity_type>-<entity_id>". It MUST equal
+    # DATAROBOT_ENTITY_ID (e.g. "experiment_container-<id>", "deployment-<id>",
+    # or "workload-<id>") -- otherwise spans upload fine (200/202) but never
+    # appear in the UI. The entity header alone is not enough; the tracing UI
+    # filters on service.name.
+    entity_id = os.environ.get("DATAROBOT_ENTITY_ID", "")
+    resource = Resource.create({"service.name": entity_id} if entity_id else {})
 
     # --- Traces ---
     dr_span_processor = SimpleSpanProcessor(
