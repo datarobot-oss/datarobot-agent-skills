@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "datarobot-agent-skills",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "DataRobot skills for AI and machine-learning workflows, including model training, deployment, predictions, monitoring, explainability, data preparation, CI/CD, workload operations, and application observability.",
   "author": {
     "name": "DataRobot",
