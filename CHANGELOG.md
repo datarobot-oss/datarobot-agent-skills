@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-connectivity-datastore-sql`: New skill for running SQL through DataRobot data connections (datastores) with their stored credentials. It lists connections and credentials, browses schemas, tables and columns, previews tables, and runs read queries via `/previewQuery/`, falling back to `/verifySQL/` where the newer routes are not available. DML/DDL runs via `/executeUpdate/` only after a dry-run plan and an explicit `--confirm`. Ships the standard-library `scripts/datastore_sql.py` and references for the API contract, per-connector capabilities and dialects, and troubleshooting.
+
 ## [1.17.0] - 2026-10-08
 
 ### Changed

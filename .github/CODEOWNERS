@@ -21,6 +21,9 @@
 # All App Framework skills are owned by the Labs team
 /skills/datarobot-app-framework-*/ @datarobot-oss/labs
 
+# Data connectivity skills (datastore and JDBC SQL)
+/skills/datarobot-connectivity-*/ @datarobot/agent-ecosystem
+
 # OpenCode plugin (theme, install scripts, metadata)
 /.opencode-plugin/ @datarobot-oss/agent-skills-maintainers
 

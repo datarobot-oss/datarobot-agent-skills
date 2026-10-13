@@ -73,6 +73,11 @@
       "name": "datarobot-agent-llm-selection",
       "description": "Configure LLM integration for a DataRobot agent application — switch between LLM Gateway, deployed LLM, external provider, or blueprint gateway modes and safely sync provider credentials into .env",
       "path": "skills/datarobot-agent-llm-selection/SKILL.md"
+    },
+    {
+      "name": "datarobot-connectivity-datastore-sql",
+      "description": "Query, explore, and update databases through DataRobot data connections with stored credentials — list connections, browse tables, preview rows, run SQL, and run approved DML/DDL on Snowflake, Databricks, BigQuery, SAP Datasphere, Trino, and other connected databases",
+      "path": "skills/datarobot-connectivity-datastore-sql/SKILL.md"
     }
   ]
 }

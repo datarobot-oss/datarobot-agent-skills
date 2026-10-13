@@ -172,6 +172,18 @@
         "switch my agent to the DataRobot LLM Gateway",
         "set up Azure OpenAI credentials for my DataRobot agent"
       ]
+    },
+    {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:connectivity-datastore-sql",
+      "displayName": "datarobot-connectivity-datastore-sql",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-connectivity-datastore-sql/SKILL.md",
+      "description": "Query, explore, and update databases through DataRobot data connections with stored credentials — list connections, browse tables, preview rows, run SQL, and run approved DML/DDL on Snowflake, Databricks, BigQuery, SAP Datasphere, Trino, and other connected databases.",
+      "representativeQueries": [
+        "query my Snowflake data connection in DataRobot",
+        "show 10 rows from SALES.ORDERS in my DataRobot datastore",
+        "insert rows into a Databricks table through my DataRobot data connection"
+      ]
     }
   ]
 }
