@@ -18,6 +18,12 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-connectivity-jdbc-sql`: New skill for running SQL through DataRobot against a database reached with a caller-supplied JDBC URL and driver properties, without registering a data connection. It tests connectivity, lists tables and columns with dialect-aware catalog SQL, runs read queries via `/jdbcDataPreview/`, and runs DML/DDL via `/jdbcExecution/` only after a dry-run plan and an explicit `--confirm`. Secrets come from environment variables or `.env` and are masked in all output. Ships the standard-library `scripts/jdbc_sql.py` and references for the API contract, driver URL templates and dialect limits, and app integration, including a migration checklist for Talk to My Data.
 
+## [1.18.0] - 2026-10-13
+
+### Added
+
+- `datarobot-connectivity-datastore-sql`: New skill for running SQL through DataRobot data connections (datastores) with their stored credentials. It lists connections and credentials, browses schemas, tables and columns, previews tables, and runs read queries via `/previewQuery/`, falling back to `/verifySQL/` where the newer routes are not available. DML/DDL runs via `/executeUpdate/` only after a dry-run plan and an explicit `--confirm`. Ships the standard-library `scripts/datastore_sql.py` and references for the API contract, per-connector capabilities and dialects, and troubleshooting.
+
 ## [1.17.0] - 2026-10-08
 
 ### Changed
