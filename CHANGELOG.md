@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Fixed
+
+- `datarobot-connectivity-jdbc-sql`: Fixed `tables` and `columns` building SQL that a name with a backslash could break out of on Snowflake, Redshift and other dialects that read `\'` as an escaped quote. Backslashes are now doubled in every catalog value, and BigQuery, Databricks and Spark reject a backslash in a catalog or schema name. Documented each remaining string-built query with an inline `noqa` and its reason.
+
 ## [1.22.0] - 2026-10-15
 
 ### Fixed

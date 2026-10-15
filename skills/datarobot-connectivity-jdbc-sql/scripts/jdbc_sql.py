@@ -276,7 +276,9 @@ def load_env_file(path: str) -> None:
 def _ssl_context() -> ssl.SSLContext | None:
     verify = os.environ.get("DATAROBOT_SSL_VERIFY", "").strip()
     if verify.lower() in ("false", "0", "no", "off"):
-        return ssl._create_unverified_context()
+        # Explicit opt-in through the DataRobot SDK's own variable, for endpoints with
+        # a self-signed certificate. Requests go only to the configured endpoint.
+        return ssl._create_unverified_context()  # noqa: S323
     if verify and verify.lower() not in ("true", "1", "yes", "on"):
         return ssl.create_default_context(cafile=verify)
     return None
@@ -780,20 +782,28 @@ def parse_binds(raw: str | None) -> list[Any] | None:
 # --------------------------------------------------------------------------- #
 # Dialect-aware catalog SQL (there are no metadata routes for JDBC URLs)
 # --------------------------------------------------------------------------- #
+# Ruff S608 (`noqa` below): every interpolated piece in these builders is a constant,
+# an `_identifier`-quoted name, or a `_literal` result. Values from the caller
+# never reach the SQL any other way.
 
 
 def _literal(value: str, dialect: str) -> str:
+    """Quote a catalog value. Backslashes are doubled for every dialect: Snowflake,
+    Redshift, MySQL and others read `\\'` as an escaped quote, so an undoubled
+    backslash could end the string early. Where a backslash is an ordinary
+    character, a name that contains one matches nothing, which is the safe failure."""
+    escaped = value.replace("\\", "\\\\")
     if dialect in BACKSLASH_DIALECTS:
-        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
-    if dialect in ("mysql", "mariadb"):
-        return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
-    return "'" + value.replace("'", "''") + "'"
+        return "'" + escaped.replace("'", "\\'") + "'"
+    return "'" + escaped.replace("'", "''") + "'"
 
 
 def _identifier(name: str, dialect: str) -> str:
     if dialect in BACKTICK_DIALECTS:
         if "`" in name:
             raise UsageError("Names containing a backtick are not supported.")
+        if "\\" in name and dialect in BACKSLASH_DIALECTS:
+            raise UsageError("Names containing a backslash are not supported.")
         return f"`{name}`"
     if dialect == "sqlserver":
         return "[" + name.replace("]", "]]") + "]"
@@ -848,7 +858,7 @@ def tables_sql(
         if like:
             conditions.append(_name_filter("c.relname", like, dialect))
         return (
-            "SELECT n.nspname AS table_schema, c.relname AS table_name, "
+            "SELECT n.nspname AS table_schema, c.relname AS table_name, "  # noqa: S608
             "CASE c.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' "
             "WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END AS table_type, "
             "has_schema_privilege(n.oid, 'USAGE') "
@@ -868,7 +878,7 @@ def tables_sql(
             tables_where += " AND " + _name_filter("TABLE_NAME", like, dialect)
             views_where += " AND " + _name_filter("VIEW_NAME", like, dialect)
         return (
-            "SELECT SCHEMA_NAME AS table_schema, TABLE_NAME AS table_name, "
+            "SELECT SCHEMA_NAME AS table_schema, TABLE_NAME AS table_name, "  # noqa: S608
             f"'TABLE' AS table_type FROM SYS.TABLES WHERE {tables_where} UNION ALL "
             f"SELECT SCHEMA_NAME, VIEW_NAME, 'VIEW' FROM SYS.VIEWS WHERE {views_where}"
         )
@@ -895,7 +905,7 @@ def tables_sql(
         name_filter = _name_filter(name_column, like, dialect)
         where = f"{where} AND {name_filter}" if where else f" WHERE {name_filter}"
     view = "TABLES" if dialect in ("sqlserver", "bigquery") else "tables"
-    return f"SELECT {columns} FROM {source}{view}{where}"
+    return f"SELECT {columns} FROM {source}{view}{where}"  # noqa: S608
 
 
 def columns_sql(
@@ -910,7 +920,7 @@ def columns_sql(
         if schema:
             filters.append(f"UPPER(n.nspname) = UPPER({_literal(schema, dialect)})")
         return (
-            "SELECT n.nspname AS table_schema, a.attnum AS ordinal_position, "
+            "SELECT n.nspname AS table_schema, a.attnum AS ordinal_position, "  # noqa: S608
             "a.attname AS column_name, "
             "pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type, "
             "CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable, "
@@ -933,7 +943,7 @@ def columns_sql(
             ("SYS.VIEW_COLUMNS", "VIEW_NAME"),
         ):
             parts.append(
-                "SELECT SCHEMA_NAME AS table_schema, POSITION AS ordinal_position, "
+                "SELECT SCHEMA_NAME AS table_schema, POSITION AS ordinal_position, "  # noqa: S608
                 "COLUMN_NAME AS column_name, DATA_TYPE_NAME AS data_type, "
                 f"IS_NULLABLE AS is_nullable FROM {source} WHERE UPPER({name}) = "
                 f"UPPER({_literal(table, dialect)}){schema_filter}"
@@ -955,7 +965,7 @@ def columns_sql(
     if schema and dialect != "bigquery":
         filters.append(f"UPPER({schema_column}) = UPPER({_literal(schema, dialect)})")
     view = "COLUMNS" if dialect in ("sqlserver", "bigquery") else "columns"
-    return f"SELECT {columns} FROM {source}{view} WHERE {' AND '.join(filters)}"
+    return f"SELECT {columns} FROM {source}{view} WHERE {' AND '.join(filters)}"  # noqa: S608
 
 
 # --------------------------------------------------------------------------- #
