@@ -27,9 +27,11 @@
 # OpenCode plugin (theme, install scripts, metadata)
 /.opencode-plugin/ @datarobot-oss/agent-skills-maintainers
 
+# Skills owned by Agent Ecosystem
+/skills/datarobot-gap-analysis/ @datarobot/agent-ecosystem
+
 # Individual Contributor skills
 /skills/datarobot-discover/ @datarobot-oss/agent-skills-maintainers
 /skills/datarobot-external-agent-monitoring/ @vitali93
-/skills/datarobot-gap-analysis/ @maximch54
 /skills/datarobot-setup/ @amberb617
 /skills/datarobot-workload-api/ @ahamino
