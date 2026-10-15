@@ -78,6 +78,11 @@
       "name": "datarobot-connectivity-datastore-sql",
       "description": "Query, explore, and update databases through DataRobot data connections with stored credentials — list connections, browse tables, preview rows, run SQL, and run approved DML/DDL on Snowflake, Databricks, BigQuery, SAP Datasphere, Trino, and other connected databases",
       "path": "skills/datarobot-connectivity-datastore-sql/SKILL.md"
+    },
+    {
+      "name": "datarobot-connectivity-jdbc-sql",
+      "description": "Run SQL through DataRobot against any reachable database with a caller-supplied JDBC URL — test connectivity, list tables and columns, run read queries, and run approved DML/DDL on PostgreSQL, MySQL, SQL Server, Snowflake, Databricks, Trino, SAP HANA/Datasphere, Redshift, or BigQuery, with secrets kept out of the chat",
+      "path": "skills/datarobot-connectivity-jdbc-sql/SKILL.md"
     }
   ]
 }
