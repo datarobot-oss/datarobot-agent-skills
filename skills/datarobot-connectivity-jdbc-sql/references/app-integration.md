@@ -260,9 +260,12 @@ class JdbcPreviewOperator(DatabaseOperator[JDBCCredentials]):  # existing class;
 In `_run_database_analysis`, let the failure through before the generic handler:
 
 ```python
+    try:
+        ...  # existing analysis
     except DatabaseFailure:
         raise
     except Exception as e:  # existing handler
+        ...
 ```
 
 Keep the other TTMD sources off these routes:
