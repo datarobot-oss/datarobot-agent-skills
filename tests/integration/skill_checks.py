@@ -10,35 +10,63 @@ the paid evaluation (the LLM judge in tests/e2e or `claude plugin eval`).
 from __future__ import annotations
 
 import ast
+import os
 import re
 import subprocess
 import sys
 import textwrap
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-PLACEHOLDER_RE = re.compile(r"<[^>\n]+>")
+# A placeholder is an identifier in angle brackets. `<<EOF` and `cmd < in > out` are not.
+PLACEHOLDER_RE = re.compile(r"(?<!<)<[A-Za-z][\w-]*>")
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)")
 SCRIPT_CALL_RE = re.compile(r"(?:python3?|bash|sh)\s+([^\s\"'`<>$|;&]+\.(?:py|sh))\b")
 SHELL_LANGS = {"bash", "sh", "shell"}
 PYTHON_LANGS = {"python", "py"}
+HELP_TIMEOUT_SECONDS = 30
+
+# https://agentskills.io/specification, plus the keys this repo already uses.
+NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+MAX_NAME_CHARS = 64
+MAX_DESCRIPTION_CHARS = 1024
+MAX_COMPATIBILITY_CHARS = 500
+ALLOWED_FRONTMATTER_KEYS = {
+    "name",
+    "description",
+    "license",
+    "compatibility",
+    "metadata",
+    "allowed-tools",
+    "context-tokens",
+}
 
 # The repository is public, so skills must not carry internal hosts, employee
 # addresses, private network addresses or credentials.
+_PLACEHOLDER_WORDS = r"(?:your|example|placeholder|changeme|x{4,}|here)"
+_SECRET_VALUE = r"[A-Za-z0-9_+/=.-]{16,}"
 SENSITIVE_PATTERNS = {
     "internal host": re.compile(
-        r"atlassian\.net|slack\.com|staging\.datarobot\.com", re.IGNORECASE
+        r"datarobot\.atlassian\.net|datarobot(?:\.enterprise)?\.slack\.com|staging\.datarobot\.com",
+        re.IGNORECASE,
     ),
-    "employee email": re.compile(r"[\w.+-]+@datarobot\.com", re.IGNORECASE),
+    "employee email": re.compile(
+        r"(?<![\w.+-])(?!(?:support|security|info|noreply|no-reply)@)[\w.+-]+@datarobot\.com",
+        re.IGNORECASE,
+    ),
     "private IP address": re.compile(
-        r"(?<![\d.])(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}(?![\d.])"
+        r"(?<![\d.])(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}(?!\d|\.\d)"
     ),
     "private key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
-    "AWS access key id": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    "AWS access key id": re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
     "hardcoded credential": re.compile(
-        r"""(?:api[_-]?key|token|secret|password)["']?\s*[:=]\s*["'][A-Za-z0-9_-]{16,}["']""",
+        rf"""(?:api[_-]?key|token|secret|password)["']?\s*[:=]\s*(?!["']?[^\s"']*{_PLACEHOLDER_WORDS})"""
+        rf"""(?:["']{_SECRET_VALUE}["']|(?=[^\s"']*\d){_SECRET_VALUE}(?=\s|$))""",
         re.IGNORECASE,
+    ),
+    "bearer token": re.compile(
+        rf"Bearer\s+(?!{_PLACEHOLDER_WORDS}){_SECRET_VALUE}", re.IGNORECASE
     ),
 }
 
@@ -71,6 +99,16 @@ def iter_fences(markdown: str) -> Iterator[Fence]:
             buf.append(raw)
 
 
+def prose_outside_fences(markdown: str) -> str:
+    """Return the markdown with every fenced block, fences included, blanked out."""
+    lines = markdown.splitlines()
+    for fence in iter_fences(markdown):
+        end = fence.line + len(fence.code.splitlines()) + 1
+        for index in range(fence.line - 1, min(end, len(lines))):
+            lines[index] = ""
+    return "\n".join(lines)
+
+
 def python_syntax_error(code: str) -> str | None:
     """Return the syntax error of a Python sample, or None if it parses.
 
@@ -84,7 +122,7 @@ def python_syntax_error(code: str) -> str | None:
             ast.parse(candidate)
             return None
         except SyntaxError as exc:
-            first_error = first_error or f"{exc.msg} (line {exc.lineno})"
+            first_error = first_error or f"{exc.msg} (sample line {exc.lineno})"
     return first_error
 
 
@@ -113,7 +151,7 @@ def broken_references(markdown: str, md_path: Path, skill_dir: Path) -> list[str
     directory or from the skill root.
     """
     missing: list[str] = []
-    for target in LINK_RE.findall(markdown):
+    for target in LINK_RE.findall(prose_outside_fences(markdown)):
         target = target.split("#", 1)[0]
         if not target or re.match(r"[a-z][a-z0-9+.-]*:", target) or "<" in target:
             continue
@@ -123,7 +161,7 @@ def broken_references(markdown: str, md_path: Path, skill_dir: Path) -> list[str
         if fence.lang not in SHELL_LANGS:
             continue
         for target in SCRIPT_CALL_RE.findall(fence.code):
-            if "<" in target or target.startswith(("/", "~")):
+            if target.startswith(("/", "~")):
                 continue
             if (
                 not (md_path.parent / target).exists()
@@ -133,12 +171,38 @@ def broken_references(markdown: str, md_path: Path, skill_dir: Path) -> list[str
     return missing
 
 
+def frontmatter_findings(metadata: Mapping[str, object], path: str) -> list[str]:
+    """Return violations of the agentskills.io frontmatter rules, each prefixed with path."""
+    findings: list[str] = []
+    name = str(metadata.get("name", ""))
+    if len(name) > MAX_NAME_CHARS or not NAME_RE.match(name):
+        findings.append(
+            f"{path}: name {name!r} must be lowercase words joined by single hyphens, at most {MAX_NAME_CHARS} characters"
+        )
+    description = str(metadata.get("description", ""))
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        findings.append(
+            f"{path}: description has {len(description)} characters, the limit is {MAX_DESCRIPTION_CHARS}"
+        )
+    compatibility = metadata.get("compatibility")
+    if (
+        compatibility is not None
+        and not 0 < len(str(compatibility).strip()) <= MAX_COMPATIBILITY_CHARS
+    ):
+        findings.append(
+            f"{path}: compatibility must be 1 to {MAX_COMPATIBILITY_CHARS} characters"
+        )
+    for key in sorted(set(metadata) - ALLOWED_FRONTMATTER_KEYS):
+        findings.append(f"{path}: unknown frontmatter key {key!r}")
+    return findings
+
+
 def sensitive_findings(text: str) -> list[str]:
     """Return "<label> at line N" for each internal or secret-like string in text.
 
     The matched text is left out so a real credential never reaches a CI log.
     """
-    findings = []
+    findings: list[str] = []
     for number, line in enumerate(text.splitlines(), 1):
         for label, pattern in SENSITIVE_PATTERNS.items():
             if pattern.search(line):
@@ -149,17 +213,24 @@ def sensitive_findings(text: str) -> list[str]:
 def script_help_failure(script: Path, workdir: Path) -> str | None:
     """Run `script --help` and return its last stderr line on failure, or None.
 
-    Runs in `workdir` so scripts that write relative paths at import time do
-    not litter the repository.
+    Runs in `workdir` without DATAROBOT_* variables, so a script that does work
+    before argparse cannot reach a real environment, and scripts that write
+    relative paths at import time do not litter the repository.
     """
-    result = subprocess.run(
-        [sys.executable, str(script), "--help"],
-        cwd=workdir,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    env = {k: v for k, v in os.environ.items() if not k.startswith("DATAROBOT_")}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            cwd=workdir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=HELP_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return f"timed out after {HELP_TIMEOUT_SECONDS}s"
     if result.returncode == 0:
         return None
     return (result.stderr.strip().splitlines() or [f"exit code {result.returncode}"])[

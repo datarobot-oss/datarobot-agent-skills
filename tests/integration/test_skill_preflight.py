@@ -12,7 +12,6 @@ Every finding is formatted as "<path relative to skills/>: <message>".
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import frontmatter
@@ -22,21 +21,7 @@ import skill_checks as sc
 REPO_ROOT = Path(__file__).parent.parent.parent
 SKILLS_DIR = REPO_ROOT / "skills"
 
-# https://agentskills.io/specification, plus the keys this repo already uses.
-NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-MAX_NAME_CHARS = 64
-MAX_DESCRIPTION_CHARS = 1024
-MAX_COMPATIBILITY_CHARS = 500
 IGNORED_SUFFIXES = {".pyc", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf"}
-ALLOWED_FRONTMATTER_KEYS = {
-    "name",
-    "description",
-    "license",
-    "compatibility",
-    "metadata",
-    "allowed-tools",
-    "context-tokens",
-}
 
 
 def skill_dirs() -> list[Path]:
@@ -58,34 +43,15 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 
 def frontmatter_findings(skill_dir: Path) -> list[str]:
-    metadata = frontmatter.load(skill_dir / "SKILL.md").metadata
-    path = relative(skill_dir / "SKILL.md")
-    findings = []
-    name = str(metadata.get("name", ""))
-    if len(name) > MAX_NAME_CHARS or not NAME_RE.match(name):
-        findings.append(
-            f"{path}: name {name!r} must be lowercase words joined by single hyphens, at most {MAX_NAME_CHARS} characters"
-        )
-    description = str(metadata.get("description", ""))
-    if len(description) > MAX_DESCRIPTION_CHARS:
-        findings.append(
-            f"{path}: description has {len(description)} characters, the limit is {MAX_DESCRIPTION_CHARS}"
-        )
-    compatibility = metadata.get("compatibility")
-    if (
-        compatibility is not None
-        and not 0 < len(str(compatibility).strip()) <= MAX_COMPATIBILITY_CHARS
-    ):
-        findings.append(
-            f"{path}: compatibility must be 1 to {MAX_COMPATIBILITY_CHARS} characters"
-        )
-    for key in sorted(set(metadata) - ALLOWED_FRONTMATTER_KEYS):
-        findings.append(f"{path}: unknown frontmatter key {key!r}")
+    findings: list[str] = []
+    for skill_md in sorted(skill_dir.rglob("SKILL.md")):
+        metadata = frontmatter.load(skill_md).metadata
+        findings.extend(sc.frontmatter_findings(metadata, relative(skill_md)))
     return findings
 
 
 def reference_findings(skill_dir: Path) -> list[str]:
-    findings = []
+    findings: list[str] = []
     for md in markdown_files(skill_dir):
         for target in sc.broken_references(
             md.read_text(encoding="utf-8"), md, skill_dir
@@ -95,7 +61,7 @@ def reference_findings(skill_dir: Path) -> list[str]:
 
 
 def python_sample_findings(skill_dir: Path) -> list[str]:
-    findings = []
+    findings: list[str] = []
     for md in markdown_files(skill_dir):
         for fence in sc.iter_fences(md.read_text(encoding="utf-8")):
             if fence.lang in sc.PYTHON_LANGS and (
@@ -108,7 +74,7 @@ def python_sample_findings(skill_dir: Path) -> list[str]:
 
 
 def shell_sample_findings(skill_dir: Path) -> list[str]:
-    findings = []
+    findings: list[str] = []
     for md in markdown_files(skill_dir):
         for fence in sc.iter_fences(md.read_text(encoding="utf-8")):
             if fence.lang in sc.SHELL_LANGS and (
@@ -121,7 +87,7 @@ def shell_sample_findings(skill_dir: Path) -> list[str]:
 
 
 def sensitive_file_findings(skill_dir: Path) -> list[str]:
-    findings = []
+    findings: list[str] = []
     for path in sorted(skill_dir.rglob("*")):
         if not path.is_file() or path.suffix in IGNORED_SUFFIXES:
             continue
@@ -131,7 +97,7 @@ def sensitive_file_findings(skill_dir: Path) -> list[str]:
 
 
 def script_findings(skill_dir: Path, workdir: Path) -> list[str]:
-    findings = []
+    findings: list[str] = []
     for script in sorted(skill_dir.rglob("*.py")):
         if "argparse" not in script.read_text(encoding="utf-8"):
             continue

@@ -153,3 +153,123 @@ def test_sensitive_findings_reports_line_number_without_the_secret() -> None:
     findings = sc.sensitive_findings('ok\napi_key = "abcd1234efgh5678ijkl"')
     assert findings == ["hardcoded credential at line 2"]
     assert "abcd1234" not in findings[0]
+
+
+def test_shell_syntax_error_accepts_heredoc_body() -> None:
+    assert sc.shell_syntax_error('cat <<EOF > out.json\n{"a": (1)}\nEOF') is None
+
+
+def test_shell_syntax_error_still_sees_errors_next_to_redirections() -> None:
+    assert (
+        sc.shell_syntax_error('wc -l < input.txt > out.txt "unterminated') is not None
+    )
+
+
+def test_prose_outside_fences_blanks_code_and_keeps_text() -> None:
+    markdown = "see [a](a.md)\n```python\nhandlers[name](event)\n```\nand [b](b.md)\n"
+    prose = sc.prose_outside_fences(markdown)
+    assert "[a](a.md)" in prose
+    assert "[b](b.md)" in prose
+    assert "handlers" not in prose
+
+
+def test_broken_references_ignores_call_syntax_inside_code_fences(
+    tmp_path: Path,
+) -> None:
+    md = "```python\nhandlers[name](event)\n```\n"
+    assert sc.broken_references(md, tmp_path / "SKILL.md", tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [
+        ("export DATAROBOT_API_TOKEN=Nj1234567890abcdefghij", "hardcoded credential"),
+        ('secret = "dGhpcy1pcy1hLXNlY3JldC12YWx1ZQ=="', "hardcoded credential"),
+        ('"token": "eyJhbGciOi.eyJzdWIiOiIx.c2lnbmF0dXJl"', "hardcoded credential"),
+        ("Authorization: Bearer abcdEFGH1234ijklMNOP5678", "bearer token"),
+        ("key = ASIAABCDEFGHIJKLMNOP", "AWS access key id"),
+        ("see datarobot.enterprise.slack.com", "internal host"),
+    ],
+)
+def test_sensitive_findings_flags_unquoted_and_encoded_secrets(
+    text: str, label: str
+) -> None:
+    assert sc.sensitive_findings(text) == [f"{label} at line 1"]
+
+
+def test_sensitive_findings_accepts_public_hosts_role_mailboxes_and_calls() -> None:
+    text = "\n".join(
+        [
+            "https://your-company.atlassian.net/browse/X-1",
+            "https://hooks.slack.com/services/T000/B000/xxxx",
+            "write to support@datarobot.com",
+            "api_token = read_credentials(target_dir)",
+            "DATAROBOT_API_TOKEN=your-api-token-here-12345",
+            "Authorization: Bearer $DATAROBOT_API_TOKEN",
+            "host 10.0.0.1.",
+        ]
+    )
+    assert sc.sensitive_findings(text) == ["private IP address at line 7"]
+
+
+def valid_metadata() -> dict[str, object]:
+    return {"name": "datarobot-x", "description": "Use when testing.", "license": "x"}
+
+
+def test_frontmatter_findings_accepts_valid_metadata() -> None:
+    assert sc.frontmatter_findings(valid_metadata(), "datarobot-x/SKILL.md") == []
+
+
+@pytest.mark.parametrize(
+    "name", ["Datarobot-X", "datarobot--x", "-x", "x_y", "a" * 65, ""]
+)
+def test_frontmatter_findings_rejects_bad_name(name: str) -> None:
+    metadata = {**valid_metadata(), "name": name}
+    findings = sc.frontmatter_findings(metadata, "p/SKILL.md")
+    assert len(findings) == 1
+    assert "name" in findings[0]
+
+
+def test_frontmatter_findings_rejects_long_description() -> None:
+    metadata = {**valid_metadata(), "description": "d" * 1025}
+    assert "1025 characters" in sc.frontmatter_findings(metadata, "p/SKILL.md")[0]
+
+
+def test_frontmatter_findings_accepts_description_at_the_limit() -> None:
+    metadata = {**valid_metadata(), "description": "d" * 1024}
+    assert sc.frontmatter_findings(metadata, "p/SKILL.md") == []
+
+
+@pytest.mark.parametrize("compatibility", ["", "   ", "c" * 501])
+def test_frontmatter_findings_rejects_bad_compatibility(compatibility: str) -> None:
+    metadata = {**valid_metadata(), "compatibility": compatibility}
+    findings = sc.frontmatter_findings(metadata, "p/SKILL.md")
+    assert len(findings) == 1
+    assert "compatibility" in findings[0]
+
+
+def test_frontmatter_findings_rejects_unknown_key() -> None:
+    metadata = {**valid_metadata(), "version": "1"}
+    assert sc.frontmatter_findings(metadata, "p/SKILL.md") == [
+        "p/SKILL.md: unknown frontmatter key 'version'"
+    ]
+
+
+def test_script_help_failure_reports_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sc, "HELP_TIMEOUT_SECONDS", 1)
+    script = tmp_path / "slow.py"
+    script.write_text("import time\ntime.sleep(5)\n")
+    assert sc.script_help_failure(script, tmp_path) == "timed out after 1s"
+
+
+def test_script_help_failure_hides_datarobot_credentials_from_the_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATAROBOT_API_TOKEN", "secret-value")
+    script = tmp_path / "env_check.py"
+    script.write_text(
+        "import os, sys\nsys.exit(1 if 'DATAROBOT_API_TOKEN' in os.environ else 0)\n"
+    )
+    assert sc.script_help_failure(script, tmp_path) is None
