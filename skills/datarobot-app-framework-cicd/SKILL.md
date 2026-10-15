@@ -237,8 +237,8 @@ The deploy workflow triggers on pull requests and derives `PULUMI_STACK_NAME` fr
 The simplest approach for managing Pulumi state:
 
 ```bash
-# Install Pulumi
-curl -fsSL https://get.pulumi.com | sh
+# Install Pulumi (macOS; other platforms: https://www.pulumi.com/docs/install/)
+brew install pulumi/tap/pulumi
 
 # Login to Pulumi Cloud
 pulumi login

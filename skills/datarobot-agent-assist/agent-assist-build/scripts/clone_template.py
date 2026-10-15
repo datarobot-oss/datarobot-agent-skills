@@ -30,6 +30,7 @@ TAG: str | None = "11.11.6"
 TEMPLATE_REPO_URL_ENV = "AGENT_ASSIST_TEMPLATE_REPO_URL"
 TEMPLATE_REPO_BRANCH_ENV = "AGENT_ASSIST_TEMPLATE_REPO_BRANCH"
 TEMPLATE_REPO_TAG_ENV = "AGENT_ASSIST_TEMPLATE_REPO_TAG"
+GIT_COMMAND_TIMEOUT = 120
 
 
 def _environment_override(name: str, default: str | None) -> str | None:
@@ -58,7 +59,10 @@ def cleanup_git_dir(target_dir: Path) -> None:
 
 
 def run_git_command(
-    command: list[str], description: str, target_dir: Path, timeout: int = 10
+    command: list[str],
+    description: str,
+    target_dir: Path,
+    timeout: int = GIT_COMMAND_TIMEOUT,
 ) -> tuple[bool, str]:
     """
     Run a git command and return success status and output.
@@ -154,10 +158,7 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
 
     # Step 1: Initialize git repository
     success, output = run_git_command(
-        ["git", "init"],
-        f"Initializing git repository in {target_dir}",
-        target_dir,
-        timeout=10,
+        ["git", "init"], f"Initializing git repository in {target_dir}", target_dir
     )
 
     if not success:
@@ -169,7 +170,6 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
         ["git", "remote", "add", "origin", repo_url],
         f"Adding remote origin {repo_url}",
         target_dir,
-        timeout=10,
     )
 
     if not success:
@@ -179,10 +179,7 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
 
     # Step 3: Fetch from remote
     success, output = run_git_command(
-        ["git", "fetch", "origin"],
-        "Fetching from remote repository",
-        target_dir,
-        timeout=60,
+        ["git", "fetch", "origin"], "Fetching from remote repository", target_dir
     )
 
     if not success:
@@ -193,14 +190,13 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
     # Step 4: Checkout branch or tag
     if ref_type == "tag":
         success, output = run_git_command(
-            ["git", "checkout", ref], f"Checking out tag {ref}", target_dir, timeout=10
+            ["git", "checkout", ref], f"Checking out tag {ref}", target_dir
         )
     else:
         success, output = run_git_command(
             ["git", "checkout", "-t", f"origin/{ref}"],
             f"Checking out and tracking branch {ref}",
             target_dir,
-            timeout=10,
         )
 
     if not success:

@@ -15,7 +15,7 @@ The goal is to ensure that enterprises can get agents into production. Skills of
 
 ### Intended use of this skill library
 
-These skills are generally used by code assistants. The skills in this repository are available through code assistant marketplaces such as Cursor and Claude Code. These skills also power the DataRobot agent assist.
+These skills are generally used by code assistants. The skills in this repository are available through code assistant marketplaces such as Cursor, Claude Code, and Codex. These skills also power the DataRobot agent assist.
 
 ### Criteria for adding skills
 
@@ -61,7 +61,7 @@ Install and test the skills after prompting the user for the expected trigger ph
 
 ### Plugin version management
 
-Versions are automatic. Add a human-written `[Unreleased]` item describing the change in this pull request. For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Versions are automatic. Add a human-written `[Unreleased]` item describing the change in this pull request. The version bump workflow keeps the shared plugin metadata in sync across Claude, Cursor, Codex, Gemini, and npm package manifests. For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## SDK usage
 
