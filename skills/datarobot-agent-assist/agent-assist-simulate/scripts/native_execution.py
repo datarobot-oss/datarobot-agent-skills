@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 from typing import Literal
 
+from artifacts import load_criteria, load_json, load_spec, one_line, write_json
+from prompt_inputs import evaluator_input, fixture_input, runner_input
 from pydantic import Field, TypeAdapter, ValidationError
-
-from artifacts import one_line, load_criteria, load_json, load_spec, write_json
 from swarm_contracts import (
     AgentSpec,
     AssistantResponseAction,
@@ -29,7 +29,6 @@ from swarm_contracts import (
     ToolFixture,
     TranscriptEntry,
 )
-from prompt_inputs import evaluator_input, fixture_input, runner_input
 
 Role = Literal["runner", "fixture", "evaluator"]
 JudgeMode = Literal["standard", "scored"]

@@ -15,21 +15,26 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from pydantic import ValidationError
-
 from artifacts import (
-    one_line,
-    resolve_project_file,
-    resolve_swarm_dir,
-    resolve_under_root,
-    scenario_id,
     load_criteria,
     load_json,
     load_native_config,
     load_spec,
     merge_metrics,
+    one_line,
+    resolve_project_file,
+    resolve_swarm_dir,
+    resolve_under_root,
+    scenario_id,
     write_json,
 )
+from native_execution import (
+    RESULT_FILENAME,
+    STATE_FILENAME,
+    NativeRunState,
+    initialize,
+)
+from pydantic import ValidationError
 from swarm_contracts import (
     AgentSpec,
     Scenario,
@@ -38,12 +43,6 @@ from swarm_contracts import (
     SwarmPreparation,
     SwarmResults,
     SwarmTask,
-)
-from native_execution import (
-    RESULT_FILENAME,
-    STATE_FILENAME,
-    NativeRunState,
-    initialize,
 )
 
 _SCRIPTS_DIR = Path(__file__).parent

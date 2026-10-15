@@ -13,20 +13,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from pydantic import ValidationError
-
 from artifacts import (
+    load_criteria,
+    load_json,
+    load_native_config,
+    load_spec,
     one_line,
     resolve_project_file,
     resolve_swarm_dir,
     resolve_under_root,
     scenario_id,
-    load_criteria,
-    load_json,
-    load_native_config,
-    load_spec,
     write_json,
 )
+from native_execution import RESULT_FILENAME, NativeRunState
+from native_execution import STATE_FILENAME as RUN_STATE_FILENAME
+from pydantic import ValidationError
 from swarm_contracts import (
     NativeReportSummary,
     Scenario,
@@ -35,8 +36,6 @@ from swarm_contracts import (
     StrictOutput,
     SwarmResults,
 )
-from native_execution import RESULT_FILENAME, STATE_FILENAME as RUN_STATE_FILENAME
-from native_execution import NativeRunState
 from write_report import write_native_report
 
 STATE_FILENAME = "state.json"

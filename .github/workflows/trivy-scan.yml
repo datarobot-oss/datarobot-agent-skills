@@ -49,3 +49,4 @@ jobs:
           scanners: 'secret'
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '1'

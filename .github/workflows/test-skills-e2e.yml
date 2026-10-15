@@ -61,7 +61,17 @@ jobs:
           DATAROBOT_ENDPOINT: ${{ secrets.DATAROBOT_ENDPOINT }}
           DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
           SKILLS_E2E_FORCE_ALL: ${{ github.event.inputs.force_all || '0' }}
-        run: uv run --group e2e pytest tests/e2e/ -v --tb=short -rs
+        run: |
+          set -o pipefail
+          uv run --group e2e pytest tests/e2e/ -v --tb=short -rs 2>&1 | tee e2e.log
+
+      - name: Fail when the LLM gateway was unreachable
+        if: ${{ !cancelled() }}
+        run: |
+          if grep -q "LLM unavailable in this environment" e2e.log; then
+            echo "::error::Skills were skipped because the LLM gateway call failed. Check the DATAROBOT_ENDPOINT and DATAROBOT_API_TOKEN secrets."
+            exit 1
+          fi
 
       - name: Save skill hash cache
         if: ${{ !cancelled() }}

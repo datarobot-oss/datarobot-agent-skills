@@ -32,7 +32,13 @@ tasks:
   shellcheck:
     desc: Run shellcheck on all shell scripts
     cmds:
-      - shellcheck skills/datarobot-app-framework-cicd/scripts/*.sh
+      - find skills scripts -name '*.sh' -exec shellcheck {} +
+      - shellcheck .githooks/pre-commit
+
+  actionlint:
+    desc: Lint GitHub Actions workflows
+    cmds:
+      - actionlint
 
   yamlfmt:
     desc: Format all YAML files with yamlfmt
@@ -72,13 +78,14 @@ tasks:
       - uv run scripts/package_codex_plugin.py {{.CLI_ARGS}}
 
   lint:
-    desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + yamlfmt + license)
+    desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + actionlint + yamlfmt + license)
     deps:
       - test:integration
       - ruff:check
       - ruff:format:check
       - mypy
       - shellcheck
+      - actionlint
       - yamlfmt:check
       - license:check
 

@@ -30,6 +30,7 @@ jobs:
         run: |
           go install github.com/google/yamlfmt/cmd/yamlfmt@latest
           go install github.com/apache/skywalking-eyes/cmd/license-eye@latest
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
       - name: Install integration dependencies
         run: uv sync --group integration
       - name: Run lint

@@ -192,7 +192,8 @@ def load_config() -> tuple[str, str]:
 def _ssl_context() -> ssl.SSLContext | None:
     verify = os.environ.get("DATAROBOT_SSL_VERIFY", "").strip()
     if verify.lower() in ("false", "0", "no", "off"):
-        return ssl._create_unverified_context()
+        # Opt-in through DATAROBOT_SSL_VERIFY=false for clusters with a private CA.
+        return ssl._create_unverified_context()  # noqa: S323
     if verify and verify.lower() not in ("true", "1", "yes", "on"):
         return ssl.create_default_context(cafile=verify)
     return None
@@ -1002,7 +1003,8 @@ def cmd_preview(client: DataRobotClient, args: argparse.Namespace) -> int:
     driver = str(get_store(client, args.datastore_id).get("driverClassType") or "")
     parts = (args.catalog, args.schema, args.table)
     name = ".".join(quote_identifier(p, driver) for p in parts if p)
-    sql = check_read_only(f"SELECT * FROM {name}")
+    # Every part is quoted by quote_identifier and the result must pass check_read_only.
+    sql = check_read_only(f"SELECT * FROM {name}")  # noqa: S608
     result = run_verify_sql(
         client, args.datastore_id, sql, max_rows, args.credential_id, notes
     )

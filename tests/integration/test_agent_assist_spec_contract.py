@@ -8,7 +8,6 @@ import copy
 from typing import Any
 
 import pytest
-
 from agent_assist_contracts import (
     CANONICAL,
     CATALOG_PROVIDERS,
