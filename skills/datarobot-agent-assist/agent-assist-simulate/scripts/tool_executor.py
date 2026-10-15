@@ -10,11 +10,33 @@ Used in place of the fixture LLM worker when execution.mode is selective_e2e.
 """
 
 import argparse
+import asyncio
 import importlib.util
+import inspect
 import json
 import os
 import sys
 from pathlib import Path
+
+
+def _reexec_into_tools_venv(tools_path: Path) -> None:
+    """Re-run this script under the nearest ``.venv/bin/python3``.
+
+    Stops walking at ``agent_spec.md`` or ``.git`` so a parent repo venv is
+    not used. No-op when already running inside that venv, or when none exists.
+    """
+    start = tools_path.resolve().parent
+    for parent in [start, *start.parents]:
+        python = parent / ".venv" / "bin" / "python3"
+        if python.is_file():
+            if Path(sys.prefix).resolve() != python.parent.parent.resolve():
+                os.execv(
+                    str(python),
+                    [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
+                )
+            return
+        if (parent / "agent_spec.md").is_file() or (parent / ".git").exists():
+            return
 
 
 def _load_tools_module(tools_path: Path) -> object:
@@ -48,6 +70,7 @@ def main() -> None:
         help="comma-separated list of function names approved for real execution",
     )
     args = parser.parse_args()
+    _reexec_into_tools_venv(args.tools_path)
 
     readonly_tools = {t.strip() for t in args.readonly_tools.split(",") if t.strip()}
 
@@ -87,7 +110,12 @@ def main() -> None:
 
     try:
         if callable(fn):
-            return_value = fn(**call_args)
+            result = fn(**call_args)
+            if inspect.isawaitable(result):
+                result = asyncio.run(result)  # type: ignore[arg-type]
+            if hasattr(result, "model_dump"):
+                result = result.model_dump(mode="json")
+            return_value = result
         elif hasattr(fn, "invoke"):
             return_value = fn.invoke(call_args)
         else:
