@@ -1,0 +1,8 @@
+---
+# https://github.com/rhysd/actionlint/blob/main/docs/config.md
+paths:
+  .github/workflows/publish-npm.yml:
+    ignore:
+      # Input of actions/setup-node v5 and later. It is a no-op on v4 and keeps the
+      # publish job from caching if the action is upgraded.
+      - 'input "package-manager-cache" is not defined'

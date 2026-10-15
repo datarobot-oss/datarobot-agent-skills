@@ -114,6 +114,20 @@ def test_claude_plugin_validate() -> None:
     )
 
 
+def test_claude_skills_validate() -> None:
+    """Validate every skill with `claude plugin validate`, which `.` does not cover."""
+    result = subprocess.run(
+        ["claude", "plugin", "validate", "skills", "--strict"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"`claude plugin validate skills --strict` failed:\n{result.stdout}\n{result.stderr}"
+    )
+
+
 @pytest.fixture(scope="module")
 def codex_plugin() -> dict:
     """Load and return the parsed .codex-plugin/plugin.json manifest."""
