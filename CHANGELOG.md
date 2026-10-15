@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-10-15
+
 ### Added
 
 - `repo`: Added `tests/integration/test_sdk_conformance.py`, which resolves every DataRobot SDK call in `SKILL.md` python fences and skill `scripts/*.py` against the installed `datarobot` package and checks its signature. Methods that do not exist and calls with wrong arguments now fail `task lint`. It needs no DataRobot account.
