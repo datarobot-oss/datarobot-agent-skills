@@ -45,8 +45,7 @@ scenarios:
       configure_otel() after agent imports instead of before.
     common_pitfalls:
       - Wiring the auto-instrumentor before configure_otel(), losing spans
-      - Forgetting DATAROBOT_ENTITY_ID/DATAROBOT_OTEL_ENDPOINT when running
-        the verify script or the agent, so traces go nowhere
+      - Forgetting DATAROBOT_ENTITY_ID/DATAROBOT_OTEL_ENDPOINT when running the verify script or the agent, so traces go nowhere
       - Echoing or committing the API token instead of using the .env file
       - Stalling to ask for approval that the user already granted up front
     timeout_minutes: 25

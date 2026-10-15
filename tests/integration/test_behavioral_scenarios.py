@@ -108,12 +108,19 @@ class TestEngineParse:
     def test_engine_loader_accepts_all_scenarios(self) -> None:
         scenarios_mod = pytest.importorskip(
             "dr_agents_tester.eval.scenarios",
-            reason="engine not installed in this environment (behavioral/e2e groups have it)",
+            reason="engine not installed in this environment (the behavioral group has it)",
         )
+        loader = getattr(scenarios_mod, "load_behavioral_scenarios", None)
+        if loader is None:
+            # An older engine (e.g. the e2e group's pin) predates behavioral
+            # scenarios; only the behavioral group's pin can validate them.
+            pytest.skip(
+                "installed dr_agents_tester predates behavioral scenario support"
+            )
         loaded = []
         seen_dirs = sorted({p.parent for p in _scenario_files()})
         for directory in seen_dirs:
-            loaded.extend(scenarios_mod.load_behavioral_scenarios(directory))
+            loaded.extend(loader(directory))
         assert len(loaded) == len(_scenarios())
 
 

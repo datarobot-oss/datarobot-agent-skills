@@ -99,12 +99,12 @@ tasks:
       - SKILLS_E2E_FORCE_ALL=1 uv run --group e2e pytest tests/e2e/ -v --tb=short -rs
 
   test:behavioral:
-    desc: Run all behavioral scenarios with working-tree skills (creates real, prefixed DataRobot resources; needs
-      DATAROBOT_API_TOKEN + pinned opencode + BEHAVIORAL_FIXTURE_* ids from test:behavioral:fixtures)
+    desc: Run all behavioral scenarios with working-tree skills (creates real, prefixed DataRobot resources; needs DATAROBOT_API_TOKEN
+      + pinned opencode + BEHAVIORAL_FIXTURE_* ids from test:behavioral:fixtures)
     cmds:
       - uv run --group behavioral dr-agent eval run-behavioral --scenarios tests/behavioral/journeys --scenarios tests/behavioral/scenarios
-        --skills-pr skills --conditions skill_pr --n-runs 1 --work-dir .behavioral-runs --output-dir .behavioral-results
-        --run-prefix "drat-local-$(whoami)"
+        --skills-pr skills --conditions skill_pr --n-runs 1 --work-dir .behavioral-runs --output-dir .behavioral-results --run-prefix
+        "drat-local-$(whoami)"
 
   test:behavioral:baseline:
     desc: Run all behavioral scenarios with NO skills installed (the no_skill baseline)
@@ -113,7 +113,8 @@ tasks:
         --conditions no_skill --n-runs 1 --work-dir .behavioral-runs --output-dir .behavioral-results --run-prefix "drat-local-$(whoami)"
 
   test:behavioral:fixtures:
-    desc: Provision (or reuse) the long-lived bfix-* fixture resources scenarios assert against; prints BEHAVIORAL_FIXTURE_* ids
+    desc: Provision (or reuse) the long-lived bfix-* fixture resources scenarios assert against; prints BEHAVIORAL_FIXTURE_*
+      ids
     cmds:
       - uv run --group behavioral python tests/behavioral/fixtures/provision_fixtures.py
 

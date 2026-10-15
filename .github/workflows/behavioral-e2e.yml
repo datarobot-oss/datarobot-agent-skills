@@ -50,6 +50,9 @@ env:
   # Keep in sync with dr_agents_tester/eval/drivers/versions.py — the engine
   # refuses to run against any other version.
   OPENCODE_VERSION: 1.17.11
+  # Family prefix for this workflow run; each matrix cell appends its
+  # condition (see the run job) so a cell's teardown can never delete
+  # resources a sibling cell is still using.
   RUN_PREFIX: drat-gh${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
@@ -113,6 +116,8 @@ jobs:
       matrix:
         condition: ${{ fromJSON(needs.gate.outputs.conditions) }}
     env:
+      # Per-cell prefix: teardown below sweeps exactly this cell's resources.
+      RUN_PREFIX: drat-gh${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.condition }}
       DATAROBOT_API_TOKEN: ${{ secrets.BEHAVIORAL_DATAROBOT_API_TOKEN }}
       DATAROBOT_ENDPOINT: ${{ secrets.BEHAVIORAL_DATAROBOT_ENDPOINT }}
       BEHAVIORAL_FIXTURE_PROJECT_ID: ${{ vars.BEHAVIORAL_FIXTURE_PROJECT_ID }}
@@ -196,7 +201,7 @@ jobs:
           {
             echo "# Behavioral E2E results (advisory)"
             echo
-            echo "Run prefix: \`${RUN_PREFIX}\`"
+            echo "Run prefix family: \`${RUN_PREFIX}-<condition>\`"
             echo
             for md in artifacts/behavioral-*/**/results/eval_report.md; do
               [ -f "$md" ] || continue

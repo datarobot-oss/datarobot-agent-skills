@@ -1,8 +1,8 @@
 # Proposal: Automated Behavioral Testing for DataRobot Agent Skills
 
-**Status:** v0 + v1 implemented; v2 first-wave scenario coverage implemented (see amendments below)
+**Status:** v0 + v1 implemented; v2 first-wave scenario coverage implemented (see amendments below). Rebased onto current `main` 2026-10-15; the engine PR ([datarobot-agent-tester#10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10)) is still open, so the `behavioral` dependency group pins its head commit (roadmap R1/R2 remain open).
 **Author:** Matthew Hausknecht (drafted with Claude)
-**Date:** 2026-08-17 (amended 2026-08-18, 2026-08-20)
+**Date:** 2026-08-17 (amended 2026-08-18, 2026-08-20; rebased 2026-10-15)
 **Related:** [datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills), [datarobot-agent-tester](https://github.com/datarobot-oss/datarobot-agent-tester)
 
 ---

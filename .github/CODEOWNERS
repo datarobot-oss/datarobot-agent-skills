@@ -29,7 +29,7 @@
 
 # Behavioral test scenarios, fixtures, and CI (new scenarios add live-run cost)
 /tests/behavioral/ @datarobot-oss/agent-skills-maintainers
-/tests/behavioral/journeys/ @datarobot/core-modeling
+/tests/behavioral/journeys/ @datarobot-oss/agent-skills-maintainers @datarobot/core-modeling
 /.github/workflows/behavioral-e2e.yml @datarobot-oss/agent-skills-maintainers
 
 # Individual Contributor skills

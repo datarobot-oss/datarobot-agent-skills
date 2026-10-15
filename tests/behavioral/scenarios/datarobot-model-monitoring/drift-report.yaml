@@ -34,7 +34,6 @@ scenarios:
       - Fabricating drift scores when the API returns empty results
       - Attempting to set up alert rules the SDK has no API for
       - Ignoring service stats when the user asked for prediction volume
-      - Crashing on deployment.get_target_drift() — the SDK raises a trafaret
-        DataError (segment_value is required) on unsegmented deployments; a
-        good trajectory recovers via the raw API or reports the gap honestly
+      - Crashing on deployment.get_target_drift() — the SDK raises a trafaret DataError (segment_value is required) on unsegmented
+        deployments; a good trajectory recovers via the raw API or reports the gap honestly
     timeout_minutes: 15

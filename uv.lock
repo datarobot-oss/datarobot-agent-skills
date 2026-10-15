@@ -15,6 +15,10 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
+conflicts = [[
+    { package = "datarobot-agent-skills", group = "behavioral" },
+    { package = "datarobot-agent-skills", group = "e2e" },
+]]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -180,7 +184,7 @@ version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz", hash = "sha256:cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f", size = 260176, upload-time = "2026-07-12T20:29:07.082Z" }
 wheels = [
@@ -339,7 +343,7 @@ name = "click"
 version = "8.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b9/2e/0090cbf739cee7d23781ad4b89a9894a41538e4fcf4c31dcdd705b78eb8b/click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a", size = 226593, upload-time = "2024-12-21T18:38:44.339Z" }
 wheels = [
@@ -372,8 +376,8 @@ name = "datarobot"
 version = "3.19.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
     { name = "pandas" },
     { name = "python-dateutil" },
     { name = "pytz" },
@@ -397,8 +401,7 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 behavioral = [
-    { name = "datarobot" },
-    { name = "datarobot-agent-tester" },
+    { name = "datarobot-agent-tester", version = "0.2.0", source = { git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=13bde1382a398618b2f07db299596d54a5e7a85f#13bde1382a398618b2f07db299596d54a5e7a85f" }, extra = ["behavioral"], marker = "extra == 'group-22-datarobot-agent-skills-behavioral'" },
     { name = "python-dotenv" },
 ]
 dev = [
@@ -406,7 +409,7 @@ dev = [
     { name = "ruff" },
 ]
 e2e = [
-    { name = "datarobot-agent-tester" },
+    { name = "datarobot-agent-tester", version = "0.1.0", source = { git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=a6b67a15862c27cc0af46abf97d47a96fdf92809#a6b67a15862c27cc0af46abf97d47a96fdf92809" } },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
@@ -427,8 +430,7 @@ integration = [
 
 [package.metadata.requires-dev]
 behavioral = [
-    { name = "datarobot", specifier = ">=3.6" },
-    { name = "datarobot-agent-tester", git = "https://github.com/datarobot/datarobot-agent-tester?rev=main" },
+    { name = "datarobot-agent-tester", extras = ["behavioral"], git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=13bde1382a398618b2f07db299596d54a5e7a85f" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
 ]
 dev = [
@@ -457,10 +459,53 @@ integration = [
 name = "datarobot-agent-tester"
 version = "0.1.0"
 source = { git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=a6b67a15862c27cc0af46abf97d47a96fdf92809#a6b67a15862c27cc0af46abf97d47a96fdf92809" }
+resolution-markers = [
+    "python_full_version >= '3.15' and sys_platform == 'win32'",
+    "python_full_version >= '3.15' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
 dependencies = [
     { name = "litellm" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+]
+
+[[package]]
+name = "datarobot-agent-tester"
+version = "0.2.0"
+source = { git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=13bde1382a398618b2f07db299596d54a5e7a85f#13bde1382a398618b2f07db299596d54a5e7a85f" }
+resolution-markers = [
+    "python_full_version >= '3.15' and sys_platform == 'win32'",
+    "python_full_version >= '3.15' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "litellm" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+behavioral = [
+    { name = "datarobot" },
 ]
 
 [[package]]
@@ -1271,7 +1316,7 @@ version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ast-serialize" },
-    { name = "librt", marker = "platform_python_implementation != 'PyPy'" },
+    { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
     { name = "mypy-extensions" },
     { name = "pathspec" },
     { name = "typing-extensions" },
@@ -1526,10 +1571,10 @@ name = "pandas"
 version = "3.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
     { name = "python-dateutil" },
-    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
+    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/4f/5f3422a2afec5ffc46308b79e53291365a93748b498ac2e58bead0197916/pandas-3.0.5.tar.gz", hash = "sha256:dca3734d6ab7c906e6730f0788b0a1dbb9f2467731f9711f77995c8e9d62d712", size = 4658219, upload-time = "2026-07-22T22:19:28.819Z" }
 wheels = [
@@ -1828,7 +1873,7 @@ name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'group-22-datarobot-agent-skills-behavioral' and extra == 'group-22-datarobot-agent-skills-e2e')" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
