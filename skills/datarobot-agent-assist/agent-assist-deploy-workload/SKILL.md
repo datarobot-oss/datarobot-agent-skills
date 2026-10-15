@@ -1,6 +1,6 @@
 ---
 name: datarobot-agent-assist-deploy-workload
-description: Use when an agent assist user wants to deploy their agent, put it on DataRobot, get a link to it, or share it with others, the agent can run as a single container, and the project has no `infra/Pulumi.yaml`. Users usually just say "deploy" or "deploy to DataRobot" and won't mention containers, workloads or the CLI.
+description: Use when an agent assist user wants to deploy their agent, put it on DataRobot, get a link to it, or share it with others, the agent can run as a single container, and the project has no `infra/Pulumi.yaml`. Not for agents built from the agent template, which deploy with Pulumi through datarobot-agent-assist. Users usually just say "deploy" or "deploy to DataRobot" and won't mention containers, workloads or the CLI.
 ---
 
 # Agent Assist — Deploy via Workload API
