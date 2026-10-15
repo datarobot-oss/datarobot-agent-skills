@@ -18,6 +18,20 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `repo`: Added offline preflight tests that run before the paid LLM judge. They check the agentskills.io frontmatter limits, that linked files and script paths exist, that Python and shell samples parse, that scripts start with `--help`, and that no skill file holds an internal host, employee email, private IP address or credential. The e2e CI job also prints skip reasons now.
 
+## [1.19.0] - 2026-10-15
+
+### Added
+
+- `repo`: Added `tests/integration/test_sdk_conformance.py`, which resolves every DataRobot SDK call in `SKILL.md` python fences and skill `scripts/*.py` against the installed `datarobot` package and checks its signature. Methods that do not exist and calls with wrong arguments now fail `task lint`. It needs no DataRobot account.
+
+### Fixed
+
+- `datarobot-predictions`: Replaced the single-argument `dr.Model.get`, the nonexistent `Model.get_features()` and `Project.get_time_series_info()` with `deployment.get_features()` and `dr.DatetimePartitioning.get` in the samples and scripts. Batch scoring uses `BatchPredictionJob.score(deployment=...)`.
+- `datarobot-model-training`: Fixed the time series pattern to use `dr.DatetimePartitioningSpecification`, removed the `Dataset.create_from_file(name=...)` argument (upload, then `dataset.modify(name=...)`), and replaced the nonexistent `wait_for_completion()` with `wait_for_autopilot()`.
+- `datarobot-data-preparation`: Corrected the `Dataset.create_from_file` signature in the guide and in `scripts/upload_dataset.py`.
+- `datarobot-feature-engineering`: Fixed the two-argument `dr.Model.get` calls and the undefined helpers in the Quick Start.
+- `datarobot-workload-api`: Tagged the credential injection payload as JSON so it parses.
+
 ## [1.18.0] - 2026-10-13
 
 ### Added
