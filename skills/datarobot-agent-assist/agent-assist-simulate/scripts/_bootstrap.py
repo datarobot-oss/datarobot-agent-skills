@@ -16,11 +16,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils"
+# Exact pin: an unpinned install would take whatever is newest on PyPI. Keep in
+# step with `version` in packages/datarobot-skills-utils/pyproject.toml (a test
+# enforces it).
+SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils==0.1.0"
 
 INSTALL_HINT = (
     "datarobot-skills-utils not found: run `python3 -m pip install "
-    f"{SKILLS_UTILS_REQUIREMENT}`, or run from a checkout that contains "
+    f"'{SKILLS_UTILS_REQUIREMENT}'`, or run from a checkout that contains "
     "packages/datarobot-skills-utils"
 )
 

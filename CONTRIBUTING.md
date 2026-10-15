@@ -123,7 +123,7 @@ Every merge bumps **minor** (`x.N.0`) by default&mdash;this is a skills/marketpl
 task version:bump -- --bump patch
 ```
 
-`packages/datarobot-skills-utils` is versioned on its own (`version` in its `pyproject.toml`, starting at 0.1.0) and is not touched by the automated bump. Bump it in the PR that changes the package; every GitHub Release then runs `publish-pypi.yml`, which uploads that version to PyPI and skips silently when it is already published.
+`packages/datarobot-skills-utils` is versioned on its own (`version` in its `pyproject.toml`, starting at 0.1.0) and is not touched by the automated bump. Bump it in the PR that changes the package, together with the exact pin in every `_bootstrap.py` copy (`test_bootstrap_pin_matches_package_version` fails until they match); every GitHub Release then runs `publish-pypi.yml`, which uploads that version to PyPI and skips silently when it is already published.
 
 ## Changelog
 

@@ -46,8 +46,9 @@ through a small `_bootstrap.py` shim that tries, in order:
 1. a sibling `packages/datarobot-skills-utils/src` directory (repo checkout, or a
    plugin install that copies `packages/` next to `skills/`), so local edits win;
 2. an already installed distribution;
-3. a one-time `pip install datarobot-skills-utils` (or `uv pip install` when the
-   interpreter has no pip) into the running interpreter.
+3. a one-time `pip install datarobot-skills-utils==<pinned version>` (or `uv pip
+   install` when the interpreter has no pip) into the running interpreter. The pin
+   lives in `_bootstrap.py` and must match `version` in `pyproject.toml`.
 
 Running the shim directly (`python3 _bootstrap.py`) performs the same resolution
 ahead of time and prints where the package was found.

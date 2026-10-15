@@ -318,6 +318,17 @@ def test_bootstrap_copies_stay_identical():
     assert len(contents) == 1, [str(p) for p in copies]
 
 
+def test_bootstrap_pin_matches_package_version():
+    import tomllib
+
+    root = Path(__file__).resolve().parents[2]
+    pyproject = root / "packages" / "datarobot-skills-utils" / "pyproject.toml"
+    version = tomllib.loads(pyproject.read_text())["project"]["version"]
+    expected = f'SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils=={version}"'
+    for copy in sorted((root / "skills").rglob("_bootstrap.py")):
+        assert expected in copy.read_text(), str(copy)
+
+
 def test_parse_events_names_an_output_cut_at_the_token_limit():
     stream = "\n".join(
         [
