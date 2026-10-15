@@ -11,21 +11,21 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from pydantic import ValidationError
-
 from artifacts import (
-    one_line,
-    resolve_project_file,
-    resolve_swarm_dir,
-    resolve_under_root,
     load_json,
     load_native_config,
     load_spec,
+    one_line,
     read_generated_code,
+    resolve_project_file,
+    resolve_swarm_dir,
+    resolve_under_root,
     save_native_config,
     write_criteria,
     write_json,
 )
+from prompt_inputs import attack_input, behavior_input, persistence_input
+from pydantic import ValidationError
 from swarm_contracts import (
     ConvergenceConfig,
     EvaluationConfig,
@@ -38,7 +38,6 @@ from swarm_contracts import (
     SimulationConfig,
     confirm_scenario,
 )
-from prompt_inputs import attack_input, behavior_input, persistence_input
 
 Role = Literal["attack", "behavior", "persistence"]
 ROLES: tuple[Role, ...] = ("attack", "behavior", "persistence")

@@ -50,7 +50,7 @@ def generate_prediction_data_template(
     writer.writeheader()
 
     # Generate sample rows based on feature types
-    for i in range(n_rows):
+    for i in range(n_rows):  # noqa: B007
         row = {}
         for feature in prediction_features:
             if feature.feature_type == "Numeric":

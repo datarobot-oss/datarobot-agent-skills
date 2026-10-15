@@ -16,7 +16,6 @@ import sys
 
 import datarobot as dr
 
-
 MODE_MAP = {
     "Quick": dr.AUTOPILOT_MODE.QUICK,
     "Comprehensive": dr.AUTOPILOT_MODE.COMPREHENSIVE,

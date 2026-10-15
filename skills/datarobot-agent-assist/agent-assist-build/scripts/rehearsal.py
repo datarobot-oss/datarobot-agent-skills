@@ -42,20 +42,20 @@ from pathlib import Path
 from typing import Any, cast
 
 from env_utils import get_datarobot_credentials
-from write_rehearsal_report import (
-    default_report_path,
-    load_notes,
-    write_rehearsal_report,
-)
 from list_llm_models import (
     DEPLOYED_LLM_MODEL,
-    LLMModel,
     SOURCE_DEPLOYED,
     SOURCE_GATEWAY,
+    LLMModel,
     fetch_llm_models,
     is_deployed_llm_model,
     is_deployment_id,
     normalize_gateway_model,
+)
+from write_rehearsal_report import (
+    default_report_path,
+    load_notes,
+    write_rehearsal_report,
 )
 
 # Model used for spec extraction and tool simulation.

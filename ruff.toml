@@ -2,9 +2,30 @@
 # https://docs.astral.sh/ruff/configuration/
 
 [lint]
-# Ignore F841 (unused variable) as skill scripts are often snippets/examples
-# where variables like `client` are initialized but may not be fully used
-ignore = ["F841"]
+# Default rules (E4, E7, E9, F) plus import order, bugbear and the bandit
+# security rules. Skill scripts are copied by agents, so unsafe calls in them
+# spread. pyupgrade (UP) is left out on purpose: skill scripts run in users'
+# environments, and its rewrites (datetime.UTC, TimeoutError) need Python 3.10
+# or 3.11.
+extend-select = ["I", "B", "S"]
+ignore = [
+    # Skill scripts are often snippets/examples where variables like `client` are
+    # initialized but may not be fully used.
+    "F841",
+    # `zip(strict=True)` needs Python 3.10.
+    "B905",
+    # Tests use bare asserts.
+    "S101",
+    # Scripts call CLIs such as `dr` and `git` by name on purpose.
+    "S603",
+    "S607",
+    # Scripts request the DataRobot endpoint the user configured.
+    "S310",
+]
+
+[lint.per-file-ignores]
+# Test fixtures hold fake tokens and fake /tmp paths.
+"tests/**" = ["S105", "S108"]
 
 [format]
 # Use double quotes for strings
