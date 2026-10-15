@@ -108,7 +108,7 @@ def generate_prediction_data_template(
                             "max": stats.max,
                             "median": stats.median,
                         }
-            except Exception:
+            except Exception:  # noqa: S110 - best-effort statistics, fall back to the placeholder
                 pass  # keep the type placeholder for this feature
 
     # Generate template rows with sample values
@@ -119,7 +119,7 @@ def generate_prediction_data_template(
     writer.writeheader()
 
     # Generate sample rows based on feature types
-    for i in range(n_rows):  # noqa: B007
+    for i in range(n_rows):
         row = {}
         for feature in prediction_features:
             ftype = feature["feature_type"]
