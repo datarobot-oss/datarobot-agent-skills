@@ -7,8 +7,8 @@ CHANGELOG.md's ``[Unreleased]`` section, committing the result.
 
 The version is shared across ``package.json``, ``.claude-plugin/plugin.json``,
 ``.claude-plugin/marketplace.json``, ``.cursor-plugin/plugin.json``,
-``.codex-plugin/plugin.json``, and ``gemini-extension.json``. This script bumps
-all six to the same new value,
+``.codex-plugin/plugin.json``, ``plugin.json``, and ``gemini-extension.json``.
+This script bumps all seven to the same new value,
 renames CHANGELOG.md's ``[Unreleased]`` heading to that version with today's
 date, adds a fresh empty ``[Unreleased]`` section, and commits the change.
 
@@ -37,6 +37,7 @@ VERSION_FILES = (
     (".claude-plugin/marketplace.json", ".plugins[0].version"),
     (".cursor-plugin/plugin.json", ".version"),
     (".codex-plugin/plugin.json", ".version"),
+    ("plugin.json", ".version"),
     ("gemini-extension.json", ".version"),
 )
 

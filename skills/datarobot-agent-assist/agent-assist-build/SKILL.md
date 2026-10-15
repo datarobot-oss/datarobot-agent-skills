@@ -122,7 +122,7 @@ What would you like to do next?
 
 ### After Coding
 
-After coding is complete, present these next steps:
+After coding is complete, present these next steps. **Reproduce the menu exactly as written below — same wording, same order, same numbers. Do not renumber, paraphrase, summarize, or drop an option when referring back to this menu later (e.g. "option 3").**
 
 ```
 What would you like to do next?

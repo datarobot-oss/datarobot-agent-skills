@@ -91,8 +91,8 @@ identify any that appear to be read-only — no writes, no side effects, names l
 
 If the user chooses real execution: edit `agent_spec.md` to add `is_readonly: true` on each
 approved tool, then pass `--execution-mode selective_e2e` to `native_scenarios.py configure`.
-Find the `.venv/bin/python3` nearest to the implementation file (check its directory, then walk up)
-and use it instead of `<python>` when invoking `native_swarm.py` in Step 3.
+Keep using `<python>` for `native_swarm.py` and `tool_executor.py` — the executor re-execs
+into the nearest `.venv` beside the tools file.
 If the user declines or no read-only tools exist, omit `--execution-mode` (defaults to simulated).
 
 **Start OpenCode server** (once, after model selection):

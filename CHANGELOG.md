@@ -16,6 +16,75 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-agent-assist-deploy-workload`: You can now deploy an agent that fits in one container with the Workload API (`dr workload up`) instead of as a custom application with Pulumi. It's quicker to deploy than the traditional deploy path. Agent assist picks the path for you. It checks that the Workload API is turned on for your account, leaves agents that are already deployed with Pulumi where they are, and still uses Pulumi when an agent needs a GPU, a standalone MCP server, guard models, or a lot of tools. If the Workload API is off for your account, it tells you to ask your admin and deploys the standard way instead. The new instructions are in `agent-assist-deploy-workload/`.
 
+## [1.21.0] - 2026-10-15
+
+### Fixed
+
+- `datarobot-agent-assist-simulate`: `tool_executor.py` now re-execs into the nearest `.venv` beside the tools file before importing it, so `selective_e2e` correctly resolves the agent's dependencies rather than the swarm's interpreter. Also handles async tool functions (via `asyncio.run`) and Pydantic return values (via `model_dump`) that previously caused serialization errors.
+
+## [1.20.0] - 2026-10-15
+
+### Added
+
+- `datarobot-connectivity-jdbc-sql`: New skill for running SQL through DataRobot against a database reached with a caller-supplied JDBC URL and driver properties, without registering a data connection. It tests connectivity, lists tables and columns with dialect-aware catalog SQL, runs read queries via `/jdbcDataPreview/`, and runs DML/DDL via `/jdbcExecution/` only after a dry-run plan and an explicit `--confirm`. Secrets come from environment variables or `.env` and are masked in all output. Ships the standard-library `scripts/jdbc_sql.py` and references for the API contract, driver URL templates and dialect limits, and app integration, including a migration checklist for Talk to My Data.
+- `repo`: Added offline preflight tests that run before the paid LLM judge. They check the agentskills.io frontmatter limits, that linked files and script paths exist, that Python and shell samples parse, that scripts start with `--help`, and that no skill file holds an internal host, employee email, private IP address or credential. The e2e CI job also prints skip reasons now.
+
+### Fixed
+
+- `repo`: Fixed the preflight `--help` check failing on modules inside a Python package. They use relative imports and cannot run as scripts, so the check now skips them.
+- `repo`: Fixed false INCOMPLETE verdicts in the e2e skill gate. A judge report with `## Overall Verdict` was read as INCOMPLETE because the report text mentioned "incomplete". The gate now reads the verdict line at any heading level.
+
+## [1.19.0] - 2026-10-15
+
+### Added
+
+- `repo`: Added `tests/integration/test_sdk_conformance.py`, which resolves every DataRobot SDK call in `SKILL.md` python fences and skill `scripts/*.py` against the installed `datarobot` package and checks its signature. Methods that do not exist and calls with wrong arguments now fail `task lint`. It needs no DataRobot account.
+
+### Fixed
+
+- `datarobot-predictions`: Replaced the single-argument `dr.Model.get`, the nonexistent `Model.get_features()` and `Project.get_time_series_info()` with `deployment.get_features()` and `dr.DatetimePartitioning.get` in the samples and scripts. Batch scoring uses `BatchPredictionJob.score(deployment=...)`.
+- `datarobot-model-training`: Fixed the time series pattern to use `dr.DatetimePartitioningSpecification`, removed the `Dataset.create_from_file(name=...)` argument (upload, then `dataset.modify(name=...)`), and replaced the nonexistent `wait_for_completion()` with `wait_for_autopilot()`.
+- `datarobot-data-preparation`: Corrected the `Dataset.create_from_file` signature in the guide and in `scripts/upload_dataset.py`.
+- `datarobot-feature-engineering`: Fixed the two-argument `dr.Model.get` calls and the undefined helpers in the Quick Start.
+- `datarobot-workload-api`: Tagged the credential injection payload as JSON so it parses.
+
+## [1.18.0] - 2026-10-13
+
+### Added
+
+- `datarobot-connectivity-datastore-sql`: New skill for running SQL through DataRobot data connections (datastores) with their stored credentials. It lists connections and credentials, browses schemas, tables and columns, previews tables, and runs read queries via `/previewQuery/`, falling back to `/verifySQL/` where the newer routes are not available. DML/DDL runs via `/executeUpdate/` only after a dry-run plan and an explicit `--confirm`. Ships the standard-library `scripts/datastore_sql.py` and references for the API contract, per-connector capabilities and dialects, and troubleshooting.
+
+## [1.17.0] - 2026-10-08
+
+### Changed
+
+- `datarobot-workload-api`: Made `dr workload config`/`up` the default deploy path from a project directory: documented the `.datarobot.yaml` manifest shape and managed-fields rule, `promote`, `--sync-env`, `--spec-file`, `delete --purge`, and added `references/cli-command-map.md` covering `diagnose`, `events`, `settings`, the `logs` filters and `code sync --push-only`.
+
+## [1.16.0] - 2026-10-07
+
+- `repo`: Fixed OpenAI plugin listing: category set to Developer Tools (Coding is not a valid marketplace category).
+- `datarobot-app-framework-cicd`: Replaced the `curl | sh` Pulumi install in the state-management guide with Homebrew and a link to the official install docs.
+
+## [1.15.0] - 2026-10-06
+
+- `repo`: Fixed OpenAI plugin listing: brand color now meets 2:1 contrast on white (Indigo `#5C41FF`), category set to Coding, and listing text no longer references other AI agents.
+- `datarobot-setup`: Required user confirmation before running the Linux/WSL installer scripts, and replaced the go-task `curl | sh` install with `uv tool install go-task-bin`.
+
+## [1.14.0] - 2026-10-02
+
+- `repo`: Added automated public Codex plugin packaging, release attachment, and manifest synchronization.
+- `datarobot-agent-assist`: Expanded integration test coverage for how LLM choices flow from catalog listings into `agent_spec.md` and `.env` (gateway vs. deployed routing, `setup_and_run` failure paths, spec completeness), and added an on-prem / deployed-LLM example to `agent-spec-examples.md`.
+
+## [1.13.0] - 2026-09-30
+
+### Added
+
+- `datarobot-external-agent-monitoring`: Recommend intelligent trace analysis via Tensile (`tensile>=0.12.0`). Each framework reference file gains an **Intelligent Trace Analysis via Tensile** section showing where `tensile.otel.install(tracer=False)` goes for that framework.
+
+## [1.12.0] - 2026-09-29
+
+- `datarobot-agent-assist`: Clarified that the "After Coding" next-steps menu must be reproduced verbatim (same wording, order, and numbers) rather than paraphrased or renumbered, after an observed case where the assistant referenced "option 3" for a menu item that was actually numbered differently.
+
 ## [1.11.0] - 2026-09-24
 
 - `repo`: Added Codex plugin metadata and included the Codex manifest in the shared version bump workflow.
