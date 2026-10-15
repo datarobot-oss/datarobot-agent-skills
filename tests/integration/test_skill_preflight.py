@@ -27,6 +27,7 @@ NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 MAX_COMPATIBILITY_CHARS = 500
+IGNORED_SUFFIXES = {".pyc", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pdf"}
 ALLOWED_FRONTMATTER_KEYS = {
     "name",
     "description",
@@ -119,6 +120,16 @@ def shell_sample_findings(skill_dir: Path) -> list[str]:
     return findings
 
 
+def sensitive_file_findings(skill_dir: Path) -> list[str]:
+    findings = []
+    for path in sorted(skill_dir.rglob("*")):
+        if not path.is_file() or path.suffix in IGNORED_SUFFIXES:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        findings.extend(f"{relative(path)}: {f}" for f in sc.sensitive_findings(text))
+    return findings
+
+
 def script_findings(skill_dir: Path, workdir: Path) -> list[str]:
     findings = []
     for script in sorted(skill_dir.rglob("*.py")):
@@ -147,3 +158,7 @@ def test_shell_samples_parse(skill_dir: Path) -> None:
 
 def test_scripts_start_with_help(skill_dir: Path, tmp_path: Path) -> None:
     assert script_findings(skill_dir, tmp_path) == []
+
+
+def test_skill_files_hold_no_internal_or_secret_strings(skill_dir: Path) -> None:
+    assert sensitive_file_findings(skill_dir) == []

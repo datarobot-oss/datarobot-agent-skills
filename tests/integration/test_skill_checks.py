@@ -8,6 +8,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
 import skill_checks as sc
 
 
@@ -110,3 +111,45 @@ def test_script_help_failure_runs_in_given_workdir(tmp_path: Path) -> None:
     assert sc.script_help_failure(script, work) is None
     assert (work / "marker").exists()
     assert not (tmp_path / "marker").exists()
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [
+        ("see https://datarobot.atlassian.net/browse/APP-1", "internal host"),
+        ("ask in datarobot.slack.com", "internal host"),
+        ("endpoint = https://staging.datarobot.com/api/v2", "internal host"),
+        ("contact jane.doe@datarobot.com", "employee email"),
+        ("host = 10.20.30.40", "private IP address"),
+        ("host = 192.168.1.5", "private IP address"),
+        ("host = 172.16.0.9", "private IP address"),
+        ("-----BEGIN RSA PRIVATE KEY-----", "private key"),
+        ("key = AKIAABCDEFGHIJKLMNOP", "AWS access key id"),
+        ('api_key = "abcd1234efgh5678ijkl"', "hardcoded credential"),
+        ('"token": "abcd1234efgh5678ijkl"', "hardcoded credential"),
+    ],
+)
+def test_sensitive_findings_flags_internal_and_secret_strings(
+    text: str, label: str
+) -> None:
+    assert sc.sensitive_findings(text) == [f"{label} at line 1"]
+
+
+def test_sensitive_findings_accepts_public_text_and_placeholders() -> None:
+    text = "\n".join(
+        [
+            "endpoint = https://app.datarobot.com/api/v2",
+            'api_key = "<your-api-key>"',
+            "token = os.environ['DATAROBOT_API_TOKEN']",
+            "contact support@example.com",
+            "Python 3.10.12 and template 11.12.4",
+            "host = 172.32.0.1",
+        ]
+    )
+    assert sc.sensitive_findings(text) == []
+
+
+def test_sensitive_findings_reports_line_number_without_the_secret() -> None:
+    findings = sc.sensitive_findings('ok\napi_key = "abcd1234efgh5678ijkl"')
+    assert findings == ["hardcoded credential at line 2"]
+    assert "abcd1234" not in findings[0]

@@ -24,6 +24,24 @@ SCRIPT_CALL_RE = re.compile(r"(?:python3?|bash|sh)\s+([^\s\"'`<>$|;&]+\.(?:py|sh
 SHELL_LANGS = {"bash", "sh", "shell"}
 PYTHON_LANGS = {"python", "py"}
 
+# The repository is public, so skills must not carry internal hosts, employee
+# addresses, private network addresses or credentials.
+SENSITIVE_PATTERNS = {
+    "internal host": re.compile(
+        r"atlassian\.net|slack\.com|staging\.datarobot\.com", re.IGNORECASE
+    ),
+    "employee email": re.compile(r"[\w.+-]+@datarobot\.com", re.IGNORECASE),
+    "private IP address": re.compile(
+        r"(?<![\d.])(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}(?![\d.])"
+    ),
+    "private key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    "AWS access key id": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    "hardcoded credential": re.compile(
+        r"""(?:api[_-]?key|token|secret|password)["']?\s*[:=]\s*["'][A-Za-z0-9_-]{16,}["']""",
+        re.IGNORECASE,
+    ),
+}
+
 
 @dataclass(frozen=True)
 class Fence:
@@ -113,6 +131,19 @@ def broken_references(markdown: str, md_path: Path, skill_dir: Path) -> list[str
             ):
                 missing.append(target)
     return missing
+
+
+def sensitive_findings(text: str) -> list[str]:
+    """Return "<label> at line N" for each internal or secret-like string in text.
+
+    The matched text is left out so a real credential never reaches a CI log.
+    """
+    findings = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for label, pattern in SENSITIVE_PATTERNS.items():
+            if pattern.search(line):
+                findings.append(f"{label} at line {number}")
+    return findings
 
 
 def script_help_failure(script: Path, workdir: Path) -> str | None:
