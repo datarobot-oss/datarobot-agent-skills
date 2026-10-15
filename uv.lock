@@ -410,6 +410,7 @@ integration = [
     { name = "codeowners" },
     { name = "datarobot" },
     { name = "datarobot-genai" },
+    { name = "datarobot-predict" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pytest" },
@@ -425,7 +426,7 @@ dev = [
     { name = "ruff", specifier = "==0.15.22" },
 ]
 e2e = [
-    { name = "datarobot-agent-tester", git = "https://github.com/datarobot/datarobot-agent-tester?rev=main" },
+    { name = "datarobot-agent-tester", git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=a6b67a15862c27cc0af46abf97d47a96fdf92809" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -434,6 +435,7 @@ integration = [
     { name = "codeowners", specifier = ">=0.8.0" },
     { name = "datarobot", specifier = ">=3.19" },
     { name = "datarobot-genai" },
+    { name = "datarobot-predict" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=8.0" },
@@ -444,7 +446,7 @@ integration = [
 [[package]]
 name = "datarobot-agent-tester"
 version = "0.1.0"
-source = { git = "https://github.com/datarobot/datarobot-agent-tester?rev=main#a3c601ca01b7e8256fdfa9d15032f4b3ad847bb2" }
+source = { git = "https://github.com/datarobot-oss/datarobot-agent-tester?rev=a6b67a15862c27cc0af46abf97d47a96fdf92809#a6b67a15862c27cc0af46abf97d47a96fdf92809" }
 dependencies = [
     { name = "litellm" },
     { name = "python-dotenv" },
@@ -458,6 +460,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9b/53/79f9065cb0ab4bcbd1acd92402d89416f0210a2b0b0c8f4610226f6aaa36/datarobot_genai-0.15.57.tar.gz", hash = "sha256:af9846cec82bc2e5fbcc6cbc656b5322beeb22d278a90de6161cd51195c135d8", size = 318144, upload-time = "2026-05-18T15:40:06.728Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a5/10/575e0562130451c231811efb935bb89899f0f96e7f84848447b8d13ffb76/datarobot_genai-0.15.57-py3-none-any.whl", hash = "sha256:aed60cbb9d524d16f72a1f9efb5b7af8cc583ad5607567470650c8620c517dd4", size = 441457, upload-time = "2026-05-18T15:40:04.565Z" },
+]
+
+[[package]]
+name = "datarobot-predict"
+version = "1.13.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "datarobot" },
+    { name = "pandas" },
+    { name = "py4j" },
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+    { name = "urllib3" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/15/279bea99cc1db6e01fc4e4fddaaa088ef896e73e8d0976245ad3a633d0e1/datarobot_predict-1.13.5-py3-none-any.whl", hash = "sha256:f3d0109278841356fefbbbc3b2fd562081fca5681745cccd89515f9c38e97ca1", size = 16720174, upload-time = "2025-12-24T12:32:09.805Z" },
 ]
 
 [[package]]
@@ -1621,6 +1640,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/ef/3c6ecf8b317aa982f309835e8f96987466123c6e596646d4e6a1dfcd080f/propcache-0.4.1-cp314-cp314t-win_amd64.whl", hash = "sha256:990f6b3e2a27d683cb7602ed6c86f15ee6b43b1194736f9baaeb93d0016633b1", size = 46259, upload-time = "2025-10-08T19:48:34.226Z" },
     { url = "https://files.pythonhosted.org/packages/c4/2d/346e946d4951f37eca1e4f55be0f0174c52cd70720f84029b02f296f4a38/propcache-0.4.1-cp314-cp314t-win_arm64.whl", hash = "sha256:ecef2343af4cc68e05131e45024ba34f6095821988a9d0a02aa7c73fcc448aa9", size = 40428, upload-time = "2025-10-08T19:48:35.441Z" },
     { url = "https://files.pythonhosted.org/packages/5b/5a/bc7b4a4ef808fa59a816c17b20c4bef6884daebbdf627ff2a161da67da19/propcache-0.4.1-py3-none-any.whl", hash = "sha256:af2a6052aeb6cf17d3e46ee169099044fd8224cbaf75c76a2ef596e8163e2237", size = 13305, upload-time = "2025-10-08T19:49:00.792Z" },
+]
+
+[[package]]
+name = "py4j"
+version = "0.10.9.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/31/0b210511177070c8d5d3059556194352e5753602fa64b85b7ab81ec1a009/py4j-0.10.9.9.tar.gz", hash = "sha256:f694cad19efa5bd1dee4f3e5270eb406613c974394035e5bfc4ec1aba870b879", size = 761089, upload-time = "2025-01-15T03:53:18.624Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/db/ea0203e495be491c85af87b66e37acfd3bf756fd985f87e46fc5e3bf022c/py4j-0.10.9.9-py2.py3-none-any.whl", hash = "sha256:c7c26e4158defb37b0bb124933163641a2ff6e3a3913f7811b0ddbe07ed61533", size = 203008, upload-time = "2025-01-15T03:53:15.648Z" },
 ]
 
 [[package]]

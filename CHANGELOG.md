@@ -14,6 +14,14 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `repo`: Added offline preflight tests that run before the paid LLM judge. They check the agentskills.io frontmatter limits, that linked files and script paths exist, that Python and shell samples parse, that scripts start with `--help`, and that no skill file holds an internal host, employee email, private IP address or credential. The e2e CI job also prints skip reasons now.
+
+### Fixed
+
+- `repo`: Fixed false INCOMPLETE verdicts in the e2e skill gate. A judge report with `## Overall Verdict` was read as INCOMPLETE because the report text mentioned "incomplete". The gate now reads the verdict line at any heading level.
+
 ## [1.19.0] - 2026-10-15
 
 ### Added
