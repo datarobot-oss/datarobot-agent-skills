@@ -1,6 +1,6 @@
 # Proposal: Automated Behavioral Testing for DataRobot Agent Skills
 
-**Status:** v0 + v1 implemented; v2 first-wave scenario coverage implemented (see amendments below). Rebased onto current `main` 2026-10-15; the engine PR ([datarobot-agent-tester#10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10)) is still open, so the `behavioral` dependency group pins its head commit (roadmap R1/R2 remain open).
+**Status:** v0 + v1 implemented; v2 first-wave scenario coverage implemented (see amendments below). Rebased onto current `main` 2026-10-15; the engine PR ([datarobot-agent-tester#11](https://github.com/datarobot-oss/datarobot-agent-tester/pull/11), which supersedes #10) is still open, so the `behavioral` dependency group pins its head commit (roadmap R1/R2 remain open).
 **Author:** Matthew Hausknecht (drafted with Claude)
 **Date:** 2026-08-17 (amended 2026-08-18, 2026-08-20; rebased 2026-10-15)
 **Related:** [datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills), [datarobot-agent-tester](https://github.com/datarobot-oss/datarobot-agent-tester)
@@ -414,7 +414,7 @@ sibling package that depends on it and reuses `eval/stats.py` + `eval/report.py`
 
 | Phase | Deliverable | Exit criterion | Status (2026-08-20) |
 |---|---|---|---|
-| **v0** | `ExecutionBackend` refactor in dr_agents_tester; `PlanBackend` preserves current behavior; scenario schema v2 parser | Existing evals green under new interface | ✅ Done — [tester PR #10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10) |
+| **v0** | `ExecutionBackend` refactor in dr_agents_tester; `PlanBackend` preserves current behavior; scenario schema v2 parser | Existing evals green under new interface | ✅ Done — [tester PR #11](https://github.com/datarobot-oss/datarobot-agent-tester/pull/11) |
 | **v1** | Agent driver (OpenCode, per amendment 2) + sandbox; one golden journey (upload→train(Quick)→deploy→predict) with `success_checks`; k configurable; transcript artifacts; nightly + `run-e2e` label workflow (inert) | Golden journey runs unattended end-to-end | ✅ Done — golden journey **passed live** (all 4 checks, 21.5 min, all 3 skills triggered, zero leaked resources); `no_skill` baseline condition also landed early. CI workflow merged inert, pending the test org |
 | **v2** | Scenario coverage for remaining skills; dependency manifest + PR-scoped selection; PR comment reports | Most PRs need no manual testing | ◐ First wave done — all five README journeys live-verified 6/6 in one aggregated run (amendments 6–9); selection + PR comments remain. See §10a |
 | **v3** | Trajectory judge; second driver (Claude Code); baseline-regression gating | Behavioral checks become required (if flake rate allows) | ⬜ See §10a roadmap |
@@ -460,7 +460,7 @@ schema are designed so the optimizer is purely additive.
 ## 10a. Roadmap: remaining work (updated 2026-08-19)
 
 **This section is the single source of truth for what is left to build.** v0 and
-v1 are implemented and live-verified ([tester PR #10](https://github.com/datarobot-oss/datarobot-agent-tester/pull/10),
+v1 are implemented and live-verified ([tester PR #11](https://github.com/datarobot-oss/datarobot-agent-tester/pull/11),
 [skills PR #87](https://github.com/datarobot-oss/datarobot-agent-skills/pull/87));
 usage documentation lives in the engine's
 [docs/behavioral-evaluation.md](https://github.com/datarobot-oss/datarobot-agent-tester/blob/main/docs/behavioral-evaluation.md).

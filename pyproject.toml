@@ -30,7 +30,7 @@ e2e = [
 ]
 behavioral = [
     # Behavioral test engine (agent driver, DataRobot outcome checks, teardown).
-    # Pinned to the head of datarobot-oss/datarobot-agent-tester#10 (the engine
+    # Pinned to the head of datarobot-oss/datarobot-agent-tester#11 (the engine
     # PR; not yet merged). Once it merges and the engine cuts a release tag,
     # replace this with the tag (then a PyPI `==` pin). The e2e group pins an
     # older engine commit, so the two groups are declared conflicting below
