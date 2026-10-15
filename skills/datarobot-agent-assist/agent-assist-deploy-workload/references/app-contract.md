@@ -5,6 +5,7 @@ This skill doesn't build the agent. It deploys the code that's already in `<targ
 Read the code and check it against the list below. Fix anything that doesn't match yourself, keeping changes to what the deploy needs. Don't rewrite the agent's logic, tools or framework. If the code can't be made to run as one process on one port without rewriting the agent, switch to the Pulumi path in [deploy-path.md](deploy-path.md) and stop.
 
 - One Python project: `pyproject.toml` and a current `uv.lock`. Run `uv lock` after every dependency change. The platform builds from the lockfile.
+- Every dependency lives inside `<target_dir>`. A `file://` path or a symlink that leaves it, such as a shared `core` package one folder up, is missing from the image, because the deploy ships only this directory. Check `pyproject.toml` and `uv.lock` for such paths. If the project needs one, switch to the Pulumi path in [deploy-path.md](deploy-path.md) and stop.
 - One web server on port 8080 that serves the agent, its API and its UI. Note the entry point (for example `app:app`); SKILL.md section 3 needs it.
 - `GET /healthz` returns 200 with no auth and no LLM call. Probes hit the container directly. Add it if it's missing.
 - The LLM is called through the LLM Gateway, reading `DATAROBOT_ENDPOINT` and `DATAROBOT_API_TOKEN` from the environment.

@@ -4,6 +4,8 @@ Use this only when `dr workload up` can't run: the CLI won't update, `up` is mis
 
 Each step has the CLI command first and the REST call after it. `dr artifact` and `dr workload` are GA and need no feature flag. Use REST only if the CLI isn't usable at all.
 
+The shell's working directory often isn't `<target_dir>`. Pass `--dir <target_dir>` to `dr artifact code` and `dr workload` commands that take it, and write `artifact.yaml` and `workload.yaml` outside `<target_dir>` so the code upload doesn't carry them.
+
 For REST, get credentials into the shell without printing them: `eval "$(dr auth export)"`. Base URL is `$DATAROBOT_ENDPOINT` (ends in `/api/v2`), header `Authorization: Bearer $DATAROBOT_API_TOKEN`.
 
 ## First deploy
@@ -30,7 +32,7 @@ For REST, get credentials into the shell without printing them: `eval "$(dr auth
                  source: generated
                  executionEnvironmentId: <ee id>
                  executionEnvironmentVersionId: <ee version id>
-                 entrypoint: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+                 entrypoint: ["uvicorn", "<entry point>", "--host", "0.0.0.0", "--port", "8080"]
              environmentVars: <same block as SKILL.md section 3>
    ```
 
@@ -39,7 +41,7 @@ For REST, get credentials into the shell without printing them: `eval "$(dr auth
    REST: `POST /artifacts/` with the same body as JSON. Keep the returned id.
 
 3. Upload the code and point the artifact at it.
-   CLI: `dr artifact code init <artifact_id> --yes`, then `dr artifact code sync --yes`. Sync zips the project, uploads it, re-locks a stale `uv.lock` and sets `codeRef` for you. `code init` keeps the artifact binding in `.datarobot/workload/`, so later commands can leave the artifact id out.
+   CLI: `dr artifact code init <artifact_id> --yes --dir <target_dir>`, then `dr artifact code sync --yes --dir <target_dir>`. Sync zips the project, uploads it, re-locks a stale `uv.lock` and sets `codeRef` for you. `code init` keeps the artifact binding in `.datarobot/workload/`, so later commands can leave the artifact id out.
    If sync refuses because a file changed both locally and on the artifact, ask the user before rerunning with `--accept-remote`. Remote wins, and the local copies are saved as `<file>.LOCAL.<timestamp>`.
    REST:
    - Zip the project, leaving out what `.dockerignore` excludes, `.env`, and `.venv`.
@@ -94,5 +96,5 @@ If you skip the roll, the workload keeps serving the old image. It doesn't pick 
 
 ## Lock and clean up
 
-- Keep it on (one way, ask first): `dr workload promote <id>`, or REST `POST /workloads/<id>/promote/`. It locks the running draft in place without a restart. After that, changes need a new artifact and `POST /workloads/<id>/replacement/`. See the `datarobot-workload-api` skill, section 4.
+- Keep it on (one way, ask first): `dr workload promote <id> --dir <target_dir>`, or REST `POST /workloads/<id>/promote/`. It locks the running draft in place without a restart. After that, changes need a new artifact and `POST /workloads/<id>/replacement/`. See the `datarobot-workload-api` skill, section 4.
 - Tear down: `dr workload stop <id>`, `dr workload delete <id>`, `dr artifact delete <artifact_id>`, in that order. Only drafts can be deleted.
