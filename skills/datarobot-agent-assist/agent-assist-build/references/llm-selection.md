@@ -2,8 +2,10 @@
 
 `list_llm_models.py` returns two kinds of entry, told apart by `source`:
 
-- `gateway` — a model in the DataRobot LLM Gateway catalog. Selected by its `api_model`.
+- `gateway` — a model in the DataRobot LLM Gateway catalog. Selected by its `llm_default_model`.
 - `deployed` — an existing DataRobot text-generation deployment. Selected by its `deployment_id`.
+
+**Copy `llm_default_model` verbatim.** It is the only field that goes into `agent_spec.md` and `.env`. A `gateway` entry also carries an `id` (the catalog's `llmId`, e.g. `azure-openai-gpt-5`) and an `api_model` (e.g. `azure/gpt-5-2025-08-07`); neither works as a model name. The gateway rejects the `id` outright, and `api_model` is missing the `datarobot/` prefix that routes the request to DataRobot rather than straight to the provider. `setup_template.py` refuses an `id` rather than letting it reach `.env`. On a `deployed` entry, `id` is the deployment id instead, and it is what you want: see below.
 
 ### Recommending
 
@@ -14,10 +16,10 @@
 
 ### Recording a deployed LLM in `agent_spec.md`
 
-Every deployment reports the same `api_model`, the placeholder `datarobot-deployed-llm`. It identifies the *source*, never one deployment. So a deployed choice is a pair, and both fields are required:
+Every deployment reports the same `llm_default_model`, the placeholder `datarobot/datarobot-deployed-llm`. It identifies the *source*, never one deployment. So a deployed choice is a pair, and both fields are required:
 
 ```yaml
-model: "datarobot-deployed-llm"
+model: "datarobot/datarobot-deployed-llm"
 llm_deployment_id: "6a43eb5f10dbecadbebc5b2b"
 ```
 
@@ -39,4 +41,5 @@ On the deployed path the deployment id is the only thing that selects the model.
 
 - A deployment is offered when it is active and its target type is text generation. Nothing checks that it answers chat requests, and some text-generation deployments (guard models, for instance) do not. If the rehearsal reports the deployment as unavailable, that is the likely cause.
 - Deployed entries carry no provider or context window, so those columns read `-`.
+- The `Deployment ID` column appears in the table only when a deployed entry is present.
 - Deployed entries require `dr` v0.2.79 or newer to appear in the CLI listing. On an older `dr` the script falls back to a direct API call, so they still list.

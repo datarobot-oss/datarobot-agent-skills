@@ -176,15 +176,15 @@ wheels = [
 
 [[package]]
 name = "anyio"
-version = "4.13.0"
+version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/14/2c5dd9f512b66549ae92767a9c7b330ae88e1932ca57876909410251fe13/anyio-4.13.0.tar.gz", hash = "sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc", size = 231622, upload-time = "2026-03-24T12:59:09.671Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz", hash = "sha256:cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f", size = 260176, upload-time = "2026-07-12T20:29:07.082Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/42/e921fccf5015463e32a3cf6ee7f980a6ed0f395ceeaa45060b61d86486c2/anyio-4.13.0-py3-none-any.whl", hash = "sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708", size = 114353, upload-time = "2026-03-24T12:59:08.246Z" },
+    { url = "https://files.pythonhosted.org/packages/da/35/f2287558c17e29fafc8ef3daf819bb9834061cfa43bff8014f7df7f63bdc/anyio-4.14.2-py3-none-any.whl", hash = "sha256:9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494", size = 125813, upload-time = "2026-07-12T20:29:05.763Z" },
 ]
 
 [[package]]
@@ -369,7 +369,7 @@ wheels = [
 
 [[package]]
 name = "datarobot"
-version = "3.18.0"
+version = "3.19.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -385,9 +385,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/87/fe696ed62eb8f72a29b036a71086434e39db7ef096a280526c8073017652/datarobot-3.18.0.tar.gz", hash = "sha256:47f289b65211416fba37b384b57a0ec82efdb76546aabda95c1ff7076b41e72c", size = 834279, upload-time = "2026-07-28T18:34:22.698Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/4e/0cc58b5d55c0c50d5c5b464b004afcfee6cfcbbec5b3b8918270470d046b/datarobot-3.19.0.tar.gz", hash = "sha256:5319c45f525ffaf38283468ecae9437fc6ced7969f7dac647253e729f851738c", size = 918779, upload-time = "2026-09-01T12:09:15.358Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/5a/999f30688e3f352110e02034681f3393133a0fcc2db2bc88ee92377b15c8/datarobot-3.18.0-py3-none-any.whl", hash = "sha256:c1272693b9ebb3cbf6e4e4066bb714e003208cb3957d4489d751a380e7062a97", size = 900686, upload-time = "2026-07-28T18:34:20.498Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/f1/dc6a0e6e9a53cc3c7ce98d68d25b9f426f2b342c9ff897c75088aead41c0/datarobot-3.19.0-py3-none-any.whl", hash = "sha256:1631d687689b0fb999c107ba6d3bdb09c73d63c576a4bd8db53329dbd29063ed", size = 995969, upload-time = "2026-09-01T12:09:13.562Z" },
 ]
 
 [[package]]
@@ -414,6 +414,7 @@ integration = [
     { name = "pydantic" },
     { name = "pytest" },
     { name = "python-frontmatter" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -431,12 +432,13 @@ e2e = [
 ]
 integration = [
     { name = "codeowners", specifier = ">=0.8.0" },
-    { name = "datarobot", specifier = ">=3.6" },
+    { name = "datarobot", specifier = ">=3.19" },
     { name = "datarobot-genai" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "python-frontmatter", specifier = ">=1.1" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

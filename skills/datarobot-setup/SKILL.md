@@ -99,7 +99,7 @@ brew install datarobot-oss/taps/dr-cli uv pulumi/tap/pulumi go-task node git pyt
 
 ### Linux / WSL
 
-Use the architecture-aware official installers below. These work on both x86_64 and ARM64.
+Use the architecture-aware official installers below. These work on both x86_64 and ARM64. Some of them download and run an installer script, so show the user each command and get their confirmation before running it. Never substitute a different URL.
 
 - **dr-cli** (universal installer — auto-detects architecture):
   ```bash
@@ -135,9 +135,9 @@ Use the architecture-aware official installers below. These work on both x86_64 
   curl -fsSL https://get.pulumi.com | sh
   ```
 
-- **go-task**:
+- **go-task** (installed from PyPI with `uv`, so it needs no `sudo` and runs no downloaded script):
   ```bash
-  sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+  uv tool install go-task-bin
   ```
 
 Note: All Linux commands above also work in WSL.

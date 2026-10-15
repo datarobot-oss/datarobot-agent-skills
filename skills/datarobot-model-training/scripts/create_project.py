@@ -13,7 +13,6 @@ project to an existing Use Case so it isn't orphaned in the DataRobot UI.
 """
 
 import json
-import os
 import sys
 
 import datarobot as dr
@@ -38,10 +37,7 @@ def create_project(
         Project information
     """
     # Initialize client
-    client = dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     use_case = dr.UseCase.get(use_case_id) if use_case_id else None
 
@@ -53,17 +49,23 @@ def create_project(
     result = {
         "project_id": project.id,
         "project_name": project.project_name,
-        "status": project.status,
+        "stage": project.stage,
         "dataset_id": dataset_id,
         "use_case_id": use_case_id,
     }
 
-    # Set target if provided
+    # Set target and start AutoPilot if a target was provided.
+    # analyze_and_model() replaces the deprecated set_target() in SDK 3.x and both
+    # sets the target and launches AutoPilot in one call.
     if target_column:
         try:
-            project.set_target(target=target_column, mode=dr.AUTOPILOT_MODE.QUICK)
+            project.analyze_and_model(
+                target=target_column, mode=dr.AUTOPILOT_MODE.QUICK, worker_count=-1
+            )
             result["target"] = target_column
             result["target_set"] = True
+            # AutoPilot has advanced the project past "aim"; refresh the reported stage.
+            result["stage"] = project.stage
         except (
             dr.errors.AppPlatformError,
             dr.errors.AsyncTimeoutError,

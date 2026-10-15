@@ -3,8 +3,8 @@
 Write specs in YAML to `<target_dir>/agent_spec.md`. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "anthropic/claude-sonnet-4-5-20250929"   # LLM Gateway model ID, or datarobot-deployed-llm
-llm_deployment_id: ""                           # required only for a DataRobot-deployed LLM
+model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
+llm_deployment_id: ""                       # required only for a DataRobot-deployed LLM
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name

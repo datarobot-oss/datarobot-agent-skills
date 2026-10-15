@@ -1,6 +1,6 @@
 ---
 name: datarobot-external-agent-monitoring
-description: Instrument any external or existing AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance. Use when the user says "add tracing/observability/monitoring to my agent", wants to instrument an existing agent project in their IDE, or wants to send agent traces, logs, or metrics to DataRobot.
+description: Instrument any external or existing AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance. Use when the user says "add tracing/observability/monitoring to my agent", wants to instrument an existing agent project in their IDE, wants to send agent traces, logs, or metrics to DataRobot, or wants to record and replay agent trajectories (Tensile) from DataRobot traces.
 ---
 
 # DataRobot External Agent Monitoring Skill
@@ -66,6 +66,13 @@ Follow these steps in order. Present the plan to the user and wait for approval 
    - Ask the user for their **Use Case ID**. DataRobot users typically already organize work in a Use Case.
    - If they don't have one (a brand-new or externally-built project), **offer to create one**. Ask only for a name; the description is auto-generated.
    - Record the choice (existing Use Case ID, or the name for a new one) to use in Step 4. The `create_use_case.py` helper will resolve it to an entity ID of the form `experiment_container-<use_case_id>` at execution time.
+
+   > **Telemetry targets & the `service.name` rule.** The target is an **entity**, referenced as `<entity_type>-<entity_id>`. Three types exist:
+   > - **Use Case** — `experiment_container-<use_case_id>` (the default for this skill; resolved by `create_use_case.py`).
+   > - **Shell deployment** — `deployment-<deployment_id>` (optional; Step 4.6).
+   > - **Workload** — `workload-<workload_id>`, when the agent **runs as a DataRobot Workload** (deployed via the Workload API / `dr workload up`; see the `datarobot-workload-api` skill). The platform injects `WORKLOAD_ID` into the container, so set `DATAROBOT_ENTITY_ID=workload-${WORKLOAD_ID}` — traces then appear in the workload's own **Console → Deployed workloads → Tracing** tab, with no Use Case required.
+   >
+   > **Critical — set `service.name` to the entity.** DataRobot attributes a trace to its entity by parsing the OTLP **`service.name`** resource attribute as `<entity_type>-<entity_id>`. So the exported spans' `service.name` **must equal `DATAROBOT_ENTITY_ID`** (set it on the OTel `Resource` — see `dr_otel_config.py`), in addition to the `X-DataRobot-Entity-Id` header. A default `service.name` (e.g. the agent/app name) matches no entity, so the traces are accepted but **silently never appear in the UI** — the most common "no traces" cause.
 5. Check if the `datarobot` Python SDK is available. If not, install it: `pip install datarobot`.
 6. Check if OTel packages are already in the project's dependencies.
 
@@ -79,6 +86,7 @@ Tell the user what you detected and present the changes you will make:
 - New dependencies to add
 - New files to create (`dr_otel_config.py`, and optionally `dr_agent_metrics.py` for frameworks with custom metrics)
 - Existing files to modify (agent entrypoint, dependency file)
+- Intelligent trace analysis via Tensile (recommended, adds `tensile>=0.12.0`): see the framework reference file's **Intelligent Trace Analysis via Tensile** section. It records full prompt and completion text in DataRobot under the Use Case; include it unless the user declines.
 - Telemetry target: enter an existing Use Case ID, or if user does not have one, generate a net new Use Case container and ID for user. Only list a shell deployment in the plan if the user explicitly asked for deployment-level monitoring; if they chose a Use Case, do not mention or ask about a deployment.
 
 **Wait for user approval before executing.** If the user has already given explicit consent to implement or deploy, that counts as approval — no need to re-ask.
@@ -93,7 +101,7 @@ Tell the user what you detected and present the changes you will make:
 
 2. **Generate `dr_otel_config.py`** using the generic pattern below, adapted per the framework reference file.
 
-3. **Wire into agent entrypoint**: Add import and call to `configure_otel()` at startup. Follow the framework reference file for specific wiring instructions (auto-instrumentors, callbacks, etc.).
+3. **Wire into agent entrypoint**: Add import and call to `configure_otel()` at startup. Follow the framework reference file for specific wiring instructions (auto-instrumentors, callbacks, etc.). Add the `tensile.otel.install(tracer=False)` lines from that file's **Intelligent Trace Analysis via Tensile** section directly after `configure_otel()` unless the user declined it.
 
 4. **Generate `dr_agent_metrics.py`** if the framework reference file specifies custom metrics callbacks.
 
@@ -134,7 +142,7 @@ Tell the user what you detected and present the changes you will make:
 
 2. Provide the user with the env vars to set in their runtime environment:
    - `DATAROBOT_API_TOKEN` — DataRobot API key
-   - `DATAROBOT_ENTITY_ID` — `experiment_container-<use_case_id>` (Use Case target; or `deployment-<id>` if a shell deployment was created instead)
+   - `DATAROBOT_ENTITY_ID` — `experiment_container-<use_case_id>` (Use Case target; or `deployment-<id>` for a shell deployment; or `workload-<workload_id>` when the agent runs as a DataRobot Workload — typically `workload-${WORKLOAD_ID}`, the injected id)
    - `DATAROBOT_OTEL_ENDPOINT` — `{DATAROBOT_ENDPOINT}/otel`
 
 3. Explain how to view the telemetry. For a Use Case target, use the `dr` CLI's `xp`
@@ -265,6 +273,11 @@ opentelemetry-api
 opentelemetry-exporter-otlp-proto-http
 ```
 
+Recommended, for intelligent trace analysis via Tensile (see the framework reference file):
+```
+tensile>=0.12.0
+```
+
 Required for shell deployment creation (available in the skill's script environment):
 ```
 datarobot
@@ -285,10 +298,11 @@ Common errors and solutions:
 | Error | Cause | Solution |
 |-------|-------|----------|
 | Traces not appearing in DataRobot | Framework overwrites TracerProvider | Use lazy injection pattern (see framework reference) |
+| Uploads return 200/202 but traces never show in the UI | `service.name` ≠ the entity id | Set the OTel `Resource` `service.name` to `DATAROBOT_ENTITY_ID` (`<entity_type>-<entity_id>`); DataRobot files a trace by parsing `service.name`, so a default/app service name matches no entity and is dropped from the UI |
 | 401 Unauthorized from OTel endpoint | Invalid API token | Verify `DATAROBOT_API_TOKEN` is correct |
 | 404 from OTel endpoint | Wrong endpoint URL | Ensure `DATAROBOT_OTEL_ENDPOINT` ends with `/otel` |
 | Metrics not appearing | `OTEL_EXPORTER_OTLP_*` env vars set | Remove env vars, use direct exporter config |
-| `DATAROBOT_ENTITY_ID` format error | Missing entity-type prefix | Must be `experiment_container-<use_case_id>` (Use Case) or `deployment-<id>`, not just `<id>` |
+| `DATAROBOT_ENTITY_ID` format error | Missing entity-type prefix | Must be `experiment_container-<use_case_id>` (Use Case), `deployment-<id>`, or `workload-<workload_id>` (Workload), not just `<id>` |
 
 ## Resources
 

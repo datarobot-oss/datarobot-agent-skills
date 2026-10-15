@@ -32,8 +32,12 @@ from env_utils import get_datarobot_credentials
 
 SOURCE_GATEWAY = "gateway"
 SOURCE_DEPLOYED = "deployed"
+SOURCE_EXTERNAL = "external"
 DEPLOYED_LLM_MODEL = "datarobot-deployed-llm"
 TARGET_TYPE_TEXT_GENERATION = "TextGeneration"
+EXTERNAL_MODEL_NAME_ENV = "AGENT_ASSIST_LLM_MODEL_NAME"
+EXTERNAL_API_KEY_ENV = "AGENT_ASSIST_LLM_API_KEY"
+EXTERNAL_BASE_URL_ENV = "AGENT_ASSIST_LLM_BASE_URL"
 
 
 class LLMModel(TypedDict):
@@ -42,7 +46,9 @@ class LLMModel(TypedDict):
     source: str
     provider: str
     api_model: str
+    llm_default_model: str
     deployment_id: str
+    base_url: str
     description: str
     context_size: int
 
@@ -52,6 +58,17 @@ def normalize_gateway_model(model: str) -> str:
     while model.startswith("datarobot/"):
         model = model[len("datarobot/") :]
     return model
+
+
+def ensure_datarobot_prefix(model: str) -> str:
+    """Return the model in the ``datarobot/`` form ``LLM_DEFAULT_MODEL`` takes.
+
+    Inverse of normalize_gateway_model, kept beside it deliberately: the two forms
+    are not interchangeable. The prefix is litellm routing metadata and belongs only
+    in ``.env``; the gateway's own REST endpoint answers 404 for a prefixed model,
+    which is why rehearsal.py puts the bare ``api_model`` on the wire.
+    """
+    return model if model.startswith("datarobot/") else f"datarobot/{model}"
 
 
 def is_deployed_llm_model(model: str) -> bool:
@@ -118,7 +135,9 @@ def _map_gateway_catalog_entry(entry: dict[str, object]) -> LLMModel | None:
         "source": SOURCE_GATEWAY,
         "provider": str(entry.get("provider") or "Unknown"),
         "api_model": api_model,
+        "llm_default_model": ensure_datarobot_prefix(api_model),
         "deployment_id": "",
+        "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("contextSize")),
     }
@@ -143,11 +162,47 @@ def _map_deployed_entry(entry: dict[str, object]) -> LLMModel | None:
         "source": SOURCE_DEPLOYED,
         "provider": "",
         "api_model": DEPLOYED_LLM_MODEL,
+        "llm_default_model": ensure_datarobot_prefix(DEPLOYED_LLM_MODEL),
         "deployment_id": deployment_id,
+        "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": 0,
     }
     return mapped
+
+
+def _external_model_from_environment() -> LLMModel | None:
+    """Return the configured external model when its complete configuration exists."""
+    model_name = os.environ.get(EXTERNAL_MODEL_NAME_ENV, "").strip()
+    api_key = os.environ.get(EXTERNAL_API_KEY_ENV, "").strip()
+    base_url = os.environ.get(EXTERNAL_BASE_URL_ENV, "").strip()
+    if not (model_name and api_key and base_url):
+        return None
+
+    return {
+        "id": model_name,
+        "name": model_name,
+        "source": SOURCE_EXTERNAL,
+        "provider": "External",
+        "api_model": model_name,
+        "llm_default_model": model_name,
+        "deployment_id": "",
+        "base_url": base_url,
+        "description": "Configured external LLM",
+        "context_size": 0,
+    }
+
+
+def get_external_model_api_key(model_name: str, base_url: str) -> str | None:
+    """Return the external API key when the requested model and URL match config."""
+    external_model = _external_model_from_environment()
+    if (
+        external_model is None
+        or model_name.strip() != external_model["api_model"]
+        or base_url.strip() != external_model["base_url"]
+    ):
+        return None
+    return os.environ[EXTERNAL_API_KEY_ENV].strip()
 
 
 def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
@@ -178,7 +233,9 @@ def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
         "source": source,
         "provider": provider,
         "api_model": api_model,
+        "llm_default_model": ensure_datarobot_prefix(api_model),
         "deployment_id": deployment_id,
+        "base_url": "",
         "description": str(entry.get("description") or ""),
         "context_size": _as_int(entry.get("context_size")),
     }
@@ -309,12 +366,18 @@ def _fetch_llm_models_via_cli(
     return models, warnings
 
 
-def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
+def fetch_llm_models(endpoint: str | None, api_token: str | None) -> list[LLMModel]:
     """Fetch active LLMs from gateway catalog and deployed TextGeneration models.
 
     Uses ``dr llm-gateway list`` when available; falls back to direct REST calls.
     Each source is best-effort: warnings are logged to stderr when one source fails.
     """
+    external_model = _external_model_from_environment()
+    if not endpoint or not api_token:
+        if external_model:
+            return [external_model]
+        raise RuntimeError("DataRobot endpoint and API token are required")
+
     warnings: list[str] = []
 
     try:
@@ -333,7 +396,7 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
                     warnings.append(f"could not list deployed LLMs: {e}")
             for warning in warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
-            return models
+            return models + ([external_model] if external_model else [])
         warnings.append("dr llm-gateway list returned no models")
     except RuntimeError as e:
         warnings.append(str(e))
@@ -352,6 +415,8 @@ def fetch_llm_models(endpoint: str, api_token: str) -> list[LLMModel]:
         warnings.append(str(e))
 
     models = gateway_models + deployed_models
+    if external_model:
+        models.append(external_model)
     if not models:
         joined = "; ".join(warnings) if warnings else "no models available"
         raise RuntimeError(f"Failed to list LLM models: {joined}")
@@ -374,39 +439,49 @@ def _cell(value: str) -> str:
 
 
 def format_as_table(models: list[LLMModel]) -> str:
-    """Format models as a readable table."""
+    """Format models as a readable table.
+
+    Leads with the value that goes into ``LLM_DEFAULT_MODEL`` rather than the
+    catalog's ``llmId``, which the gateway does not accept as a model.
+
+    The deployment id column appears only when a deployed entry is present; it is
+    empty for gateway models, and a column of blanks on the common all-gateway
+    listing is noise.
+    """
     if not models:
         return "No models available"
 
-    rows = [
-        (
-            _cell(m["id"]),
+    show_deployment = any(m["source"] == SOURCE_DEPLOYED for m in models)
+
+    headers = ["LLM_DEFAULT_MODEL", "Name", "Source", "Provider", "Context"]
+    if show_deployment:
+        headers.insert(3, "Deployment ID")
+
+    rows: list[list[str]] = []
+    for m in models:
+        row = [
+            _cell(m["llm_default_model"]),
             _cell(m["name"]),
             _cell(m["source"]),
             _cell(m["provider"]) or "-",
             str(m["context_size"]) if m["context_size"] > 0 else "-",
-        )
-        for m in models
-    ]
+        ]
+        if show_deployment:
+            row.insert(3, _cell(m["deployment_id"]) or "-")
+        rows.append(row)
 
-    id_width = max(len("ID"), *(len(r[0]) for r in rows))
-    name_width = max(len("Name"), *(len(r[1]) for r in rows))
-    source_width = max(len("Source"), *(len(r[2]) for r in rows))
-    provider_width = max(len("Provider"), *(len(r[3]) for r in rows))
-    context_width = max(len("Context"), *(len(r[4]) for r in rows))
+    widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
 
-    header = (
-        f"{'ID':<{id_width}} | {'Name':<{name_width}} | {'Source':<{source_width}} | "
-        f"{'Provider':<{provider_width}} | {'Context':>{context_width}}"
-    )
-    lines = [header, "-" * len(header)]
-    for model_id, name, source, provider, context in rows:
-        lines.append(
-            f"{model_id:<{id_width}} | {name:<{name_width}} | "
-            f"{source:<{source_width}} | {provider:<{provider_width}} | "
-            f"{context:>{context_width}}"
+    def render(cells: list[str]) -> str:
+        # Context is the only numeric column, so it is the only right-aligned one.
+        last = len(cells) - 1
+        return " | ".join(
+            cell.rjust(width) if i == last else cell.ljust(width)
+            for i, (cell, width) in enumerate(zip(cells, widths))
         )
-    return "\n".join(lines)
+
+    header = render(headers)
+    return "\n".join([header, "-" * len(header), *(render(row) for row in rows)])
 
 
 def main() -> int:
@@ -437,18 +512,20 @@ def main() -> int:
         return 1
     endpoint, api_token = get_datarobot_credentials(target_dir)
 
-    if not endpoint and not api_token:
+    external_model = _external_model_from_environment()
+
+    if not endpoint and not api_token and not external_model:
         print("Error: DATAROBOT_ENDPOINT environment variable not set", file=sys.stderr)
         print(
             "Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr
         )
         return 1
 
-    if not endpoint:
+    if not endpoint and not external_model:
         print("Error: DATAROBOT_ENDPOINT environment variable not set", file=sys.stderr)
         return 1
 
-    if not api_token:
+    if not api_token and not external_model:
         print(
             "Error: DATAROBOT_API_TOKEN environment variable not set", file=sys.stderr
         )

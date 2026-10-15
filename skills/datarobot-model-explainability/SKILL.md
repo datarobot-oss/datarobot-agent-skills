@@ -61,14 +61,10 @@ XEMP prediction explanations, analyze anomaly explanations, or retrieve model di
 ## Setup
 
 ```python
-import os
 import datarobot as dr
 from datarobot.insights import ShapMatrix, ShapImpact, ShapPreview, ShapDistributions
 
-dr.Client(
-    token=os.environ["DATAROBOT_API_TOKEN"],
-    endpoint=os.environ.get("DATAROBOT_ENDPOINT", "https://app.datarobot.com/api/v2"),
-)
+dr.Client()
 ```
 
 ---

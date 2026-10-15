@@ -91,7 +91,7 @@ Use this skill when you need to:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Key SDK Operations
@@ -107,16 +107,17 @@ Use these DataRobot SDK methods for model training:
 - `dr.Project.create_from_dataset(dataset_id, project_name, use_case=use_case)` - Create project, linked to a Use Case
 - `dr.Project.get(project_id)` - Get project details
 - `dr.Project.list()` - List all projects
-- `project.set_target(target_column)` - Set target variable
+- `project.analyze_and_model(target, mode=dr.AUTOPILOT_MODE.QUICK)` - Set the target and start AutoPilot
 
 **Training**:
-- `project.start(autopilot_on=True)` - Start AutoML training
+- `project.wait_for_autopilot()` - Block until AutoPilot finishes
 - `project.get_status()` - Check training status
 - `dr.Model.list(project_id)` - List trained models
-- `dr.Model.get(model_id)` - Get model details
+- `dr.Model.get(project_id, model_id)` - Get model details
+- `dr.ModelRecommendation.get(project.id).get_model()` - Get DataRobot's recommended model
 
 **Model Analysis**:
-- `model.get_metrics()` - Get performance metrics
+- `model.metrics` - Performance metrics (dict of `{metric: {partition: score}}`)
 - `model.get_feature_impact()` - Get feature importance
 
 See the [Common Patterns](#common-patterns) section below for complete examples.
@@ -126,7 +127,7 @@ See the [Common Patterns](#common-patterns) section below for complete examples.
 This skill includes executable helper scripts that Claude can run directly:
 
 - `scripts/create_project.py` - Create a new project from a dataset, optionally linked to a Use Case
-- `scripts/start_training.py` - Start AutoML training
+- `scripts/start_training.py` - Set the target and start AutoML training
 - `scripts/list_models.py` - List trained models with metrics
 
 The `datarobot-data-preparation` skill's `scripts/upload_dataset.py` accepts the same optional `use_case_id` argument for linking an uploaded dataset to a Use Case.
@@ -139,13 +140,13 @@ python -c "import datarobot as dr; print(dr.UseCase.create(name='Sales Predictio
 # Upload dataset, linked to the Use Case
 python ../datarobot-data-preparation/scripts/upload_dataset.py sales_data.csv "Sales Data" use_case_456
 
-# Create project and set target, linked to the same Use Case
+# Create project, set target, and start training (one step), linked to the Use Case
 python scripts/create_project.py dataset_123 "Sales Prediction" revenue use_case_456
 
-# Start training
-python scripts/start_training.py project_456 Quick
+# (Alternatively, if the project was created without a target:)
+# python scripts/start_training.py project_456 revenue Quick
 
-# List models
+# List models once AutoPilot finishes
 python scripts/list_models.py project_456 AUC
 ```
 
@@ -169,9 +170,7 @@ import datarobot as dr
 import os
 
 # Initialize client
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"), endpoint=os.getenv("DATAROBOT_ENDPOINT")
-)
+dr.Client()
 
 # Reuse an existing Use Case if the user gave us one, otherwise create a new one
 existing_use_case_id = os.getenv("DATAROBOT_USE_CASE_ID")  # or ask the user for it
@@ -181,33 +180,36 @@ use_case = (
     else dr.UseCase.create(name="Sales Prediction")
 )
 
-# Upload dataset
+# Upload dataset (create_from_file has no name parameter; rename afterwards)
 dataset = dr.Dataset.create_from_file(
-    file_path="training_data.csv", name="Sales Data", use_cases=[use_case]
+    file_path="training_data.csv", use_cases=[use_case]
 )
+dataset.modify(name="Sales Data")
 
 # Create project
 project = dr.Project.create_from_dataset(
     dataset_id=dataset.id, project_name="Sales Prediction", use_case=use_case
 )
 
-# Set target
-project.set_target(target="revenue", mode=dr.AUTOPILOT_MODE.QUICK)
+# Set the target and start AutoPilot (Quick mode).
+# analyze_and_model() replaces the deprecated set_target() and starts AutoPilot,
+# so no separate start() call is needed.
+project.analyze_and_model(
+    target="revenue", mode=dr.AUTOPILOT_MODE.QUICK, worker_count=-1
+)
 
-# Start AutoML (Quick mode)
-project.start(autopilot_on=True, max_wait=3600)
+# Wait for AutoPilot to finish
+project.wait_for_autopilot()
 
-# Monitor training
-while project.get_status()["status"] not in ["complete", "error"]:
-    import time
+# Get DataRobot's recommended model (the one flagged "Recommended for Deployment")
+best_model = dr.ModelRecommendation.get(project.id).get_model()
 
-    time.sleep(30)
-    project.get_status()
-
-# Get trained models
-models = dr.Model.list(project.id)
-best_model = max(models, key=lambda m: m.metrics.get("AUC", 0))
-print(f"Best model: {best_model.id}, AUC: {best_model.metrics.get('AUC')}")
+# model.metrics maps each metric to per-partition scores; read the validation score.
+metric = project.metric  # the project's optimization metric, e.g. "LogLoss" or "AUC"
+print(
+    f"Recommended model: {best_model.id} ({best_model.model_type}), "
+    f"{metric} (validation): {best_model.metrics[metric]['validation']}"
+)
 ```
 
 ### Pattern 2: Time series forecasting
@@ -223,10 +225,9 @@ use_case = (
     else dr.UseCase.create(name="Sales Forecast")
 )
 
-# Upload dataset
-dataset = dr.Dataset.create_from_file(
-    "sales_data.csv", "Sales Forecast Data", use_cases=[use_case]
-)
+# Upload dataset (create_from_file has no name parameter; rename afterwards)
+dataset = dr.Dataset.create_from_file("sales_data.csv", use_cases=[use_case])
+dataset.modify(name="Sales Forecast Data")
 
 # Create project
 project = dr.Project.create_from_dataset(
@@ -234,21 +235,24 @@ project = dr.Project.create_from_dataset(
 )
 
 # Configure time series settings
-project.set_target(
-    target="sales",
-    mode=dr.AUTOPILOT_MODE.COMPREHENSIVE,
-    partitioning_method=dr.PARTITIONING_METHOD.DATETIME,
+spec = dr.DatetimePartitioningSpecification(
     datetime_partition_column="date",
+    use_time_series=True,
     multiseries_id_columns=["store_id"],
     forecast_window_start=1,
     forecast_window_end=7,
 )
 
-# Start training
-project.start(autopilot_on=True, max_wait=7200)
+# Set the target and start AutoPilot with time series partitioning
+project.analyze_and_model(
+    target="sales",
+    mode=dr.AUTOPILOT_MODE.COMPREHENSIVE,
+    partitioning_method=spec,
+    max_wait=7200,
+)
 
 # Wait for completion and get results
-project.wait_for_completion()
+project.wait_for_autopilot()
 models = dr.Model.list(project.id)
 ```
 
@@ -270,26 +274,22 @@ Common errors and solutions:
 - **"Dataset does not contain enough rows"**: DataRobot requires a minimum of 20 rows to create a project from a dataset — sample/demo data must meet this
 - **Target errors**: Ensure target column exists and has appropriate values
 - **Training failures**: Check data quality, feature types, missing values
-- **Timeout errors**: Adjust time limits or use Quick mode for initial exploration
+- **Timeout errors**: Adjust time limits or use Quick mode for initial exploration. `Dataset.create_from_file` and `project.analyze_and_model` block for up to `max_wait` seconds (default 600); pass a larger `max_wait` for big datasets or slow environments
 
 ## SDK Setup
 
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot
+uv pip install datarobot || python -m pip install datarobot
 ```
 
 ### Initialize Client
 
 ```python
 import datarobot as dr
-import os
 
-client = dr.Client(
-    token=os.getenv("DATAROBOT_API_TOKEN"),
-    endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-)
+dr.Client()
 ```
 
 ## Resources

@@ -122,7 +122,7 @@ What would you like to do next?
 
 ### After Coding
 
-After coding is complete, present these next steps:
+After coding is complete, present these next steps. **Reproduce the menu exactly as written below — same wording, same order, same numbers. Do not renumber, paraphrase, summarize, or drop an option when referring back to this menu later (e.g. "option 3").**
 
 ```
 What would you like to do next?
@@ -141,80 +141,37 @@ What would you like to do next?
 
 ## Dress Rehearsal
 
-Simulate an `agent_spec.md` interactively before writing any code. Responses go through the DataRobot LLM Gateway; the rehearsal script handles API calls, state, and output. You orchestrate the loop, handle out-of-character commands, and produce the feedback report at the end.
+Simulate an `agent_spec.md` interactively before writing any code. Responses go through the DataRobot LLM Gateway; the rehearsal script handles API calls, state, and output. You orchestrate the loop, handle out-of-character commands, and produce a shareable Markdown report at the end.
 
 **Engine location:** `<skill_scripts_dir>/rehearsal.py` (relative to repository root).
+
+**Report location:** `<target_dir>/rehearsal_report/rehearsal_report.md`
+
+See [dress-rehearsal.md](references/dress-rehearsal.md) for the full workflow. Summary:
 
 ### Step 1 — Initialize the session
 
 ```bash
-python <skill_scripts_dir>/rehearsal.py --init [--spec agent_spec.md]
+python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.md --target-dir <target_dir>
 ```
 
-If `agent_spec.md` does not exist and no path was provided, say so and stop.
-
-The script creates a unique session directory in the system temp dir and prints two lines:
-```
-session=<session_dir>
-output=<output_file>
-```
-
-Retain `session_dir` for all subsequent calls. Read the `output_file` and display its contents verbatim, then say:
-
-> You are now the **end user** of this agent. Type messages as a real user would.
->
-> **Out-of-character commands:**
-> - `NOTE: <text>` — record a design observation
-> - `DONE` — end the session and generate your feedback report
+The script creates a session at `<target_dir>/.datarobot/rehearsal/<session_id>/` and prints `session=` and `output=` lines. Display the output file verbatim, then explain NOTE/DONE commands.
 
 ### Step 2 — Simulation loop
 
-Keep track of any notes and the number of turns as the session progresses — you'll need these for the report.
+- `NOTE:` → `python <skill_scripts_dir>/rehearsal.py --session {session_dir} --note "{text}"`
+- User message → `python <skill_scripts_dir>/rehearsal.py --session {session_dir} "{message}"`
+- `DONE` → **must run first:** `python <skill_scripts_dir>/rehearsal.py --report --session {session_dir}` (then Step 3)
 
-**On each user message:**
-
-- If it starts with `NOTE:` — acknowledge the note, prompt for next message. Do not call the script.
-- If it is `DONE` — proceed to Step 3.
-- Otherwise — run the turn:
-
-```bash
-python <skill_scripts_dir>/rehearsal.py --session {session_dir} "{user_message}"
-```
-
-The script prints `output=<output_file>`. Read that file and display its contents verbatim. It will contain `[TOOL CALL]`, `[SIMULATED RETURN]`, and `[Agent]:` blocks as appropriate.
-
-If the script exits non-zero, display the error and ask whether to continue or abort.
+Display each turn output file verbatim only.
 
 ### Step 3 — Feedback report
 
-Before writing the report, review the session and consider each of these areas — only surface the ones where you have something concrete to say:
-
-- **System prompt** — wording, missing constraints, persona, tone
-- **Tools** — input/output scoping, missing or redundant tools, argument naming
-- **Model** — only flag if clearly wrong for the observed task complexity
-- **Example prompts** — additions or revisions based on what was tested
-- **Other** — edge cases, UX concerns, data dependency risks
-
-Then write the report in this format:
-
-```
-════════════════════════════════════════════
-  DRESS REHEARSAL REPORT
-════════════════════════════════════════════
-
-{1–2 sentences: what was tested and how the agent performed overall}
-{If notes were recorded: "Notes: " followed by each note on its own line, prefixed with —}
-
-Suggested changes:
-1. {specific, actionable change}
-2. {specific, actionable change}
-…
-{If nothing worth changing: "No changes recommended."}
-
-════════════════════════════════════════════
+```bash
+python <skill_scripts_dir>/rehearsal.py --report --session {session_dir}
 ```
 
-Then offer to implement any changes to `agent_spec.md`.
+Append `## Suggested Changes` to `<target_dir>/rehearsal_report/rehearsal_report.md`. If spec changes are applied, append `## Spec Updates Applied`. Tell the user the report path for sharing with QA, product, and data science.
 
 ---
 
@@ -226,7 +183,7 @@ Then offer to implement any changes to `agent_spec.md`.
 
 Verify `agent_spec.md` contains at minimum:
 
-- `model` — a valid LLM Gateway model ID, or the `datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
+- `model` — either the `llm_default_model` value of a `gateway` entry (not the `id` or `api_model`) or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
@@ -292,6 +249,10 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
 - Implement by adapting the template code — do not write from scratch
 - Modify files only inside the current directory and its subdirectories
 - Do not view `.env` files (`.env.template` files are OK)
+- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.md`:
+  1. Choose a `SCREAMING_SNAKE_CASE` env var name (e.g. `PERPLEXITY_API_KEY`).
+  2. **Append** `VAR_NAME=` to `<target_dir>/.env` without reading the file.
+  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.md`, or committed code.
 - Do not add code comments unless asked
 - Do not mock tool implementations unless they would be complex to implement
 - For tasks with 3+ steps, use the TodoWrite tool to manage your work
@@ -385,8 +346,8 @@ Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
 Write specs in YAML to `agent_spec.md` in the working directory. Fields are optional when the spec is still evolving.
 
 ```yaml
-model: "anthropic/claude-sonnet-4-5-20250929"   # LLM Gateway model ID, or datarobot-deployed-llm
-llm_deployment_id: ""                           # required only for a DataRobot-deployed LLM
+model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
+llm_deployment_id: ""                       # required only for a DataRobot-deployed LLM
 system_prompt: "Your agent's instructions..."
 tools:
   - function_name: tool_name
@@ -418,9 +379,9 @@ See [references/agent-spec-examples.md](references/agent-spec-examples.md) for c
 
 ## Tool/Helper Scripts Timeouts
 
-- Allow up to 10 minutes for any helper script to complete before timing out and returning an error
-- Allow up to 5 minutes for any tool to return a response before timing out and returning an error
-- Allow up to 30 minutes for deployment-related shell commands to complete before timing out and returning an error
+- Allow up to 25 minutes for any helper script to complete before timing out and returning an error
+- Allow up to 25 minutes for any shell command or tool to return a response before timing out and returning an error
+- Allow up to 60 minutes for deployment-related shell commands to complete before timing out and returning an error
 
 ---
 

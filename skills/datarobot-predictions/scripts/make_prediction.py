@@ -13,7 +13,9 @@ Where <data_json> is either:
     - a JSON array of objects (multiple rows).
 
 Options:
-    --max-explanations N        Number of top explanations per row (0 disables, default 0).
+    --max-explanations N        Number of top explanations per row (default 0). With xemp,
+                                0 disables explanations; with --explanation-algorithm shap,
+                                0 computes ALL explanations.
     --max-ngram-explanations N  Cap text-segment explanations per row (text models only).
     --threshold-high X          Only explain rows with prediction probability above X (0-1).
     --threshold-low X           Only explain rows with prediction probability below X (0-1).
@@ -28,14 +30,13 @@ Examples:
     python make_prediction.py abc123 '{"feature1": 10}' --max-explanations 3 \\
         --explanation-algorithm shap
 
-When --max-explanations > 0, each row in the output includes an `explanations` list
-of {feature, value, strength, qualitative_strength} entries describing why the model
-produced that prediction.
+When explanations are requested, each output record includes flat columns named
+EXPLANATION_<n>_FEATURE_NAME, EXPLANATION_<n>_ACTUAL_VALUE, EXPLANATION_<n>_STRENGTH,
+and EXPLANATION_<n>_QUALITATIVE_STRENGTH for each of the top-N contributors.
 """
 
 import argparse
 import json
-import os
 import sys
 
 import datarobot as dr
@@ -55,10 +56,7 @@ def make_prediction(
     passthrough_columns: str | None = None,
 ) -> dict:
     """Score `data` against `deployment_id`, optionally returning prediction explanations."""
-    dr.Client(
-        token=os.getenv("DATAROBOT_API_TOKEN"),
-        endpoint=os.getenv("DATAROBOT_ENDPOINT", "https://app.datarobot.com"),
-    )
+    dr.Client()
 
     deployment = dr.Deployment.get(deployment_id)
 

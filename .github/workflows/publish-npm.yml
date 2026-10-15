@@ -28,10 +28,8 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      # npm stage publish requires npm >= 11.15.0, newer than the npm bundled with Node 24.
-      # Remove this step once setup-node's default Node ships npm >= 11.15.0.
-      - name: Pin npm with staged-publishing support
-        run: npm install -g npm@11.15.0
+      - name: Pin npm with trusted-publishing support
+        run: npm install -g npm@12.0.2
 
       - name: Publish
-        run: npm stage publish --access public
+        run: npm publish --access public

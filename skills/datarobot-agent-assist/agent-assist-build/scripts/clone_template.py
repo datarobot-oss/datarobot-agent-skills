@@ -12,19 +12,40 @@ add, fetch, and checkout to clone the template into the target directory.
 Usage:
     python clone_template.py [--target-dir <directory>]
 
-The repository URL and branch/tag are hardcoded in the script constants REPO_URL,
-BRANCH, and TAG at the top of this file. TAG takes priority over BRANCH if both
-are set.
+The repository URL and branch/tag default to the script constants REPO_URL,
+BRANCH, and TAG. AGENT_ASSIST_TEMPLATE_REPO_URL,
+AGENT_ASSIST_TEMPLATE_REPO_BRANCH, and AGENT_ASSIST_TEMPLATE_REPO_TAG override
+their respective defaults. A branch takes priority over a tag when both are set.
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO_URL = "https://github.com/datarobot-community/datarobot-agent-application.git"
 BRANCH: str | None = None
-TAG: str | None = "11.10.7"
+TAG: str | None = "11.11.6"
+TEMPLATE_REPO_URL_ENV = "AGENT_ASSIST_TEMPLATE_REPO_URL"
+TEMPLATE_REPO_BRANCH_ENV = "AGENT_ASSIST_TEMPLATE_REPO_BRANCH"
+TEMPLATE_REPO_TAG_ENV = "AGENT_ASSIST_TEMPLATE_REPO_TAG"
+GIT_COMMAND_TIMEOUT = 120
+
+
+def _environment_override(name: str, default: str | None) -> str | None:
+    """Return a non-empty environment override, or the configured default."""
+    value = os.environ.get(name)
+    return value.strip() if value and value.strip() else default
+
+
+def template_repository_config() -> tuple[str, str | None, str | None]:
+    """Return the effective repository URL, branch, and tag configuration."""
+    return (
+        _environment_override(TEMPLATE_REPO_URL_ENV, REPO_URL) or REPO_URL,
+        _environment_override(TEMPLATE_REPO_BRANCH_ENV, BRANCH),
+        _environment_override(TEMPLATE_REPO_TAG_ENV, TAG),
+    )
 
 
 def cleanup_git_dir(target_dir: Path) -> None:
@@ -38,7 +59,10 @@ def cleanup_git_dir(target_dir: Path) -> None:
 
 
 def run_git_command(
-    command: list[str], description: str, target_dir: Path, timeout: int = 10
+    command: list[str],
+    description: str,
+    target_dir: Path,
+    timeout: int = GIT_COMMAND_TIMEOUT,
 ) -> tuple[bool, str]:
     """
     Run a git command and return success status and output.
@@ -134,10 +158,7 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
 
     # Step 1: Initialize git repository
     success, output = run_git_command(
-        ["git", "init"],
-        f"Initializing git repository in {target_dir}",
-        target_dir,
-        timeout=10,
+        ["git", "init"], f"Initializing git repository in {target_dir}", target_dir
     )
 
     if not success:
@@ -149,7 +170,6 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
         ["git", "remote", "add", "origin", repo_url],
         f"Adding remote origin {repo_url}",
         target_dir,
-        timeout=10,
     )
 
     if not success:
@@ -159,10 +179,7 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
 
     # Step 3: Fetch from remote
     success, output = run_git_command(
-        ["git", "fetch", "origin"],
-        "Fetching from remote repository",
-        target_dir,
-        timeout=60,
+        ["git", "fetch", "origin"], "Fetching from remote repository", target_dir
     )
 
     if not success:
@@ -173,14 +190,13 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
     # Step 4: Checkout branch or tag
     if ref_type == "tag":
         success, output = run_git_command(
-            ["git", "checkout", ref], f"Checking out tag {ref}", target_dir, timeout=10
+            ["git", "checkout", ref], f"Checking out tag {ref}", target_dir
         )
     else:
         success, output = run_git_command(
             ["git", "checkout", "-t", f"origin/{ref}"],
             f"Checking out and tracking branch {ref}",
             target_dir,
-            timeout=10,
         )
 
     if not success:
@@ -198,24 +214,26 @@ def clone_repository(repo_url: str, ref: str, ref_type: str, target_dir: Path) -
 
 def main() -> int:
     """Main entry point."""
-    # Determine which ref to use (TAG takes priority over BRANCH)
-    if TAG:
-        ref_type = "tag"
-        ref = TAG
-    elif BRANCH:
+    repo_url, branch, tag = template_repository_config()
+
+    # Determine which ref to use (branch takes priority over tag).
+    if branch:
         ref_type = "branch"
-        ref = BRANCH
+        ref = branch
+    elif tag:
+        ref_type = "tag"
+        ref = tag
     else:
         print("Error: Either TAG or BRANCH must be set in the script configuration")
         return 1
 
     parser = argparse.ArgumentParser(
-        description=f"Clone the DataRobot agent application template from {REPO_URL}",
+        description=f"Clone the DataRobot agent application template from {repo_url}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
-Repository: {REPO_URL}
-Tag: {TAG if TAG else "Not set"}
-Branch: {BRANCH if BRANCH else "Not set"}
+Repository: {repo_url}
+Tag: {tag if tag else "Not set"}
+Branch: {branch if branch else "Not set"}
 
 Example:
   %(prog)s
@@ -233,7 +251,7 @@ Example:
 
     target_dir = Path(args.target_dir).resolve()
 
-    return clone_repository(REPO_URL, ref, ref_type, target_dir)
+    return clone_repository(repo_url, ref, ref_type, target_dir)
 
 
 if __name__ == "__main__":

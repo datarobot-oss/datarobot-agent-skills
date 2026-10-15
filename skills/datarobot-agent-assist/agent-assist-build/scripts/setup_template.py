@@ -12,6 +12,7 @@ This script performs initial setup for a DataRobot agent application template by
 
 Usage:
     python setup_template.py --llm-model <model-name> [--llm-deployment-id <id>]
+                             [--llm-base-url <url>]
                              [--target-dir <directory>]
 
 The script generates cryptographically secure random secrets for session
@@ -27,14 +28,26 @@ import subprocess
 import sys
 from pathlib import Path
 
+from urllib.error import HTTPError
+
 from env_utils import read_env_variable
-from list_llm_models import is_deployed_llm_model, is_deployment_id
+from list_llm_models import (
+    LLMModel,
+    _fetch_gateway_models_rest,
+    ensure_datarobot_prefix,
+    get_external_model_api_key,
+    is_deployed_llm_model,
+    is_deployment_id,
+    normalize_gateway_model,
+)
 
 # A DataRobot-deployed LLM is selected by deployment id, not by model name: the
 # template swaps in this Pulumi config and calls the deployment's chat endpoint
 # directly. See the template's infra/configurations/llm/deployed_llm.py and
 # docs/llm.md ("DataRobot Deployed LLM").
 DEPLOYED_LLM_CONFIGURATION = "deployed_llm.py"
+DEFAULT_COMMAND_TIMEOUT = 300
+TASK_START_COMMAND_TIMEOUT = 1500
 
 
 def generate_random_secret(length: int = 32) -> str:
@@ -52,8 +65,134 @@ def generate_random_secret(length: int = 32) -> str:
     return encoded[:length]
 
 
+def _env_value(env_file: Path, name: str) -> str | None:
+    if not env_file.exists():
+        return None
+    try:
+        return read_env_variable(env_file, name)
+    except ValueError:
+        return None
+
+
+def read_credentials(target_dir: Path) -> tuple[str | None, str | None]:
+    """Read DataRobot credentials without creating or rewriting anything.
+
+    env_utils.get_datarobot_credentials runs 'dr dotenv setup' when .env is absent.
+    That is the wrong side effect here: this runs before create_env_file truncates
+    .env, and setup_and_run makes the real setup call a step later regardless.
+    """
+    env_file = target_dir / ".env"
+    endpoint = _env_value(env_file, "DATAROBOT_ENDPOINT") or os.environ.get(
+        "DATAROBOT_ENDPOINT"
+    )
+    api_token = _env_value(env_file, "DATAROBOT_API_TOKEN") or os.environ.get(
+        "DATAROBOT_API_TOKEN"
+    )
+    return endpoint, api_token
+
+
+_LLM_ID_ERROR = (
+    'Error: --llm-model "{value}" is an LLM Gateway model id, not a model name. '
+    "The gateway rejects it and the app fails during deployment. Use the "
+    "llm_default_model field from list_llm_models.py instead."
+)
+
+_NO_GATEWAY_ERROR = (
+    'Error: --llm-model "{value}" cannot be used. This instance has no LLM Gateway '
+    "catalog, so pick a DataRobot-deployed LLM and pass its --llm-deployment-id "
+    "instead."
+)
+
+# The value is interpolated into a double-quoted .env line that the template's
+# loader re-parses, so a quote, backslash or '$' would end the line early and turn
+# the rest into further keys. Every model name in the live catalog is covered by
+# this set; ':' and '@' are load-bearing (bedrock/...-v1:0, vertex_ai/...@20250929).
+MODEL_VALUE_RE = re.compile(r"[A-Za-z0-9._:@/-]+")
+
+
+def read_gateway_catalog(target_dir: Path) -> list[LLMModel] | None:
+    """The instance's gateway catalog, or None when it could not be read.
+
+    Goes straight to REST rather than through fetch_llm_models, which prefers the
+    `dr` CLI. The CLI honors passed credentials only once they verify and otherwise
+    falls back to its own stored profile, so it can answer about a different
+    instance than the project points at. Tolerable for a listing someone reads,
+    wrong for a gate that decides accept or abort.
+
+    An empty list and None mean different things: the instance answered and has no
+    gateway models, versus nothing could be learned about it.
+    """
+    endpoint, api_token = read_credentials(target_dir)
+    if not endpoint or not api_token:
+        print("Note: no DataRobot credentials found, so the model was not verified.")
+        return None
+    try:
+        return _fetch_gateway_models_rest(endpoint, api_token)
+    except (RuntimeError, OSError) as e:
+        # OSError as well as RuntimeError: urlopen lets raw ConnectionResetError and
+        # RemoteDisconnected past the URLError handling in the fetch helper, and an
+        # unreachable instance must not take the whole setup down with it.
+        cause = e.__cause__
+        if isinstance(cause, HTTPError) and cause.code == 404:
+            # The instance answered and said the catalog is not there. That is a
+            # disabled gateway, not a failure to reach it, so it gets the same
+            # answer as an empty catalog rather than an unverified pass. 403 is
+            # excluded on purpose: it means this token may not read the catalog,
+            # which says nothing about whether the gateway exists.
+            return []
+        print(f"Note: could not verify the model against the catalog ({e}).")
+        return None
+
+
+def canonical_gateway_model(value: str, target_dir: Path) -> str | None:
+    """Resolve a gateway model choice to the value LLM_DEFAULT_MODEL takes.
+
+    Returns None when the value cannot be a gateway model, having printed why.
+
+    The catalog decides. Where it cannot be read, fall back to shape: a catalog
+    model is a ``provider/model`` path, so a value with no slash is a catalog llmId,
+    which the gateway answers 404 for. That heuristic never overrules the catalog,
+    which is free to carry a model whose name has no slash in it.
+    """
+    bare = normalize_gateway_model(value.strip())
+    catalog = read_gateway_catalog(target_dir)
+
+    if catalog is None:
+        if "/" not in bare:
+            print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
+            return None
+        return ensure_datarobot_prefix(bare)
+
+    for model in catalog:
+        if model["api_model"].lower() == bare.lower():
+            return model["llm_default_model"]
+
+    if not catalog:
+        # No gateway entry at all means the LLM Gateway is disabled or empty, the
+        # normal shape of an on-prem install. Listing the empty catalog back would
+        # say nothing; the way forward is a deployed LLM instead.
+        print(_NO_GATEWAY_ERROR.format(value=value), file=sys.stderr)
+        return None
+
+    if "/" not in bare:
+        print(_LLM_ID_ERROR.format(value=value), file=sys.stderr)
+        return None
+
+    available = "\n  ".join(sorted(m["llm_default_model"] for m in catalog))
+    print(
+        f'Error: --llm-model "{value}" is not in this instance\'s LLM Gateway '
+        f"catalog.\nAvailable:\n  {available}",
+        file=sys.stderr,
+    )
+    return None
+
+
 def create_env_file(
-    target_dir: Path, llm_default_model: str, llm_deployment_id: str = ""
+    target_dir: Path,
+    llm_default_model: str,
+    llm_deployment_id: str = "",
+    external_api_key: str = "",
+    external_base_url: str = "",
 ) -> tuple[bool, str]:
     """
     Create .env file with the LLM configuration.
@@ -66,11 +205,24 @@ def create_env_file(
         target_dir: Directory where .env file should be created
         llm_default_model: Value for LLM_DEFAULT_MODEL
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
+        external_api_key: API key for an external LLM, if selected
+        external_base_url: Base URL for an external LLM, if selected
 
     Returns:
         Tuple of (success, message)
     """
     env_file = target_dir / ".env"
+
+    # Guard here rather than in canonical_gateway_model: this is where the value is
+    # interpolated, and it is the one point every path goes through, including the
+    # deployed one where the model is only a label.
+    if not MODEL_VALUE_RE.fullmatch(llm_default_model):
+        error_msg = (
+            f'--llm-model "{llm_default_model}" has characters that cannot go in a '
+            ".env value. Expected letters, digits, and any of . _ : @ / -"
+        )
+        print(f"Error: {error_msg}", file=sys.stderr)
+        return False, error_msg
 
     lines = [
         "DATAROBOT_ENDPOINT=\n",
@@ -90,6 +242,15 @@ def create_env_file(
             ]
         )
 
+    if external_api_key:
+        lines.extend(
+            [
+                f'EXTERNAL_LLM_MODEL="{llm_default_model}"\n',
+                f'EXTERNAL_LLM_API_KEY="{external_api_key}"\n',
+                f'EXTERNAL_LLM_BASE_URL="{external_base_url}"\n',
+            ]
+        )
+
     try:
         print(f"Creating .env file in {target_dir}")
 
@@ -103,6 +264,8 @@ def create_env_file(
                 f"{llm_deployment_id} (INFRA_ENABLE_LLM={DEPLOYED_LLM_CONFIGURATION}, "
                 "USE_DATAROBOT_LLM_GATEWAY=0)"
             )
+        elif external_api_key:
+            print(f'✓ Created .env file for external LLM "{llm_default_model}"')
         else:
             print(f'✓ Created .env file with LLM_DEFAULT_MODEL="{llm_default_model}"')
 
@@ -115,7 +278,9 @@ def create_env_file(
 
 
 def initialize_pulumi(
-    target_dir: Path, pulumi_passphrase: str = "", timeout: int = 300
+    target_dir: Path,
+    pulumi_passphrase: str = "",
+    timeout: int = DEFAULT_COMMAND_TIMEOUT,
 ) -> tuple[bool, str]:
     """
     Initialize Pulumi stack with a passphrase from .env or generated.
@@ -200,14 +365,16 @@ def initialize_pulumi(
         return False, error_msg
 
 
-def run_command(command: str, target_dir: Path, timeout: int = 300) -> tuple[bool, str]:
+def run_command(
+    command: str, target_dir: Path, timeout: int = DEFAULT_COMMAND_TIMEOUT
+) -> tuple[bool, str]:
     """
     Run a shell command and capture its output.
 
     Args:
         command: Shell command to execute
         target_dir: Directory where command should be executed
-        timeout: Timeout in seconds (default: 300)
+        timeout: Timeout in seconds
 
     Returns:
         Tuple of (success, output)
@@ -260,7 +427,10 @@ def run_command(command: str, target_dir: Path, timeout: int = 300) -> tuple[boo
 
 
 def setup_and_run(
-    llm_default_model: str, target_dir: Path, llm_deployment_id: str = ""
+    llm_default_model: str,
+    target_dir: Path,
+    llm_deployment_id: str = "",
+    llm_base_url: str = "",
 ) -> int:
     """
     Create .env file and run required setup commands.
@@ -269,6 +439,7 @@ def setup_and_run(
         llm_default_model: Value for LLM_DEFAULT_MODEL in .env file
         target_dir: Target directory for operations
         llm_deployment_id: Deployment id of a DataRobot-deployed LLM, if selected
+        llm_base_url: Base URL for an external LLM, if selected
 
     Returns:
         Exit code (0 for success, 1 for failure)
@@ -279,7 +450,23 @@ def setup_and_run(
     print(f"Target directory: {target_dir}")
     print(f"LLM model: {llm_default_model}")
 
+    external_api_key = get_external_model_api_key(llm_default_model, llm_base_url)
+    is_external_model = external_api_key is not None
+
+    if llm_base_url and not is_external_model:
+        print(
+            "Error: --llm-base-url does not match the configured external LLM.",
+            file=sys.stderr,
+        )
+        return 1
+
     if llm_deployment_id:
+        if is_external_model:
+            print(
+                "Error: an external LLM cannot be combined with --llm-deployment-id.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"LLM deployment: {llm_deployment_id}")
 
         # The id is written verbatim into a double-quoted .env line that the template's
@@ -340,8 +527,23 @@ def setup_and_run(
         print(f"Error: Target directory does not exist: {target_dir}")
         return 1
 
+    # Canonicalize before anything writes .env: create_env_file truncates the file,
+    # taking with it the credentials the catalog check reads. The deployed path is
+    # exempt, since there the model is only a label and 'dr dotenv setup' drops it.
+    if not llm_deployment_id and not is_external_model:
+        canonical = canonical_gateway_model(llm_default_model, target_dir)
+        if canonical is None:
+            return 1
+        llm_default_model = canonical
+
     # Step 1: Create .env file
-    success, _ = create_env_file(target_dir, llm_default_model, llm_deployment_id)
+    success, _ = create_env_file(
+        target_dir,
+        llm_default_model,
+        llm_deployment_id,
+        external_api_key or "",
+        llm_base_url if is_external_model else "",
+    )
     if not success:
         return 1
 
@@ -361,7 +563,9 @@ def setup_and_run(
         return 1
 
     # Step 4: Run task start-non-interactive
-    success, _ = run_command("task start-non-interactive", target_dir)
+    success, _ = run_command(
+        "task start-non-interactive", target_dir, timeout=TASK_START_COMMAND_TIMEOUT
+    )
     if not success:
         print("\n⚠ Command 'task start-non-interactive' failed")
         print("See output above for details")
@@ -392,6 +596,12 @@ def main() -> int:
     )
 
     parser.add_argument(
+        "--llm-base-url",
+        default="",
+        help="Base URL of the configured external LLM (omit for DataRobot models)",
+    )
+
+    parser.add_argument(
         "--target-dir",
         required=True,
         help="Target directory for operations (required — use the session <target_dir>)",
@@ -404,7 +614,12 @@ def main() -> int:
         print(f"Error: target directory does not exist: {target_dir}", file=sys.stderr)
         return 1
 
-    return setup_and_run(args.llm_model, target_dir, args.llm_deployment_id.strip())
+    return setup_and_run(
+        args.llm_model,
+        target_dir,
+        args.llm_deployment_id.strip(),
+        args.llm_base_url.strip(),
+    )
 
 
 if __name__ == "__main__":
