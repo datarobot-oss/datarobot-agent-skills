@@ -33,6 +33,7 @@ tasks:
     desc: Run shellcheck on all shell scripts
     cmds:
       - find skills scripts -name '*.sh' -exec shellcheck {} +
+      - shellcheck .githooks/pre-commit
 
   actionlint:
     desc: Lint GitHub Actions workflows

@@ -17,11 +17,11 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 ### Added
 
 - `repo`: Added offline preflight tests that run before the paid LLM judge. They check the agentskills.io frontmatter limits, that linked files and script paths exist, that Python and shell samples parse, that scripts start with `--help`, and that no skill file holds an internal host, employee email, private IP address or credential. The e2e CI job also prints skip reasons now.
-- `repo`: Added ruff import-order, bugbear and security rules, a repo-wide shellcheck glob, actionlint for workflows, `claude plugin validate skills --strict`, and Dependabot for GitHub Actions, uv and npm. CI now fails on Trivy secret findings and when the e2e job skips skills because the LLM gateway call failed.
+- `repo`: Added ruff import-order, bugbear and security rules, a repo-wide shellcheck glob, actionlint for workflows, `claude plugin validate skills`, and Dependabot for GitHub Actions, uv and npm. CI now fails on Trivy secret findings and when the e2e job skips skills because the LLM gateway call failed.
 
 ### Changed
 
-- `datarobot-agent-assist`: `setup_template.py` runs its Pulumi, `dr` and `task` commands without a shell. A missing tool now reports "Failed to execute command" instead of a shell exit code.
+- `datarobot-agent-assist`: `setup_template.py` runs its Pulumi, `dr` and `task` commands without a shell. A missing tool now fails with an error message instead of a shell exit code.
 
 ## [1.18.0] - 2026-10-13
 
