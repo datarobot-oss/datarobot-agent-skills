@@ -67,7 +67,7 @@ Tell the user it takes a couple of minutes. The first run creates the artifact, 
 
 `up` writes the workload id into `.datarobot.yaml`. That file is how the next deploy finds the same agent. If `<target_dir>` is a git repo, commit it yourself. Tell the user not to delete it.
 
-Redeploy with the same command. It only applies what changed. Env var, port or probe changes take seconds and don't rebuild. Code and dependency changes rebuild. Use `--force-build` only when a rebuild is needed and nothing changed, for example the image is gone from the registry.
+Redeploy with the same command. It only applies what changed. Env var, port or probe changes don't rebuild. Code and dependency changes do. Either way the new version rolls out, and a rollout can take several minutes, an env-only change included. Tell the user it may take a while, wait for `up` to return, and don't start a second deploy because it feels slow. Use `--force-build` only when a rebuild is needed and nothing changed, for example the image is gone from the registry.
 
 `up` only manages fields that `.datarobot.yaml` names, and it puts those back if someone changed them in the UI. Make changes in the file, not the UI. If the user says they changed a setting in DataRobot, run `dr workload up --dry-run --diff --dir <target_dir>` first. It prints every field the deploy would change and changes nothing. Tell the user in plain words what would be changed back.
 
@@ -77,6 +77,8 @@ If `up` or `config` fails, handle it yourself without asking the user:
 
 - `unknown command`: the update didn't take. Go straight to the fallback below.
 - 403 `Workload API is disabled in feature flags`, from any call: the Workload API is off for the account. Don't retry and don't use the fallback, which calls the same API. Switch to Pulumi as in [references/deploy-path.md](references/deploy-path.md) and tell the user why.
+- `.datarobot.yaml references credentials that cannot be used`: the credential id is wrong, or the credential was stored in another DataRobot environment. Store the secret again as in `references/tool-secrets.md` and fix `drCredentialId`. Ignore the CLI's hint to run `--sync-env`.
+- A build log with `Distribution not found at: file:///...`: the project depends on a package outside `<target_dir>`. Switch to Pulumi as in [references/deploy-path.md](references/deploy-path.md) and tell the user why.
 - Anything else that isn't about the app: read and follow `references/deploy-fallback.md`. Keep the app as it is. Only the deploy steps change.
 
 ## 5. Check it answers
@@ -106,4 +108,4 @@ Ask the user about these in plain words and let them decide.
 
 - Keeping it on. Say: "Right now your agent turns off 8 hours after it starts, even if people are using it. Want me to make it permanent? Once I do, every future update replaces it without downtime. This can't be undone." If yes, run `dr workload promote --yes --dir <target_dir>`. It locks the running draft in place without a restart. `dr workload up --yes --promote --dir <target_dir>` does the same at the end of a deploy.
 - Sharing. Ask who should have access, by DataRobot username or email. Then do it yourself: `GET /workloads/{id}/sharedRoles`, add the new people, and `PATCH /workloads/{id}/sharedRoles` with the full list. The PATCH replaces the whole list, so keep the owner in it or they lose access. The body is `{"operation": "updateRoles", "roles": [{"shareRecipientType": "user", "username": "<username>", "role": "CONSUMER"}]}`, with one entry per person, the owner included. A 204 means it worked. Roles are uppercase: `OWNER`, `USER`, `CONSUMER`. Use `CONSUMER` for people who only use the agent. If the body is rejected, the 422 names the expected shape. Tell the user that the people they added need to be signed in to DataRobot to open the link, and that the agent acts with the user's own DataRobot permissions when it calls DataRobot.
-- Removing it. Only say: "If you want it gone later, just tell me." Don't delete anything now. When the user later asks to remove it, confirm once, then run `dr workload delete --purge --yes --dir <target_dir>`. It removes the workload, its draft artifact and the local deploy state. A locked artifact and the credentials you stored yourself stay, so say so.
+- Removing it. Only say: "If you want it gone later, just tell me." Don't delete anything now. When the user later asks to remove it, confirm once, then run `dr workload delete --purge --yes --dir <target_dir>`. It removes the workload, its draft artifact and the local deploy state. A locked artifact, draft artifacts from earlier code deploys, and the credentials you stored yourself stay, so say so. Remove old drafts with `dr artifact delete <artifact id>` if the user wants a clean account.
