@@ -105,7 +105,7 @@ Execute predictions using various methods:
 This skill guides you to use the DataRobot Python SDK directly. Install the SDK if needed:
 
 ```bash
-pip install datarobot datarobot-predict
+uv pip install datarobot datarobot-predict || python -m pip install datarobot datarobot-predict
 ```
 
 ### Key SDK Operations
@@ -114,7 +114,10 @@ Use these DataRobot SDK methods to work with predictions:
 
 **Deployment Information**:
 - `dr.Deployment.get(deployment_id)` - Get deployment details
-- `deployment.get_features()` - Get required features (name/type/importance)
+- `deployment.get_features()` - Get required features. Returns a list of plain dicts with keys
+  `name`, `feature_type`, `importance`, `date_format`, `known_in_advance` — use dict access (`f["name"]`).
+  `importance` is a model-independent feature/target association score — it can be negative and is
+  NOT the model's Feature Impact, so don't use it to rank model-relevant features.
 
 **Predictions**:
 - `deployment.predict_batch(source)` - Convenience batch prediction API (CSV path, file object, or pandas DataFrame)
@@ -171,7 +174,7 @@ each of the top-N contributors.
 
 | Parameter | Purpose |
 |-----------|---------|
-| `max_explanations` | Top-N contributors per row. `0` (default) disables explanations. |
+| `max_explanations` | Top-N contributors per row. `0` (default) disables explanations for `xemp`; with `explanation_algorithm="shap"`, `0` computes **all** explanations (`"all"` is also accepted, SHAP only). |
 | `max_ngram_explanations` | Text models only: cap text-segment explanations per row. |
 | `threshold_high` | Only explain rows with prediction probability **above** this (0–1). |
 | `threshold_low` | Only explain rows with prediction probability **below** this (0–1). |
@@ -262,7 +265,7 @@ prediction_data = {
 result = dr_predict(
     deployment=deployment,
     data_frame=pd.DataFrame([prediction_data]),
-    max_explanations=3,  # optional; 0/omit to disable explanations
+    max_explanations=3,  # optional; omit to disable (with shap, 0 means ALL explanations)
     explanation_algorithm="shap",  # optional; omit to use deployment default
 )
 print(result.dataframe.to_dict(orient="records"))
@@ -276,25 +279,25 @@ import pandas as pd
 # Initialize client
 dr.Client()
 
-# Get deployment features
+# Get deployment features (list of plain dicts — see Key SDK Operations above)
 deployment = dr.Deployment.get("abc123")
-model = dr.Model.get(deployment.model["id"])
-features = model.get_features()
+features = deployment.get_features()
+target_name = deployment.model.get("target_name")  # None for unsupervised/anomaly deployments
 
 # Create template DataFrame
-prediction_features = [f for f in features if f.name != model.target_name]
-template_df = pd.DataFrame(columns=[f.name for f in prediction_features])
+prediction_features = [f for f in features if f["name"] != target_name]
+template_df = pd.DataFrame(columns=[f["name"] for f in prediction_features])
 
 # Add sample rows
 for i in range(100):
     row = {}
     for feature in prediction_features:
-        if feature.feature_type == "Numeric":
-            row[feature.name] = 0.0
-        elif feature.feature_type == "Categorical":
-            row[feature.name] = "sample_value"
+        if feature["feature_type"] == "Numeric":
+            row[feature["name"]] = 0.0
+        elif feature["feature_type"] == "Categorical":
+            row[feature["name"]] = "sample_value"
         else:
-            row[feature.name] = ""
+            row[feature["name"]] = ""
     template_df = pd.concat([template_df, pd.DataFrame([row])], ignore_index=True)
 
 # Save template
@@ -303,20 +306,19 @@ template_df.to_csv("prediction_template.csv", index=False)
 # Fill template with actual data (modify CSV as needed)
 # ...
 
-# Submit batch prediction
+# Submit batch prediction. With a localFile output path, score() blocks until
+# scoring finishes and writes predictions_output.csv before returning — no
+# separate monitor/download step is needed. (It waits up to download_timeout=120s
+# for the queue to start returning results, then raises AND cancels the job —
+# pass download_timeout=-1 or a larger value for busy queues / large datasets.)
 job = dr.BatchPredictionJob.score(
-    deployment_id=deployment.id,
+    deployment=deployment,
     intake_settings={"type": "localFile", "file": "prediction_template.csv"},
     output_settings={"type": "localFile", "path": "predictions_output.csv"},
 )
 
-# Monitor job
-job_status = dr.BatchPredictionJob.get(job.id)
-print(f"Job status: {job_status.status}")
-
-# Download results when complete
-if job_status.status == "completed":
-    results = dr.BatchPredictionJob.download(job.id)
+# Equivalent one-liner:
+# dr.BatchPredictionJob.score_to_file(deployment, intake_path="prediction_template.csv", output_path="predictions_output.csv")
 ```
 
 ## Error handling
@@ -325,7 +327,7 @@ Common errors and solutions:
 
 - **Missing required features**: Use `get_deployment_features` to get complete list
 - **Wrong data types**: Check feature types and convert accordingly
-- **Invalid categorical values**: Use training data sample to see valid values
+- **Invalid categorical values**: Get the real training levels via `dr.Feature.get(deployment.model["project_id"], feature_name).get_histogram().plot` — each bin's `label` is a valid level, EXCEPT aggregate pseudo-buckets whose label is wrapped in `=` (`=All Other=` when levels were truncated to the bin cap; `==Missing==` when the feature had NAs — represent missing as an empty cell, not that string). Custom-model deployments have no `project_id`; check their training data instead.
 - **Time series format errors**: Ensure datetime format matches training data
 
 ## SDK Setup
@@ -333,7 +335,7 @@ Common errors and solutions:
 ### Install DataRobot SDK
 
 ```bash
-pip install datarobot datarobot-predict
+uv pip install datarobot datarobot-predict || python -m pip install datarobot datarobot-predict
 ```
 
 ### Initialize Client
@@ -350,7 +352,7 @@ dr.Client()
 Set these environment variables or pass them directly:
 
 - `DATAROBOT_API_TOKEN` - Your DataRobot API token
-- `DATAROBOT_ENDPOINT` - Your DataRobot endpoint (default: https://app.datarobot.com)
+- `DATAROBOT_ENDPOINT` - Your DataRobot API endpoint, which must include the `/api/v2` path (e.g. `https://app.datarobot.com/api/v2`)
 
 ## Resources
 

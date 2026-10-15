@@ -170,12 +170,14 @@ Admin-set caps: `maxConcurrentWorkloads`, `maxWorkloadReplicas`. `0` = unlimited
 
 DataRobot stores credentials centrally, injects into `environmentVars` by reference:
 
-```python
-"environmentVars": [
+```json
+{
+  "environmentVars": [
     {"name": "PLAIN_VAR", "value": "literal-value"},
     {"source": "dr-credential", "name": "AWS_ACCESS_KEY_ID",
-     "drCredentialId": "<credential-id>", "key": "awsAccessKeyId"},
-]
+     "drCredentialId": "<credential-id>", "key": "awsAccessKeyId"}
+  ]
+}
 ```
 
 Flow: `GET /credentials/?limit=50` → note `credentialType` → look up valid `key` names in `references/schema-reference.md`.
