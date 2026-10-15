@@ -23,6 +23,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-agent-assist`: `setup_template.py` runs its Pulumi, `dr` and `task` commands without a shell. A missing tool now fails with an error message instead of a shell exit code.
 
+### Fixed
+
+- `repo`: Fixed false INCOMPLETE verdicts in the e2e skill gate. A judge report with `## Overall Verdict` was read as INCOMPLETE because the report text mentioned "incomplete". The gate now reads the verdict line at any heading level.
+
 ## [1.19.0] - 2026-10-15
 
 ### Added
