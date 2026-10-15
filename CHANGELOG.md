@@ -20,6 +20,7 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ### Fixed
 
+- `repo`: Fixed the preflight `--help` check failing on modules inside a Python package. They use relative imports and cannot run as scripts, so the check now skips them.
 - `repo`: Fixed false INCOMPLETE verdicts in the e2e skill gate. A judge report with `## Overall Verdict` was read as INCOMPLETE because the report text mentioned "incomplete". The gate now reads the verdict line at any heading level.
 
 ## [1.19.0] - 2026-10-15

@@ -197,6 +197,11 @@ def frontmatter_findings(metadata: Mapping[str, object], path: str) -> list[str]
     return findings
 
 
+def is_package_module(script: Path) -> bool:
+    """Return True for a module inside a Python package, which cannot run as a script."""
+    return (script.parent / "__init__.py").exists()
+
+
 def sensitive_findings(text: str) -> list[str]:
     """Return "<label> at line N" for each internal or secret-like string in text.
 
