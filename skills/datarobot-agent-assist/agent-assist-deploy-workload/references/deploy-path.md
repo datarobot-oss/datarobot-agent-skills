@@ -16,7 +16,7 @@ eval "$(dr auth export)"   # never print the token
 curl -sS -H "Authorization: Bearer $DATAROBOT_API_TOKEN" "$DATAROBOT_ENDPOINT/workloads/?limit=1"
 ```
 
-A 403 that says `Workload API is disabled in feature flags` means it's off. That's an account setting, not something the CLI flag or the fallback can fix. Use Pulumi and tell the user: "The Workload API isn't turned on for your DataRobot account, so I'll use the standard deployment path. If you want the faster path, ask your DataRobot admin to enable the Workload API for your organization." A 200 means it's on.
+A 403 that says `Workload API is disabled in feature flags` means it's off. That's an account setting, not something the fallback can fix. Use Pulumi and tell the user: "The Workload API isn't turned on for your DataRobot account, so I'll use the standard deployment path. If you want the faster path, ask your DataRobot admin to enable the Workload API for your organization." A 200 means it's on.
 
 ## Use Pulumi if any of these are true
 

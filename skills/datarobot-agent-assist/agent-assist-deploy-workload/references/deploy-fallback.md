@@ -1,8 +1,8 @@
 # Deploy without dr workload up
 
-Use this only when `dr workload up` can't run: the CLI won't update, `up` is missing even with the flag set, or `up` fails in a way that isn't about the app. Tell the user you're switching and why.
+Use this only when `dr workload up` can't run: the CLI won't update, `up` is missing after the update, or `up` fails in a way that isn't about the app. Tell the user you're switching and why.
 
-Each step has the CLI command first and the REST call after it. `dr artifact` and the rest of `dr workload` are GA and need no flag. Use REST only if the CLI isn't usable at all.
+Each step has the CLI command first and the REST call after it. `dr artifact` and `dr workload` are GA and need no feature flag. Use REST only if the CLI isn't usable at all.
 
 For REST, get credentials into the shell without printing them: `eval "$(dr auth export)"`. Base URL is `$DATAROBOT_ENDPOINT` (ends in `/api/v2`), header `Authorization: Bearer $DATAROBOT_API_TOKEN`.
 
@@ -94,5 +94,5 @@ If you skip the roll, the workload keeps serving the old image. It doesn't pick 
 
 ## Lock and clean up
 
-- Lock (one way, ask first): `dr artifact lock <artifact_id>`, or REST `PATCH /artifacts/<id>/` with `{"status": "locked"}`. After that, changes need a new artifact and `POST /workloads/<id>/replacement/`. See the `datarobot-workload-api` skill, section 4.
+- Keep it on (one way, ask first): `dr workload promote <id>`, or REST `POST /workloads/<id>/promote/`. It locks the running draft in place without a restart. After that, changes need a new artifact and `POST /workloads/<id>/replacement/`. See the `datarobot-workload-api` skill, section 4.
 - Tear down: `dr workload stop <id>`, `dr workload delete <id>`, `dr artifact delete <artifact_id>`, in that order. Only drafts can be deleted.

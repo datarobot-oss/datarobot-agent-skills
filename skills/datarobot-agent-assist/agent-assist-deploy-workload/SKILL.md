@@ -20,8 +20,7 @@ If agent assist hasn't already picked this path, read and follow [references/dep
 1. `dr --version`. If missing, run `curl https://cli.datarobot.com/install | sh`.
 2. `dr self update --force`. Always run it. Don't try to judge whether the installed version is new enough.
 3. `dr auth check`. If it fails, run `dr auth login`. It opens a browser. Tell the user: "A DataRobot sign-in page just opened. Sign in there and come back."
-4. `dr workload up` and `dr workload config` are still behind a CLI feature flag. Put `DATAROBOT_CLI_FEATURE_WORKLOAD=true` in front of every `dr workload up` and `dr workload config` call. Each shell call is a new shell, so an earlier export doesn't carry over. The commands in this skill already have it; copy them as written.
-5. `DATAROBOT_CLI_FEATURE_WORKLOAD=true dr workload up --help`. If it says unknown command, the update didn't take. Don't ask the user to fix it. Use `references/deploy-fallback.md` when you get to section 4.
+4. `dr workload up --help`. If it says unknown command, the update didn't take. Don't ask the user to fix it. Use `references/deploy-fallback.md` when you get to section 4.
 
 ## 3. Configure the deploy (once)
 
@@ -30,7 +29,7 @@ First read and follow `references/app-contract.md`. It checks that the code in `
 `dr workload config` writes `.datarobot.yaml`, the deploy definition. It lives in the repo with the code. There's no terminal here, so every answer is a flag:
 
 ```bash
-DATAROBOT_CLI_FEATURE_WORKLOAD=true dr workload config --yes --skip-env \
+dr workload config --yes --skip-env \
   --name <agent-name> --type agent \
   --build-mode generated \
   --execution-environment "[DataRobot] Python 3.12 Applications Base" \
@@ -59,7 +58,7 @@ Store each tool secret as a DataRobot credential yourself once the user has put 
 ## 4. Deploy
 
 ```bash
-DATAROBOT_CLI_FEATURE_WORKLOAD=true dr workload up --yes --output-format json
+dr workload up --yes --output-format json
 ```
 
 Tell the user it takes a couple of minutes. The first run creates the artifact, uploads the code, builds the image and starts the workload. Don't pass `--detach`; wait for it. The JSON has `workloadId`, `endpoint` and `status`.
@@ -68,13 +67,13 @@ Tell the user it takes a couple of minutes. The first run creates the artifact, 
 
 Redeploy with the same command. It only applies what changed. Env var, port or probe changes take seconds and don't rebuild. Code and dependency changes rebuild. Use `--force-build` only when a rebuild is needed and nothing changed, for example the image is gone from the registry.
 
-`up` only manages fields that `.datarobot.yaml` names, and it puts those back if someone changed them in the UI. Make changes in the file, not the UI. If the user says they changed a setting in DataRobot, run `--dry-run` first and tell them in plain words what would be changed back.
+`up` only manages fields that `.datarobot.yaml` names, and it puts those back if someone changed them in the UI. Make changes in the file, not the UI. If the user says they changed a setting in DataRobot, run `dr workload up --dry-run --diff` first. It prints every field the deploy would change and changes nothing. Tell the user in plain words what would be changed back.
 
 If the workload is locked (see 6), ask before every `up`: "This will update the agent people are using now. Go ahead?"
 
 If `up` or `config` fails, handle it yourself without asking the user:
 
-- `unknown command`: the CLI flag was missing. Rerun with `DATAROBOT_CLI_FEATURE_WORKLOAD=true` in front. If it's still unknown with the flag, go straight to the fallback below.
+- `unknown command`: the update didn't take. Go straight to the fallback below.
 - 403 `Workload API is disabled in feature flags`, from any call: the Workload API is off for the account. Don't retry and don't use the fallback, which calls the same API. Switch to Pulumi as in [references/deploy-path.md](references/deploy-path.md) and tell the user why.
 - Anything else that isn't about the app: read and follow `references/deploy-fallback.md`. Keep the app as it is. Only the deploy steps change.
 
@@ -84,8 +83,10 @@ If `up` or `config` fails, handle it yourself without asking the user:
 
 ```bash
 eval "$(dr auth export)"   # never print the token
-curl -sS -o /dev/null -w "%{http_code}\n" "<endpoint>/healthz"   # no token: expect 401
+curl -sS -o /dev/null -w "%{http_code}\n" "<endpoint>healthz"   # no token: expect 401
 ```
+
+`<endpoint>` ends with a slash, so append paths without one. A `503` with `No LRS is registered for this path` seconds after `up` reports the workload running means the route isn't live yet. Retry after 10 seconds and don't redeploy.
 
 A 200 means anyone with the link can use the agent, because the app has no sign-in of its own. Don't share the link. Tell the user: "Your agent is reachable without signing in to DataRobot. Please check with your DataRobot admin before sharing it."
 
@@ -101,6 +102,6 @@ If something breaks later:
 
 Ask the user about these in plain words and let them decide.
 
-- Keeping it on. Say: "Right now your agent turns off 8 hours after it starts, even if people are using it. Want me to make it permanent? Once I do, every future update replaces it without downtime. This can't be undone." If yes, run `DATAROBOT_CLI_FEATURE_WORKLOAD=true dr workload up --yes --lock`.
+- Keeping it on. Say: "Right now your agent turns off 8 hours after it starts, even if people are using it. Want me to make it permanent? Once I do, every future update replaces it without downtime. This can't be undone." If yes, run `dr workload promote --yes`. It locks the running draft in place without a restart. `dr workload up --yes --promote` does the same at the end of a deploy.
 - Sharing. Ask who should have access, by DataRobot username or email. Then do it yourself: `GET /workloads/{id}/sharedRoles`, add the new people, and `PATCH /workloads/{id}/sharedRoles` with the full list. The PATCH replaces the whole list, so keep the owner in it or they lose access. Roles are uppercase: `OWNER`, `USER`, `CONSUMER`. Use `CONSUMER` for people who only use the agent. If the body is rejected, the 422 names the expected shape. Tell the user that the people they added need to be signed in to DataRobot to open the link.
-- Removing it. Say: "If you want it gone later, just tell me." Then `dr workload stop` and `dr workload delete`.
+- Removing it. Say: "If you want it gone later, just tell me." Then `dr workload delete --purge --yes`. It removes the workload, its draft artifact and the local deploy state. A locked artifact and the credentials you stored yourself stay, so say so.
