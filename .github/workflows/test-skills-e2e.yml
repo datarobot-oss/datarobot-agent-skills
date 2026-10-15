@@ -61,7 +61,7 @@ jobs:
           DATAROBOT_ENDPOINT: ${{ secrets.DATAROBOT_ENDPOINT }}
           DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
           SKILLS_E2E_FORCE_ALL: ${{ github.event.inputs.force_all || '0' }}
-        run: uv run --group e2e pytest tests/e2e/ -v --tb=short
+        run: uv run --group e2e pytest tests/e2e/ -v --tb=short -rs
 
       - name: Save skill hash cache
         if: ${{ !cancelled() }}
