@@ -52,6 +52,7 @@ def run_executor(
     tools_path: Path,
     input_path: Path,
     readonly_tools: str = "fetch_records",
+    timeout: float | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     response_path = tmp_path / "response.json"
     result = subprocess.run(
@@ -69,6 +70,7 @@ def run_executor(
         ],
         capture_output=True,
         text=True,
+        timeout=timeout,
     )
     return result, response_path
 
@@ -275,3 +277,56 @@ def test_tool_executor_reexecs_into_project_venv(
     payload = json.loads(response_path.read_text(encoding="utf-8"))
     prefix = payload["return_value"]["prefix"]
     assert os.path.samefile(prefix, venv_dir)
+
+
+FAKE_VENV_EXIT_CODE = 42
+
+
+def make_fake_venv_python(project_dir: Path) -> None:
+    """Create a `.venv/bin/python3` that exits with FAKE_VENV_EXIT_CODE when run."""
+    python = project_dir / ".venv" / "bin" / "python3"
+    python.parent.mkdir(parents=True)
+    python.write_text(f"#!/bin/sh\nexit {FAKE_VENV_EXIT_CODE}\n", encoding="utf-8")
+    python.chmod(0o755)
+
+
+def write_tools(directory: Path) -> Path:
+    directory.mkdir(exist_ok=True)
+    tools_path = directory / "tools.py"
+    tools_path.write_text(
+        "def fetch_records(limit: int = 10):\n    return [limit]\n", encoding="utf-8"
+    )
+    return tools_path
+
+
+def test_tool_executor_reexecs_into_venv_found_in_a_parent_directory(
+    tmp_path: Path, input_package: Path
+) -> None:
+    make_fake_venv_python(tmp_path)
+    tools_path = write_tools(tmp_path / "agent")
+    result, _ = run_executor(tmp_path, tools_path, input_package)
+    assert result.returncode == FAKE_VENV_EXIT_CODE
+
+
+@pytest.mark.parametrize("marker", ["agent_spec.md", ".git"])
+def test_tool_executor_ignores_parent_venv_behind_a_project_marker(
+    tmp_path: Path, input_package: Path, marker: str
+) -> None:
+    make_fake_venv_python(tmp_path)
+    tools_path = write_tools(tmp_path / "agent")
+    (tools_path.parent / marker).touch()
+    result, response_path = run_executor(tmp_path, tools_path, input_package)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(response_path.read_text())["return_value"] == [3]
+
+
+def test_tool_executor_reexecs_only_once_when_venv_python_reports_another_prefix(
+    tmp_path: Path, tmp_tools: Path, input_package: Path
+) -> None:
+    # A symlink to a plain interpreter has no pyvenv.cfg beside it, so its
+    # sys.prefix never equals the .venv directory.
+    python = tmp_path / ".venv" / "bin" / "python3"
+    python.parent.mkdir(parents=True)
+    python.symlink_to(sys.executable)
+    result, _ = run_executor(tmp_path, tmp_tools, input_package, timeout=30)
+    assert result.returncode == 0, result.stderr
