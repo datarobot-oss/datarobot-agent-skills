@@ -85,6 +85,10 @@ jobs:
         if: steps.check.outputs.should_release == 'true'
         run: git tag "v${{ steps.bump.outputs.version }}"
 
+      - name: Build public Codex plugin package
+        if: steps.check.outputs.should_release == 'true'
+        run: task package:codex
+
       - name: Push release commit and tag
         if: steps.check.outputs.should_release == 'true'
         run: git push --atomic origin main "v${{ steps.bump.outputs.version }}"
@@ -100,4 +104,4 @@ jobs:
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > /tmp/release-notes.md
-          gh release create "v${VERSION}" --title "v${VERSION}" --notes-file /tmp/release-notes.md
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes-file /tmp/release-notes.md "dist/datarobot-agent-skills-${VERSION}.zip"

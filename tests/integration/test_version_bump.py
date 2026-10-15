@@ -26,6 +26,7 @@ VERSION_FILE_FIXTURES = {
     },
     ".cursor-plugin/plugin.json": {"name": "example-plugin", "version": "1.0.0"},
     ".codex-plugin/plugin.json": {"name": "example-plugin", "version": "1.0.0"},
+    "plugin.json": {"name": "example-plugin", "version": "1.0.0"},
     "gemini-extension.json": {"name": "example-plugin", "version": "1.0.0"},
 }
 

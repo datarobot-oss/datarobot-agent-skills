@@ -134,6 +134,11 @@ either direct OTel (`instrument_all()`) or Logfire, not both, to avoid duplicate
 
 ## Extra Dependencies
 
+Recommended, for intelligent trace analysis (see **Intelligent Trace Analysis via Tensile** below):
+```
+tensile>=0.12.0
+```
+
 None beyond the generic OTel packages.
 
 Optional (if using Logfire):
@@ -165,6 +170,22 @@ async def run_with_metrics(agent, prompt):
         raise
     finally:
         request_duration.record((time.time() - start) * 1000)
+```
+
+## Intelligent Trace Analysis via Tensile
+
+DataRobot provides intelligent trace analysis and remediation. This is made possible by the `tensile` package, which records agentic trajectories and allows them to be replayed. To enable this feature, the agent needs `tensile>=0.12.0` installed as a dependency and the OTel capture hook wired in directly after `configure_otel()`:
+
+```python
+from dr_otel_config import configure_otel
+
+configure_otel()
+
+import tensile.otel
+
+tensile.otel.install(tracer=False)
+
+from pydantic_ai import Agent  # PydanticAI imports and Agent.instrument_all() follow, as above
 ```
 
 ## Known Pitfalls

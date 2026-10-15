@@ -192,6 +192,7 @@ Available skills (in datarobot-* folders):
 - datarobot-setup: Local DataRobot development setup (SDK, dr-cli, Agent Assist)
 - datarobot-workload-api: Create, configure, debug, observe, and roll out container workloads on DataRobot's Workload API
 - datarobot-gap-analysis: Enterprise-readiness gap analysis for any agent repository
+- datarobot-connectivity-datastore-sql: SQL through DataRobot data connections (datastores)
 
 When asked to use a DataRobot skill, read the corresponding SKILL.md file for detailed guidance.
 ```
@@ -285,6 +286,7 @@ This repository contains skills for common DataRobot workflows. You can also con
 | `skills/datarobot-external-agent-monitoring/` | Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring and observability. Supports Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, and generic Python agents. | [SKILL.md](skills/datarobot-external-agent-monitoring/SKILL.md) |
 | `skills/datarobot-agent-assist/` | Build AI agents and deploy them to DataRobot. Supports building LangGraph, CrewAI, LlamaIndex, NAT and Base agents. Created agents can be bundled with MCP server, backend APIs & React frontend. | [SKILL.md](skills/datarobot-agent-assist/SKILL.md) |
 | `skills/datarobot-gap-analysis/` | Score any agent repository (DataRobot-built or not) against a 41-factor enterprise-readiness framework across seven risk pillars and four evaluation layers, then patch or guide the fixing of every gap found. | [SKILL.md](skills/datarobot-gap-analysis/SKILL.md) |
+| `skills/datarobot-connectivity-datastore-sql/` | Run SQL through DataRobot data connections: list connections, browse tables, preview rows, run queries, and run approved DML/DDL. | [SKILL.md](skills/datarobot-connectivity-datastore-sql/SKILL.md) |
 
 ## Using skills in your coding agent
 
@@ -308,6 +310,7 @@ Some skills include helper scripts that an agent can run directly:
 - **datarobot-data-preparation**: `upload_dataset.py`
 - **datarobot-external-agent-monitoring**: `create_shell_deployment.py`, `verify_otel_connection.py`
 - **datarobot-agent-assist**: `select_framework.py`, `clone_template.py`, `setup_template.py`, `list_llm_models.py`, `rehearsal.py`, `env_utils.py`
+- **datarobot-connectivity-datastore-sql**: `datastore_sql.py`
 
 These scripts are located in each skill's `scripts/` directory and can be executed directly or used as references when writing code.
 
