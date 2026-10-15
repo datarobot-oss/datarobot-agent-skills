@@ -14,7 +14,7 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
-- `datarobot-agent-assist-deploy-workload`: You can now deploy an agent that fits in one container with the Workload API (`dr workload up`) instead of as a custom application with Pulumi. It's quicker to deploy than the traditional deploy path. Agent assist picks the path for you. It checks that the Workload API is turned on for your account, leaves agents that are already deployed with Pulumi where they are, and still uses Pulumi when an agent needs a GPU, a standalone MCP server, guard models, or a lot of tools. If the Workload API is off for your account, it tells you to ask your admin and deploys the standard way instead. The new instructions are in `agent-assist-deploy-workload/`.
+- `datarobot-agent-assist-deploy-workload`: You can now deploy an agent that fits in one container with the Workload API (`dr workload up`) instead of as a custom application with Pulumi. It's quicker to deploy than the traditional deploy path. Agent assist picks the path for you. It checks that the Workload API is turned on for your account, uses Pulumi for projects that have an `infra/Pulumi.yaml`, and still uses Pulumi when an agent needs a GPU, a standalone MCP server, guard models, or a lot of tools. If the Workload API is off for your account, it tells you to ask your admin and deploys the standard way instead. The new instructions are in `agent-assist-deploy-workload/`.
 
 ## [1.21.0] - 2026-10-15
 

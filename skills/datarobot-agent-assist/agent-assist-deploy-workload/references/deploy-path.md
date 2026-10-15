@@ -2,14 +2,18 @@
 
 Agent assist can deploy an agent two ways:
 
-- **Workload API.** The agent, its tools, its API and its UI run in one container, and `dr workload up` builds and deploys it. Follow [../SKILL.md](../SKILL.md).
+- **Workload API.** For a project with no `infra/Pulumi.yaml`. The agent, its tools, its API and its UI run in one container, and `dr workload up` builds and deploys it. Follow [../SKILL.md](../SKILL.md).
 - **Custom application with Pulumi.** The agent template's own deploy. The agent, MCP server and web app are deployed separately. Follow [pre-deployment-checklist.md](../../agent-assist-build/references/pre-deployment-checklist.md).
 
-Both work for a project built from the agent template (option 2), and the Workload API also works for any other single Python project. Read `agent_spec.md` and the code in `<target_dir>` and make the call yourself. Don't ask the user to choose between architectures, and don't ask them the questions below. Run the checks yourself.
+The Workload API is for single Python projects that don't use a Pulumi template. Read `agent_spec.md` (when there is one) and the code in `<target_dir>` and make the call yourself. Don't ask the user to choose between architectures, and don't ask them the questions below. Run the checks yourself.
 
-## First, check the Workload API is on for this account
+## First, check for a Pulumi template
 
-The Workload API is switched on per account or organization. Check it before anything else:
+If `<target_dir>/infra/Pulumi.yaml` exists, use Pulumi and stop here. The project is the agent template or another Pulumi project, even when it would fit in one container. If it's already deployed with Pulumi, keep it there, or the user ends up with two copies. Switch only if the user asks, and tell them the old deployment keeps running until they remove it.
+
+## Then, check the Workload API is on for this account
+
+The Workload API is switched on per account or organization. Check it before the other checks:
 
 ```bash
 eval "$(dr auth export)"   # never print the token
@@ -20,7 +24,6 @@ A 403 that says `Workload API is disabled in feature flags` means it's off. That
 
 ## Use Pulumi if any of these are true
 
-- The agent is already deployed with Pulumi. Run `pulumi stack output --json` in `<target_dir>/infra` yourself. Template setup creates an empty stack, so a stack on its own doesn't count: `{}`, no stack, or an error means it isn't deployed. Only outputs listing resources mean it is. Then keep it there, or the user ends up with two copies. Switch only if the user asks, and tell them the old deployment keeps running until they remove it.
 - A tool needs a GPU, a lot of memory, or moves a lot of data (tens of GB). That tool should be its own deployment so it can scale on its own.
 - Some tools call complicated third-party systems that the user wants to deploy, debug and version separately from the agent.
 - The tools have to be published as a standalone MCP server that other agents or teams use on their own schedule. One agent serving chat, A2A, MCP and a web UI from the same process still fits in a single container.

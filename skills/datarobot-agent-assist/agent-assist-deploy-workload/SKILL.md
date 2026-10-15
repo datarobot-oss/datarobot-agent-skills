@@ -1,15 +1,17 @@
 ---
 name: datarobot-agent-assist-deploy-workload
-description: Use when an agent assist user wants to deploy their agent, put it on DataRobot, get a link to it, or share it with others, and the agent can run as a single container. Users usually just say "deploy" or "deploy to DataRobot" and won't mention containers, workloads or the CLI.
+description: Use when an agent assist user wants to deploy their agent, put it on DataRobot, get a link to it, or share it with others, the agent can run as a single container, and the project has no `infra/Pulumi.yaml`. Users usually just say "deploy" or "deploy to DataRobot" and won't mention containers, workloads or the CLI.
 ---
 
 # Agent Assist — Deploy via Workload API
 
-This is the path for agents that fit in one container. The agent, its tools, its API and its UI run in one process on one port, and `dr workload up` builds and deploys it. Anything that doesn't fit in one container is deployed as a custom application with Pulumi, which deploys the agent, MCP server and web app separately.
+This is the path for agents that fit in one container and don't use a Pulumi infrastructure-as-code template. A project with an `infra/Pulumi.yaml` is the agent template's Pulumi project and is deployed as a custom application with Pulumi, even when it could fit in one container. Anything that doesn't fit in one container is deployed the same way. Pulumi deploys the agent, MCP server and web app separately.
+
+On this path the agent, its tools, its API and its UI run in one process on one port, and `dr workload up` builds and deploys it.
 
 The user may not be technical. Do the technical steps yourself and explain what's happening in plain words. Don't ask them for ids, YAML or commands when you can find or run them yourself.
 
-Start from an implemented agent: a project built from the agent template (option 2), or any single Python project. `<target_dir>` is the directory that holds `agent_spec.md` and the agent code. If there is no spec, send the user to design first.
+Start from an implemented agent: a single Python project with no `infra/Pulumi.yaml`. `<target_dir>` is the directory that holds the agent code and, when there is one, `agent_spec.md`. Without a spec, work from the code.
 
 ## 1. Choose the deploy path
 
@@ -90,7 +92,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" "<endpoint>healthz"   # no token: expe
 
 A 200 means anyone with the link can use the agent, because the app has no sign-in of its own. Don't share the link. Tell the user: "Your agent is reachable without signing in to DataRobot. Please check with your DataRobot admin before sharing it."
 
-Then send one example from the spec's `examples` to the chat API with `-H "Authorization: Bearer $DATAROBOT_API_TOKEN"`. If it fails, check `dr workload logs --level error`. It's usually the env block from section 3. Then give the user the link and tell them to open it in a browser where they're signed in to DataRobot.
+Then send one example from the spec's `examples` to the chat API with `-H "Authorization: Bearer $DATAROBOT_API_TOKEN"`. With no spec, send a simple request that the code's API accepts. If it fails, check `dr workload logs --level error`. It's usually the env block from section 3. Then give the user the link and tell them to open it in a browser where they're signed in to DataRobot.
 
 If something breaks later:
 
