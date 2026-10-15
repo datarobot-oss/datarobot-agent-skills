@@ -196,6 +196,18 @@
         "show 10 rows from SALES.ORDERS in my DataRobot datastore",
         "insert rows into a Databricks table through my DataRobot data connection"
       ]
+    },
+    {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:connectivity-jdbc-sql",
+      "displayName": "datarobot-connectivity-jdbc-sql",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-connectivity-jdbc-sql/SKILL.md",
+      "description": "Run SQL through DataRobot against any reachable database with a caller-supplied JDBC URL — test connectivity, list tables and columns, run read queries, and run approved DML/DDL on PostgreSQL, MySQL, SQL Server, Snowflake, Databricks, Trino, SAP HANA/Datasphere, Redshift, or BigQuery, with secrets kept out of the chat.",
+      "representativeQueries": [
+        "run this SQL on jdbc:postgresql://... through DataRobot",
+        "list the tables in my SQL Server database via DataRobot",
+        "make Talk to My Data use the low-latency JDBC preview route"
+      ]
     }
   ]
 }

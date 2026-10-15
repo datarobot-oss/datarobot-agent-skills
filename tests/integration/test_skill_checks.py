@@ -255,6 +255,19 @@ def test_frontmatter_findings_rejects_unknown_key() -> None:
     ]
 
 
+def test_is_package_module_true_beside_init_file(tmp_path: Path) -> None:
+    (tmp_path / "__init__.py").write_text("")
+    module = tmp_path / "cli.py"
+    module.write_text("")
+    assert sc.is_package_module(module)
+
+
+def test_is_package_module_false_for_plain_script(tmp_path: Path) -> None:
+    script = tmp_path / "run.py"
+    script.write_text("")
+    assert not sc.is_package_module(script)
+
+
 def test_script_help_failure_reports_timeout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

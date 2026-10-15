@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-10-15
+
 ### Added
 
 - `datarobot-gap-analysis`: New skill. Scores an agent repository (a GitHub URL or local path, DataRobot-built or not) against a seven-pillar enterprise-readiness framework (Security, Identity, AI Governance, Reliability, Ops, IT Conformance, Regulatory & Policy) using deterministic scanners (secrets, CVEs, IaC, licenses, Dockerfiles, CI gates), LLM code review, policy conformance checks, and a regulatory layer sourced live from the org's DataRobot risk-management policy (EU AI Act by default), each gap resolved to numbered fix steps and a docs link. Recommends a Patch/Hybrid/Re-platform path onto DataRobot's agent template without changing the repo's existing framework unless asked. `--fix` applies safe fixes on a `gap-fixes/*` branch; `--verify` re-scores. Reports are Markdown and HTML.
@@ -21,10 +23,12 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 - `datarobot-agent-assist`: Layer-2 and secret-scanner findings are verified by a second LLM pass with line-accurate citations before being reported or fixed, so an unconfirmed secret is never auto-fixed. Large files reach the model as excerpts instead of head-truncated blobs, and each gateway model's output-token limit is raised so long replies no longer get cut mid-JSON.
 - `datarobot-agent-assist`: Reports open with a per-layer coverage summary and close with LLM Gateway token usage; timed-out checks list the command to rerun them. `--fix --from` reuses saved findings instead of re-analyzing, and findings that aren't auto-fixed ship a copy-ready prompt for the developer's own coding agent instead of a one-shot LLM edit.
 - `packages/datarobot-skills-utils`: New shared Python package (stdlib-only) providing the `dr opencode` runtime used by `datarobot-gap-analysis` and `datarobot-agent-assist`'s swarm simulation: server lifecycle management, worker invocation, JSONL event parsing with token/cost accounting, and reasoning-effort injection. Published to PyPI on every GitHub release, versioned independently of the plugin, and resolved automatically from a sibling checkout, an installed copy, or an exact-pinned PyPI install.
+- `datarobot-connectivity-jdbc-sql`: New skill for running SQL through DataRobot against a database reached with a caller-supplied JDBC URL and driver properties, without registering a data connection. It tests connectivity, lists tables and columns with dialect-aware catalog SQL, runs read queries via `/jdbcDataPreview/`, and runs DML/DDL via `/jdbcExecution/` only after a dry-run plan and an explicit `--confirm`. Secrets come from environment variables or `.env` and are masked in all output. Ships the standard-library `scripts/jdbc_sql.py` and references for the API contract, driver URL templates and dialect limits, and app integration, including a migration checklist for Talk to My Data.
 - `repo`: Added offline preflight tests that run before the paid LLM judge. They check the agentskills.io frontmatter limits, that linked files and script paths exist, that Python and shell samples parse, that scripts start with `--help`, and that no skill file holds an internal host, employee email, private IP address or credential. The e2e CI job also prints skip reasons now.
 
 ### Fixed
 
+- `repo`: Fixed the preflight `--help` check failing on modules inside a Python package. They use relative imports and cannot run as scripts, so the check now skips them.
 - `repo`: Fixed false INCOMPLETE verdicts in the e2e skill gate. A judge report with `## Overall Verdict` was read as INCOMPLETE because the report text mentioned "incomplete". The gate now reads the verdict line at any heading level.
 
 ## [1.19.0] - 2026-10-15

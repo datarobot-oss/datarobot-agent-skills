@@ -99,11 +99,24 @@ def sensitive_file_findings(skill_dir: Path) -> list[str]:
 def script_findings(skill_dir: Path, workdir: Path) -> list[str]:
     findings: list[str] = []
     for script in sorted(skill_dir.rglob("*.py")):
+        if sc.is_package_module(script):
+            continue
         if "argparse" not in script.read_text(encoding="utf-8"):
             continue
         if error := sc.script_help_failure(script, workdir):
             findings.append(f"{relative(script)}: {error}")
     return findings
+
+
+def test_script_findings_skips_modules_inside_packages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(globals(), "SKILLS_DIR", tmp_path)
+    package = tmp_path / "scripts" / "tool"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "cli.py").write_text("import argparse\nfrom . import helpers\n")
+    assert script_findings(tmp_path, tmp_path) == []
 
 
 def test_frontmatter_follows_agentskills_spec(skill_dir: Path) -> None:
