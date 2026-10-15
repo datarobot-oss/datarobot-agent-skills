@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-10-15
+
 ### Fixed
 
 - `datarobot-agent-assist-simulate`: Fixed `tool_executor.py` re-executing forever when the `.venv` interpreter reports a different `sys.prefix`, for example a `.venv` without `pyvenv.cfg`. It now re-execs at most once.
