@@ -30,6 +30,9 @@ e2e = [
 ]
 
 [tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests/integration"]
+addopts = "-ra --strict-markers --strict-config"
 
 [tool.mypy]
 # The strategy moving forward is to delete these one by one and get the errors back to zero.
