@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +65,7 @@ def _parse_tool_call(call: dict[str, Any]) -> tuple[str, list[str]]:
     except json.JSONDecodeError:
         return name, []
     if isinstance(args, dict):
-        return name, sorted(str(key) for key in args.keys())
+        return name, sorted(str(key) for key in args)
     return name, []
 
 
@@ -232,7 +232,7 @@ def write_rehearsal_report(
     target_dir = Path(str(config.get("target_dir") or ".")).resolve()
     spec_path = str(config.get("spec_path") or "agent_spec.md")
     started_at = str(config.get("started_at") or "unknown")
-    ended_at = datetime.now(timezone.utc).isoformat()
+    ended_at = datetime.now(UTC).isoformat()
     config["ended_at"] = ended_at
     tmp_config = config_file.with_suffix(".json.tmp")
     with tmp_config.open("w") as handle:
@@ -256,13 +256,15 @@ def write_rehearsal_report(
     unused_tools = sorted(set(defined_tools) - set(exercised_tools))
 
     notes = load_notes(session_dir)
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = datetime.now(UTC).isoformat()
 
     lines: list[str] = [
         "# Dress Rehearsal Report",
         "",
-        "> **Sharing notice:** This report may contain test inputs you typed during "
-        "rehearsal. Review before sharing externally.",
+        (
+            "> **Sharing notice:** This report may contain test inputs you typed during "
+            "rehearsal. Review before sharing externally."
+        ),
         "",
         "## Audit Metadata",
         f"- Spec file: `{spec_path}`",

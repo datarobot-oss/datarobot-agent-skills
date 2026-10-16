@@ -18,16 +18,17 @@ from __future__ import annotations
 import ast
 import inspect
 import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 import datarobot as dr
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 SKILLS_DIR = REPO_ROOT / "skills"
 
-PY_FENCE = re.compile(r"```(?:python|py)\n(.*?)```", re.S)
+PY_FENCE = re.compile(r"```(?:python|py)\n(.*?)```", re.DOTALL)
 SDK_ALIASES = {"dr", "datarobot"}
 
 # Nodes that introduce a new variable scope.  Type inference is per-scope so a
@@ -160,8 +161,10 @@ def _check_signature(
         out.append(
             (
                 "bad-kwarg",
-                f"`{display}()` got unexpected keyword(s) {sorted(unknown)}; "
-                f"valid: {sorted(names)[:9]}",
+                (
+                    f"`{display}()` got unexpected keyword(s) {sorted(unknown)}; "
+                    f"valid: {sorted(names)[:9]}"
+                ),
             )
         )
 
@@ -203,8 +206,10 @@ def _check_signature(
         out.append(
             (
                 "instance-method-on-class",
-                f"`{display}()` is an instance method reached through the class, "
-                "so there is no receiver; call it on an instance",
+                (
+                    f"`{display}()` is an instance method reached through the class, "
+                    "so there is no receiver; call it on an instance"
+                ),
             )
         )
     elif missing:

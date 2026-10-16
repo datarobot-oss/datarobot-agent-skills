@@ -280,7 +280,11 @@ def main() -> None:
         for attempt in range(max_attempts):
             try:
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=args.timeout
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=args.timeout,
+                    check=False,
                 )
             except subprocess.TimeoutExpired:
                 error = "timeout"
@@ -325,7 +329,7 @@ def main() -> None:
         if isolated_dir:
             shutil.rmtree(isolated_dir, ignore_errors=True)
         record: dict[str, object] = {
-            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "ts": datetime.datetime.now(datetime.UTC).isoformat(),
             "role": role,
             "run_dir": str(args.response_path.parent),
             "model": args.model,

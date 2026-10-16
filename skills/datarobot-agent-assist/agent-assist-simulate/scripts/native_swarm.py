@@ -82,7 +82,7 @@ def _run_worker(
     ]
     if rejection_note:
         cmd += ["--rejection-note", rejection_note]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         print(result.stderr or result.stdout, file=sys.stderr)
     return result.returncode == 0
@@ -108,7 +108,9 @@ def _run_tool_executor(
         ",".join(sorted(readonly_tools)),
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
+        )
     except subprocess.TimeoutExpired:
         print(f"tool_executor timed out after {timeout}s", file=sys.stderr)
         return False
@@ -131,6 +133,7 @@ def _submit(run_dir: Path, response_path: Path) -> tuple[dict[str, object], str 
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         stderr = result.stderr or ""
@@ -153,6 +156,7 @@ def _fail(run_dir: Path, reason: str) -> None:
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         print(

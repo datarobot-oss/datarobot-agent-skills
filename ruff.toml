@@ -1,20 +1,16 @@
 # Ruff configuration for DataRobot Agent Skills
 # https://docs.astral.sh/ruff/configuration/
 
+target-version = "py312"
+
 [lint]
-# The pre-0.16 default rules (E4, E7, E9, F) plus import order, bugbear and the
-# bandit security rules. The list is explicit because ruff 0.16 grew its default
-# set from 59 to 413 rules. Skill scripts are copied by agents, so unsafe calls in
-# them spread. pyupgrade (UP) is left out on purpose: skill scripts run in users'
-# environments, and its rewrites (datetime.UTC, TimeoutError) need Python 3.10
-# or 3.11.
-select = ["E4", "E7", "E9", "F", "I", "B", "S"]
+# Ruff's default rules plus import order, bugbear and the bandit security rules.
+# Skill scripts are copied by agents, so unsafe calls in them spread.
+extend-select = ["I", "B", "S"]
 ignore = [
     # Skill scripts are often snippets/examples where variables like `client` are
     # initialized but may not be fully used.
     "F841",
-    # `zip(strict=True)` needs Python 3.10.
-    "B905",
     # Tests use bare asserts.
     "S101",
     # Scripts call CLIs such as `dr` and `git` by name on purpose.

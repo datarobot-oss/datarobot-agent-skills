@@ -71,6 +71,7 @@ def run_executor(
         capture_output=True,
         text=True,
         timeout=timeout,
+        check=False,
     )
     return result, response_path
 
@@ -229,6 +230,7 @@ def test_tool_executor_replaces_fixture_worker_in_full_pipeline(
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 
@@ -257,6 +259,7 @@ def test_tool_executor_reexecs_into_project_venv(
         [sys.executable, "-m", "venv", str(venv_dir)],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert created.returncode == 0, created.stderr
     venv_python = venv_dir / "bin" / "python3"
