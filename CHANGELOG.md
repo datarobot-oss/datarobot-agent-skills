@@ -17,7 +17,7 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 ### Changed
 
 - `repo`: Pinned the ruff rule set to the pre-0.16 defaults plus import order, bugbear and security rules, and excluded Markdown from `ruff format`, so upgrading ruff to 0.16 or later no longer adds rules or reformats skill docs.
-- `repo`: Adopted ruff's expanded default rules with a Python 3.12 target and fixed what they found in the skill scripts and tests: `datetime.UTC`, an explicit `check=` on `subprocess.run`, `zip(strict=True)`, executable bits on scripts with a shebang, and parenthesized implicit string concatenations. `zip` in the `list_llm_models.py` table renderer now raises on mismatched lengths instead of truncating.
+- `repo`: Raised `requires-python` to 3.12, adopted ruff's expanded default rules and fixed what they found in the skill scripts and tests: `datetime.UTC`, an explicit `check=` on `subprocess.run`, `zip(strict=True)`, executable bits on scripts with a shebang, and parenthesized implicit string concatenations. `zip` in the `list_llm_models.py` table renderer now raises on mismatched lengths instead of truncating.
 
 ## [1.23.0] - 2026-10-16
 

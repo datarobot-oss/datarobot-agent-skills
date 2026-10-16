@@ -2,7 +2,7 @@
 name = "datarobot-agent-skills"
 version = "0.0.1"
 description = "DataRobot agent skills"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = []
 
 [dependency-groups]
