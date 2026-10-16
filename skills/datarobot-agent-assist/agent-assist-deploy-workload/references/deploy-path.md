@@ -13,7 +13,7 @@ If `<target_dir>/infra/Pulumi.yaml` exists, use Pulumi and stop here. The projec
 
 ## Then, check the Workload API is on for this account
 
-The Workload API is switched on per account or organization. Check it before the other checks:
+The Workload API is switched on per account or organization. Check it before the other checks. The check needs the CLI installed and signed in. If `dr` is missing or `dr auth check` fails, do steps 1 to 3 of section 2 in [../SKILL.md](../SKILL.md) first.
 
 ```bash
 eval "$(dr auth export)"   # never print the token

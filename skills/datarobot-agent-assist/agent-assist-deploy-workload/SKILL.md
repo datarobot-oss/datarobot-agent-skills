@@ -22,7 +22,7 @@ If agent assist hasn't already picked this path, read and follow [references/dep
 1. `dr --version`. If missing, run `curl https://cli.datarobot.com/install | sh`.
 2. `dr self update --force`. Always run it. Don't try to judge whether the installed version is new enough.
 3. `dr auth check`. If it fails, run `dr auth login`. It opens a browser. Tell the user: "A DataRobot sign-in page just opened. Sign in there and come back."
-4. `dr workload up --help`. If it says unknown command, the update didn't take. Don't ask the user to fix it. Use `references/deploy-fallback.md` when you get to section 4.
+4. `dr workload up --help`. If it says unknown command, the update didn't take. Don't ask the user to fix it. In section 3, still check the app and store the tool secrets, but skip `dr workload config`, which is missing too. Then deploy with `references/deploy-fallback.md` instead of section 4.
 
 ## 3. Configure the deploy (once)
 
