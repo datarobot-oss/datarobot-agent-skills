@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-agent-assist-deploy-workload`: New sub-skill that deploys a single-container agent with the Workload API (`dr workload up`) instead of Pulumi. It applies to projects without an `infra/Pulumi.yaml`. Agent assist still uses Pulumi for the agent template, for agents that need a GPU, a standalone MCP server, guard models or many tools, and when the Workload API is off for the account.
+
 ## [1.24.0] - 2026-10-16
 
 ### Changed
