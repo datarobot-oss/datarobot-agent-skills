@@ -641,7 +641,10 @@ def format_table(
         grid.append(cells + [""] * (count - len(cells)))
     widths = [max(len(r[i]) for r in grid) for i in range(count)]
     lines = [
-        " | ".join(text.ljust(w) for text, w in zip(row, widths, strict=True)).rstrip()
+        " | ".join(
+            text.ljust(w)
+            for text, w in zip(row, widths)  # noqa: B905 - the skill supports Python 3.9
+        ).rstrip()
         for row in grid
     ]
     lines.insert(1, "-+-".join("-" * w for w in widths))
