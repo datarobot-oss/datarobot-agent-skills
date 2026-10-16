@@ -8,6 +8,15 @@ The shell's working directory often isn't `<target_dir>`. Pass `--dir <target_di
 
 For REST, get credentials into the shell without printing them: `eval "$(dr auth export)"`. Base URL is `$DATAROBOT_ENDPOINT` (ends in `/api/v2`), header `Authorization: Bearer $DATAROBOT_API_TOKEN`.
 
+## Check what already exists
+
+A failed `up` or `config` may have created an artifact or a workload, and `.datarobot.yaml` may already hold a `workloadId`. Creating again starts a second copy. Before the first deploy:
+
+1. If `<target_dir>/.datarobot.yaml` has a `workloadId`, or `<target_dir>/.workload-id` exists, this is a redeploy. Skip First deploy and follow Redeploy.
+2. Otherwise run `dr workload list --output-format json` and look for the agent's name. If it's there, use that workload for Redeploy and don't create another.
+3. Run `dr artifact list --output-format json` the same way. If an artifact has the agent's name, reuse it: skip First deploy step 2 and start at step 3 with its id.
+4. If none exists, follow First deploy.
+
 ## First deploy
 
 1. Find an execution environment. You need its id and its `latestSuccessfulVersion.id`, not `latestVersion`, which can point at a failed build.
