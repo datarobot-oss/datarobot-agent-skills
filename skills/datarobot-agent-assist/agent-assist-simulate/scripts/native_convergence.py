@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -110,10 +110,8 @@ def initialize(
         status="open" if has_breaches else "complete",
         spec_path=str(resolved_spec),
         convergence_dir=str(resolved_convergence_dir),
-        started_at=datetime.now(timezone.utc).isoformat(),
-        completed_at=datetime.now(timezone.utc).isoformat()
-        if not has_breaches
-        else None,
+        started_at=datetime.now(UTC).isoformat(),
+        completed_at=datetime.now(UTC).isoformat() if not has_breaches else None,
         actual_model=actual_model,
         config=config,
         initial_results=initial_results,
@@ -186,7 +184,7 @@ def advance(
 
     if not any(r.status == "breach" for r in state.latest_results):
         state.status = "complete"
-        state.completed_at = datetime.now(timezone.utc).isoformat()
+        state.completed_at = datetime.now(UTC).isoformat()
 
     write_json(state_path, state.model_dump(mode="json"))
     return _status_payload(state, resolved_convergence_dir)

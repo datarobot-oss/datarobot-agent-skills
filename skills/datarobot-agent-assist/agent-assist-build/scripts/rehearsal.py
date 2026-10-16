@@ -37,7 +37,7 @@ import urllib.request
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -823,7 +823,7 @@ def _simulation_model_was_substituted(
 
 
 def _new_session_id() -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"{timestamp}_{uuid.uuid4().hex[:8]}"
 
 
@@ -933,7 +933,7 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
         json.dump(
             {
                 "session_id": session_id,
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.now(UTC).isoformat(),
                 "spec_path": str(Path(spec_path).resolve()),
                 "requested_model": requested_model,
                 "requested_deployment_id": requested_deployment_id,
@@ -1133,7 +1133,7 @@ def cmd_note(session_dir: str, note_text: str) -> None:
     notes.append(
         {
             "text": note,
-            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "recorded_at": datetime.now(UTC).isoformat(),
         }
     )
     _save_notes(session_dir, notes)
