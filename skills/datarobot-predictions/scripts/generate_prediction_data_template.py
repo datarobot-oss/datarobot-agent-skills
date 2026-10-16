@@ -108,7 +108,7 @@ def generate_prediction_data_template(
                             "max": stats.max,
                             "median": stats.median,
                         }
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 - best-effort statistics, fall back to the placeholder
                 pass  # keep the type placeholder for this feature
 
     # Generate template rows with sample values

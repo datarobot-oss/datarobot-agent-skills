@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -12,7 +11,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[2] / (
 )
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from rehearsal import (  # noqa: E402
+from rehearsal import (
     DONE_HINT,
     TURN_DECORATION,
     capture_output,

@@ -18,6 +18,25 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-agent-assist-deploy-workload`: New sub-skill that deploys a single-container agent with the Workload API (`dr workload up`) instead of Pulumi. It applies to projects without an `infra/Pulumi.yaml`. Agent assist still uses Pulumi for the agent template, for agents that need a GPU, a standalone MCP server, guard models or many tools, and when the Workload API is off for the account.
 
+## [1.24.0] - 2026-10-16
+
+### Changed
+
+- `repo`: Pinned the ruff rule set to the pre-0.16 defaults plus import order, bugbear and security rules, and excluded Markdown from `ruff format`, so upgrading ruff to 0.16 or later no longer adds rules or reformats skill docs.
+- `repo`: Raised `requires-python` to 3.12, adopted ruff's expanded default rules and fixed what they found in the skill scripts and tests: `datetime.UTC`, an explicit `check=` on `subprocess.run`, `zip(strict=True)`, executable bits on scripts with a shebang, and parenthesized implicit string concatenations. `zip` in the `list_llm_models.py` table renderer now raises on mismatched lengths instead of truncating.
+
+## [1.23.0] - 2026-10-16
+
+### Fixed
+
+- `datarobot-connectivity-jdbc-sql`: Fixed `tables` and `columns` building SQL that a name with a backslash could break out of on Snowflake, Redshift and other dialects that read `\'` as an escaped quote. Backslashes are now doubled in every catalog value, and BigQuery, Databricks and Spark reject a backslash in a catalog or schema name. Documented each remaining string-built query with an inline `noqa` and its reason.
+
+## [1.22.0] - 2026-10-15
+
+### Fixed
+
+- `datarobot-agent-assist-simulate`: Fixed `tool_executor.py` re-executing forever when the `.venv` interpreter reports a different `sys.prefix`, for example a `.venv` without `pyvenv.cfg`. It now re-execs at most once.
+
 ## [1.21.0] - 2026-10-15
 
 ### Fixed
@@ -30,6 +49,11 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-connectivity-jdbc-sql`: New skill for running SQL through DataRobot against a database reached with a caller-supplied JDBC URL and driver properties, without registering a data connection. It tests connectivity, lists tables and columns with dialect-aware catalog SQL, runs read queries via `/jdbcDataPreview/`, and runs DML/DDL via `/jdbcExecution/` only after a dry-run plan and an explicit `--confirm`. Secrets come from environment variables or `.env` and are masked in all output. Ships the standard-library `scripts/jdbc_sql.py` and references for the API contract, driver URL templates and dialect limits, and app integration, including a migration checklist for Talk to My Data.
 - `repo`: Added offline preflight tests that run before the paid LLM judge. They check the agentskills.io frontmatter limits, that linked files and script paths exist, that Python and shell samples parse, that scripts start with `--help`, and that no skill file holds an internal host, employee email, private IP address or credential. The e2e CI job also prints skip reasons now.
+- `repo`: Added ruff import-order, bugbear and security rules, a repo-wide shellcheck glob, actionlint for workflows, `claude plugin validate skills`, and Dependabot for GitHub Actions, uv and npm. CI now fails on Trivy secret findings and when the e2e job skips skills because the LLM gateway call failed.
+
+### Changed
+
+- `datarobot-agent-assist`: `setup_template.py` runs its Pulumi, `dr` and `task` commands without a shell. A missing tool now fails with an error message instead of a shell exit code.
 
 ### Fixed
 

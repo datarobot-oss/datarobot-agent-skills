@@ -4,7 +4,7 @@
 
 """Deterministic final-outcome aggregation and report rendering."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ def write_native_report(
     ready = len(outcomes) == counts["passed"] and len(outcomes) == len(
         state.initial_results.scenarios
     )
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = datetime.now(UTC).isoformat()
     model_name = state.actual_model or "unknown (not exposed by harness)"
     fail_on = ", ".join(state.config.evaluation.fail_on)
     initial_by_id = {
@@ -124,27 +124,35 @@ def write_native_report(
         lines += ["No failures or confirmed-scenario coverage gaps.", ""]
     for result in error_results:
         lines += [
-            f"- Scenario `{result.scenario.scenario_id}` errored: "
-            f"{result.evaluation_reason or result.breach_reason or 'unknown error'}"
+            (
+                f"- Scenario `{result.scenario.scenario_id}` errored: "
+                f"{result.evaluation_reason or result.breach_reason or 'unknown error'}"
+            )
         ]
     for result in unresolved:
         lines += [
-            f"- Scenario `{result.scenario.scenario_id}` remains {result.status}: "
-            f"{result.breach_reason or result.evaluation_reason or 'unresolved violation'}"
+            (
+                f"- Scenario `{result.scenario.scenario_id}` remains {result.status}: "
+                f"{result.breach_reason or result.evaluation_reason or 'unresolved violation'}"
+            )
         ]
     lines.append("")
 
     lines += ["## Next Steps", ""]
     if ready:
         lines += [
-            "All confirmed scenarios passed. This simulated evaluation is ready for the next "
-            "deployment workflow stage.",
+            (
+                "All confirmed scenarios passed. This simulated evaluation is ready for the next "
+                "deployment workflow stage."
+            ),
             "",
         ]
     else:
         lines += [
-            "The agent is not ready based on this evaluation. Resolve the failures or unresolved "
-            "scenarios above, then rerun the simulation.",
+            (
+                "The agent is not ready based on this evaluation. Resolve the failures or unresolved "
+                "scenarios above, then rerun the simulation."
+            ),
             "",
         ]
 

@@ -185,7 +185,7 @@ def _breach_list_from_state(state: native.NativeConvergenceState) -> list[dict]:
 
 
 def test_initialize_returns_breach_evidence(tmp_path: Path) -> None:
-    payload, convergence_dir, scenarios = initialize_project(
+    payload, _convergence_dir, scenarios = initialize_project(
         tmp_path, ("breach", "passed", "error")
     )
 
@@ -274,7 +274,7 @@ def test_initialize_rejects_path_escape(tmp_path: Path) -> None:
 
 
 def test_advance_passed_rerun_completes_convergence(tmp_path: Path) -> None:
-    payload, convergence_dir, scenarios = initialize_project(tmp_path, ("breach",))
+    _payload, convergence_dir, scenarios = initialize_project(tmp_path, ("breach",))
     sid = scenarios[0].scenario_id
     run_dir = write_rerun_result(convergence_dir, sid, "passed")
 
@@ -294,7 +294,7 @@ def test_advance_passed_rerun_completes_convergence(tmp_path: Path) -> None:
 
 
 def test_advance_still_breaching_increments_iteration(tmp_path: Path) -> None:
-    payload, convergence_dir, scenarios = initialize_project(
+    _payload, convergence_dir, scenarios = initialize_project(
         tmp_path, ("breach",), max_iterations=3
     )
     sid = scenarios[0].scenario_id
@@ -311,7 +311,7 @@ def test_advance_still_breaching_increments_iteration(tmp_path: Path) -> None:
 
 
 def test_advance_breach_at_max_iterations_becomes_exhausted(tmp_path: Path) -> None:
-    payload, convergence_dir, scenarios = initialize_project(
+    _payload, convergence_dir, scenarios = initialize_project(
         tmp_path, ("breach",), max_iterations=1
     )
     sid = scenarios[0].scenario_id
@@ -358,7 +358,7 @@ def test_advance_rejects_running_rerun(tmp_path: Path) -> None:
 
 
 def test_advance_rejects_already_complete(tmp_path: Path) -> None:
-    payload, convergence_dir, scenarios = initialize_project(tmp_path, ("passed",))
+    _payload, convergence_dir, _scenarios = initialize_project(tmp_path, ("passed",))
 
     with pytest.raises(ValueError, match="already complete"):
         native.advance(tmp_path / "agent_spec.md", convergence_dir, [])
@@ -413,7 +413,7 @@ def test_report_exhausted_blocks_readiness(tmp_path: Path) -> None:
 
 
 def test_report_resolved_breach_shows_convergence_outcome(tmp_path: Path) -> None:
-    payload, convergence_dir, scenarios = initialize_project(tmp_path, ("breach",))
+    _payload, convergence_dir, scenarios = initialize_project(tmp_path, ("breach",))
     sid = scenarios[0].scenario_id
     run_dir = write_rerun_result(convergence_dir, sid, "passed")
     native.advance(tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)])
