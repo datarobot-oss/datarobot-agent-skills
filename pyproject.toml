@@ -8,7 +8,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "mypy>=1.10",
-    "ruff==0.15.22",
+    "ruff==0.17.0",
 ]
 integration = [
     "datarobot-predict",
