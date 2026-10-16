@@ -25,7 +25,8 @@
   "files": [
     ".opencode-plugin/index.ts",
     ".opencode-plugin/themes/",
-    "skills/"
+    "skills/",
+    "packages/"
   ],
   "dependencies": {
     "@opencode-ai/plugin": "1.19.0"

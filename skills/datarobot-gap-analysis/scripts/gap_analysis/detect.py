@@ -1,0 +1,724 @@
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Layer 2 (LLM reasoning over code) detection runner.
+
+Layer 4 (regulatory) lives entirely in risk_management.py: it's driven by a
+live DataRobot risk-management policy rather than taxonomy.yaml conditions,
+so it has no LLM-prompt-based runner here.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import json
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from collections.abc import Callable
+from typing import Any
+
+from . import paths
+from .conformance import llm_gateway_models
+from .inventory import evidence_files, glob_match
+from .llm import LLMClient, brief_error, parse_json
+from .models import ConditionSkip, Finding, Severity
+from .settings import DEFAULTS, Settings
+from .taxonomy import Condition, Taxonomy
+
+_MAX_FILES = 12  # cap files fed per condition
+_DR_APP_CONTEXT_FILE = "prompts/_deployment_datarobot_app.md"
+NO_LLM_NOTE = (
+    "Layers 2 and 4 (LLM) skipped: no model client. Install the DataRobot CLI "
+    "(run the datarobot-setup skill) and log in with `dr auth login` so checks run "
+    "through `dr opencode`. Half of the framework is not assessed until then."
+)
+_DEFAULT_MAX_BYTES = 200_000
+_DEFAULT_MAX_WORKERS = 4
+_SUBMIT_STAGGER_SECONDS = 0.25  # avoid a thundering herd on the LLM backend
+
+
+def _load_prompt(detector: str) -> str:
+    """Load a prompt file, resolving an optional #anchor section."""
+    ref, _, anchor = detector.partition("#")
+    text = paths.resolve(ref).read_text()
+    if not anchor:
+        return text
+    # Return the section whose heading carries {#anchor}
+    sections = text.split("\n## ")
+    for sec in sections:
+        if f"{{#{anchor}}}" in sec.split("\n", 1)[0]:
+            return "## " + sec
+    return text
+
+
+# Test and fixture code is never evidence for a production-readiness check.
+_TEST_PATHS = [
+    "**/tests/**",
+    "**/test/**",
+    "**/__tests__/**",
+    "**/fixtures/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py",
+    "**/*.spec.*",
+    "**/*.test.*",
+]
+# Build-time and infrastructure files, skipped for runtime-behaviour checks.
+_NON_RUNTIME_PATHS = [
+    "**/infra/**",
+    "**/migrations/**",
+    "**/alembic/**",
+    "**/alembic*.py",
+    "**/.github/**",
+    "**/Taskfile*",
+    "**/Pulumi*.yaml",
+    "**/Dockerfile*",
+]
+
+
+def layer2_files(
+    inventory: dict[str, Any], cond: Condition, limit: int = _MAX_FILES
+) -> list[str]:
+    """Evidence files for a Layer 2 condition, minus tests and, for runtime
+    checks, minus IaC/migration/CI files; a condition whose own globs name test
+    or infra paths keeps them."""
+    wants_tests = any("test" in g for g in cond.files_glob)
+    wants_infra = any("infra" in g for g in cond.files_glob)
+    excluded: list[str] = []
+    if not wants_tests:
+        excluded += _TEST_PATHS
+    if cond.runtime_only and not wants_infra:
+        excluded += _NON_RUNTIME_PATHS
+    return [
+        f
+        for f in evidence_files(inventory, cond.files_glob, limit * 3)
+        if not any(glob_match(f, g) for g in excluded)
+    ][:limit]
+
+
+@dataclass
+class FileView:
+    """One file as the model sees it: `shown` is numbered and may be an
+    excerpt, `raw` is the whole file for line snapping and verification."""
+
+    rel: str
+    raw: str
+    shown: str
+    excerpted: bool = False
+
+
+# A file over this size goes in as an excerpt rather than a head-truncated
+# blob: one 137 KB module otherwise crowds out every other file in the prompt
+# and pushes the call past its deadline.
+_EXCERPT_OVER_CHARS = 48_000
+_EXCERPT_HEAD_LINES = 40
+_EXCERPT_WINDOW_LINES = 20
+_EXCERPT_MAX_WINDOWS = 12
+_SKELETON_RE = re.compile(
+    r"^\s*(?:@\w|(?:async\s+)?def\s|class\s|import\s|from\s+\S+\s+import\s"
+    r"|export\s|function\s|(?:const|let|var)\s)"
+)
+
+
+def _hint_regex(cond: Condition) -> re.Pattern[str] | None:
+    if not cond.hint_patterns:
+        return None
+    try:
+        return re.compile("|".join(f"(?:{p})" for p in cond.hint_patterns))
+    except re.error:
+        return None
+
+
+def excerpt(raw: str, pattern: re.Pattern[str] | None) -> str:
+    """The header, every definition line, and windows around lines matching
+    `pattern`, numbered with the file's real line numbers and gaps marked."""
+    lines = raw.splitlines()
+    keep = set(range(1, min(_EXCERPT_HEAD_LINES, len(lines)) + 1))
+    keep.update(i for i, line in enumerate(lines, 1) if _SKELETON_RE.match(line))
+    windows = 0
+    if pattern is not None:
+        for i, line in enumerate(lines, 1):
+            if pattern.search(line):
+                lo, hi = max(1, i - _EXCERPT_WINDOW_LINES), i + _EXCERPT_WINDOW_LINES
+                keep.update(range(lo, min(len(lines), hi) + 1))
+                windows += 1
+                if windows >= _EXCERPT_MAX_WINDOWS:
+                    break
+    out: list[str] = []
+    prev = 0
+    for i in sorted(keep):
+        if i != prev + 1:
+            out.append(f"… lines {prev + 1}-{i - 1} omitted …")
+        out.append(f"{i}| {lines[i - 1]}")
+        prev = i
+    if prev < len(lines):
+        out.append(f"… lines {prev + 1}-{len(lines)} omitted …")
+    text = "\n".join(out)
+    if len(text) > _EXCERPT_OVER_CHARS:
+        text = text[:_EXCERPT_OVER_CHARS] + "\n…[truncated]…"
+    return text
+
+
+def _gather_files(
+    workspace: Path, inventory: dict[str, Any], cond: Condition, max_bytes: int
+) -> list[FileView]:
+    rels = layer2_files(inventory, cond, _MAX_FILES)
+    pattern = _hint_regex(cond)
+    out: list[FileView] = []
+    for rel in rels:
+        p = workspace / rel
+        try:
+            data = p.read_text(errors="ignore")
+        except Exception:
+            continue
+        # NUL bytes survive errors="ignore" but cannot travel in a subprocess
+        # argv (the opencode worker path) and break most JSON transports.
+        data = data.replace("\x00", "")
+        if len(data) > min(_EXCERPT_OVER_CHARS, max_bytes):
+            out.append(FileView(rel, data, excerpt(data, pattern), excerpted=True))
+        else:
+            out.append(FileView(rel, data, number_lines(data)))
+    return out
+
+
+def number_lines(text: str) -> str:
+    return "\n".join(f"{i}| {line}" for i, line in enumerate(text.splitlines(), 1))
+
+
+_HINT_EXTS = (
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".json",
+    ".cfg",
+    ".ini",
+)
+_HINT_MAX_LINES = 40
+_HINT_MAX_PER_FILE = 4
+
+
+def hint_hits(workspace: Path, inventory: dict[str, Any], cond: Condition) -> list[str]:
+    """`path:line: text` grep hits for the condition's hint_patterns across the
+    repo (tests excluded), so the model sees evidence outside its file cap."""
+    pattern = _hint_regex(cond)
+    if pattern is None:
+        return []
+    excluded = list(_TEST_PATHS)
+    if cond.runtime_only:
+        excluded += _NON_RUNTIME_PATHS
+    hits: list[str] = []
+    for rel in inventory.get("files", []):
+        if not rel.endswith(_HINT_EXTS) or any(glob_match(rel, g) for g in excluded):
+            continue
+        try:
+            text = (workspace / rel).read_text(errors="ignore")
+        except OSError:
+            continue
+        per_file = 0
+        for i, line in enumerate(text.splitlines(), 1):
+            if pattern.search(line):
+                hits.append(f"{rel}:{i}: {line.strip()[:160]}")
+                per_file += 1
+                if per_file >= _HINT_MAX_PER_FILE:
+                    break
+        if len(hits) >= _HINT_MAX_LINES:
+            break
+    return hits[:_HINT_MAX_LINES]
+
+
+_EXCERPT_TAG = (
+    " (EXCERPT: header, definitions and windows around relevant lines; "
+    "real line numbers, gaps marked)"
+)
+
+
+def _build_user_message(
+    files: list[FileView],
+    hints: list[str] | None = None,
+    extra_sections: list[tuple[str, str]] | None = None,
+) -> str:
+    parts = [
+        f"=== FILE: {v.rel}{_EXCERPT_TAG if v.excerpted else ''} ===\n{v.shown}"
+        for v in files
+    ]
+    if hints:
+        parts.append(
+            "=== REPO-WIDE EVIDENCE HINTS (grep hits from files not shown above) ===\n"
+            + "\n".join(hints)
+        )
+    for title, body in extra_sections or []:
+        parts.append(f"=== {title} ===\n{body}")
+    return "\n\n".join(parts)
+
+
+_LINE_PREFIX_RE = re.compile(r"^\s*\d+\|\s?")
+_CODE_CHARS = set("()[]{}=:;\"'<>")
+
+
+def _norm(text: str) -> str:
+    return "".join(text.split())
+
+
+def snap_line(raw: str, item: dict[str, Any]) -> bool | None:
+    """Move `line` onto the line that actually holds the quoted evidence.
+
+    Returns True when the evidence was located, False when it looks like code
+    but is nowhere in the file, None when it is prose and cannot be checked.
+    """
+    evidence = str(item.get("evidence") or "")
+    candidates = [
+        _LINE_PREFIX_RE.sub("", line).strip() for line in evidence.splitlines()
+    ]
+    candidates = [c for c in candidates if len(c) >= 8 and set(c) & _CODE_CHARS]
+    if not candidates:
+        return None
+    lines = raw.splitlines()
+    normalized = [_norm(line) for line in lines]
+    for cand in candidates:
+        key = _norm(cand)
+        for i, line in enumerate(normalized, 1):
+            if key and key in line:
+                item["line"] = i
+                return True
+        # Model answers often quote a fragment of a longer statement.
+        head = key[:24]
+        if len(head) >= 16:
+            for i, line in enumerate(normalized, 1):
+                if head in line:
+                    item["line"] = i
+                    return True
+    return False
+
+
+_SEVERITY_ORDER = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW]
+
+
+def lower_severity(sev: Severity) -> Severity:
+    i = _SEVERITY_ORDER.index(sev)
+    return _SEVERITY_ORDER[min(i + 1, len(_SEVERITY_ORDER) - 1)]
+
+
+def _group_by_root_cause(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Locations sharing a root cause collapse into one finding listing them."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for n, it in enumerate(items):
+        key = _norm(str(it.get("root_cause") or "")).lower() or f"__{n}"
+        if key not in groups:
+            order.append(key)
+        groups.setdefault(key, []).append(it)
+    out = []
+    for key in order:
+        grp = groups[key]
+        merged = _merge_locations(grp) if len(grp) > 1 else grp[0]
+        out.append(merged)
+    return out
+
+
+def _result_to_findings(cond: Condition, result: dict[str, Any]) -> list[Finding]:
+    items = list(result.get("findings", []) or [])
+    if cond.scope == "repo" and len(items) > 1:
+        items = [_merge_locations(items)]
+    elif len(items) > 1:
+        items = _group_by_root_cause(items)
+    findings = []
+    for item in items:
+        conf = item.get("confidence", "high")
+        severity = cond.severity
+        if item.get("severity_adjustment") == "lower" or item.get("_weakened"):
+            severity = lower_severity(severity)
+        explanation = str(item.get("explanation", ""))
+        if item.get("severity_reason"):
+            explanation += f" Severity lowered: {item['severity_reason']}"
+        findings.append(
+            Finding(
+                condition_id=cond.id,
+                pillar=cond.pillar,
+                severity=severity,
+                title=cond.title,
+                file=item.get("file"),
+                line=item.get("line"),
+                evidence=str(item.get("evidence", ""))[:500],
+                explanation=explanation,
+                remediation=cond.remediation,
+                fix_type=cond.fix_type,
+                fix_strategy=cond.fix_strategy,
+                fix_risk=cond.fix_risk,
+                confidence=conf,
+                layer=cond.layer,
+                detector=cond.detector,
+                root_cause=str(item.get("root_cause") or ""),
+                verified=bool(item.get("_verified")),
+                verification=str(item.get("_verify_reason") or ""),
+                shape=str(item.get("_shape") or ""),
+            )
+        )
+    return findings
+
+
+_VERIFY_FILE = "prompts/_verify.md"
+_VERIFY_CONTEXT_LINES = 80
+_VERIFY_WHOLE_FILE_MAX = 250
+
+
+def _region(raw: str, line: int | None) -> str:
+    lines = raw.splitlines()
+    if len(lines) <= _VERIFY_WHOLE_FILE_MAX or not line:
+        return number_lines(raw)
+    lo = max(1, line - _VERIFY_CONTEXT_LINES)
+    hi = min(len(lines), line + _VERIFY_CONTEXT_LINES)
+    return "\n".join(f"{i}| {lines[i - 1]}" for i in range(lo, hi + 1))
+
+
+def verify_item(
+    client: LLMClient,
+    workspace: Path,
+    cond: Condition,
+    item: dict[str, Any],
+    raw_files: dict[str, str],
+    hints: list[str],
+) -> str:
+    """Second look at one finding. Returns the verdict and annotates `item`
+    with `_verified`, `_weakened`, `_verify_reason`, `_shape`, corrected line."""
+    rel = item.get("file")
+    raw = raw_files.get(rel or "")
+    if raw is None and rel:
+        try:
+            raw = (workspace / rel).read_text(errors="ignore").replace("\x00", "")
+        except OSError:
+            raw = None
+    if raw is None:
+        return "unverifiable"
+    prompt = paths.resolve(_VERIFY_FILE).read_text()
+    system = (
+        f"{prompt}\n\n---\n# Condition\n{cond.id}: {cond.title}\n{cond.description}\n"
+        "Return ONLY the JSON object."
+    )
+    finding_text = json.dumps(
+        {k: v for k, v in item.items() if not str(k).startswith("_")}, indent=2
+    )
+    user = (
+        f"=== FINDING ===\n{finding_text}\n\n=== FILE REGION: {rel} ===\n"
+        f"{_region(raw, item.get('line'))}"
+    )
+    if hints:
+        user += "\n\n=== REPO-WIDE EVIDENCE HINTS ===\n" + "\n".join(hints)
+    try:
+        verdict_obj = parse_json(client.complete(system, user))
+    except Exception as e:  # noqa: BLE001
+        item["_verify_reason"] = f"verification failed ({brief_error(e)})"
+        return "unverifiable"
+    verdict = str(verdict_obj.get("verdict", "")).lower()
+    reason = str(verdict_obj.get("reason") or "")
+    line = verdict_obj.get("line")
+    if isinstance(line, int) and line > 0:
+        item["line"] = line
+    shape = str(verdict_obj.get("remediation_shape") or "").lower()
+    if shape in ("patch", "structural"):
+        item["_shape"] = shape
+    if verdict == "refuted":
+        item["_verify_reason"] = reason
+        return "refuted"
+    if verdict not in ("confirmed", "weakened"):
+        item["_verify_reason"] = (
+            f"the second look returned no usable verdict ({verdict or 'none given'})"
+            + (f": {reason}" if reason else "")
+        )
+        return "unverifiable"
+    if verdict == "weakened":
+        item["_weakened"] = bool(verdict_obj.get("severity_overstated"))
+        item["confidence"] = "low" if item.get("confidence") == "low" else "medium"
+        item["_verify_reason"] = reason
+    elif reason:
+        item["_verify_reason"] = reason
+    item["_verified"] = True
+    return verdict
+
+
+_LAYER1_VERIFIED = ("SEC-002", "SEC-003", "SEC-004", "SEC-006")
+
+
+def verify_layer1_findings(
+    client: LLMClient,
+    workspace: Path,
+    taxonomy: Taxonomy,
+    findings: list[Finding],
+    progress: Callable[[str], None] | None = None,
+) -> tuple[list[Finding], list[str]]:
+    """The second look Layer 2 gets, applied to the secret scanner's findings.
+
+    A regex cannot tell a generated key from a resource URN or a type name;
+    the model, shown the region, can. Refuted findings are dropped and named
+    in the notes; a finding the pass could not check keeps a `verification`
+    note so --fix holds it back.
+    """
+    todo = {
+        id(f)
+        for f in findings
+        if f.layer == 1 and f.condition_id in _LAYER1_VERIFIED and f.file
+    }
+    if not todo:
+        return findings, []
+    if progress:
+        progress(f"▶ Layer 1 (secret verification): {len(todo)} finding(s)…")
+    kept: list[Finding] = []
+    notes: list[str] = []
+    confirmed = dropped = 0
+    for f in findings:
+        cond = taxonomy.get(f.condition_id) if id(f) in todo else None
+        if cond is None:
+            kept.append(f)
+            continue
+        item: dict[str, Any] = {
+            "file": f.file,
+            "line": f.line,
+            "evidence": f.evidence,
+            "explanation": f.explanation,
+        }
+        verdict = verify_item(client, workspace, cond, item, {}, [])
+        if verdict == "refuted":
+            dropped += 1
+            notes.append(
+                f"Layer 1: {f.condition_id} at {f.file}:{f.line} dropped on "
+                f"verification: {item.get('_verify_reason') or 'refuted'}"
+            )
+            continue
+        f.verified = bool(item.get("_verified"))
+        confirmed += int(f.verified)
+        f.verification = str(item.get("_verify_reason") or "") or (
+            "" if f.verified else "not verified (the second look could not run)"
+        )
+        line = item.get("line")
+        if isinstance(line, int) and line > 0:
+            f.line = line
+        kept.append(f)
+    notes.append(
+        f"Layer 1: {confirmed} secret finding(s) confirmed by a second verification "
+        f"pass, {dropped} dropped as refuted."
+    )
+    return kept, notes
+
+
+def _context_sections(cond: Condition, offline: bool) -> list[tuple[str, str]]:
+    if cond.context != "llm_gateway_catalog":
+        return []
+    catalog = llm_gateway_models(offline)
+    if not catalog:
+        return []
+    return [
+        (
+            "KNOWN MODEL IDS (served by the org's DataRobot LLM Gateway; these are "
+            "valid identifiers, and pinned when they carry a date or version)",
+            "\n".join(catalog),
+        )
+    ]
+
+
+def deployment_context(inventory: dict[str, Any]) -> str:
+    """Runtime facts the code alone cannot show, as a prompt section, or ''.
+
+    A DataRobot custom application receives identity headers from the
+    platform proxy; without saying so, header reads look like trusting
+    unauthenticated client input.
+    """
+    app = inventory.get("datarobot_app")
+    if not app:
+        return ""
+    text = paths.resolve(_DR_APP_CONTEXT_FILE).read_text()
+    return (
+        "---\n"
+        + text.format(resource=app["resource"], file=app["file"]).rstrip()
+        + "\n\n"
+    )
+
+
+def run_condition(
+    client: LLMClient,
+    workspace: Path,
+    inventory: dict[str, Any],
+    cond: Condition,
+    contract: str,
+    max_bytes: int,
+    settings: Settings = DEFAULTS,
+) -> tuple[list[Finding], ConditionSkip | None, list[str]]:
+    """Detect, then verify. Returns (findings, skip, notes)."""
+    files = _gather_files(workspace, inventory, cond, max_bytes)
+    if not files:
+        return [], ConditionSkip(cond.id, "no files matched this condition's globs"), []
+    hints = hint_hits(workspace, inventory, cond)
+    prompt = _load_prompt(cond.detector)
+    system = (
+        f"{prompt}\n\n{deployment_context(inventory)}---\n# Output contract\n"
+        f"{contract}\n\n"
+        f"You are checking condition {cond.id}. Return ONLY the JSON object."
+    )
+    user = _build_user_message(files, hints, _context_sections(cond, settings.offline))
+    try:
+        raw = client.complete(system, user)
+        result = _parse_or_repair(client, raw)
+    except Exception as e:  # noqa: BLE001
+        return [], ConditionSkip(cond.id, f"LLM/parse error: {brief_error(e)}"), []
+    status = result.get("status", "found")
+    if status == "skipped":
+        return (
+            [],
+            ConditionSkip(cond.id, result.get("skip_reason", "model reported skipped")),
+            [],
+        )
+    if status == "not_found":
+        return [], None, []
+
+    notes: list[str] = []
+    raw_files = {v.rel: v.raw for v in files}
+    items = list(result.get("findings", []) or [])
+    kept = []
+    for item in items:
+        rel = item.get("file")
+        if rel in raw_files:
+            located = snap_line(raw_files[rel], item)
+            if located is False:
+                item["confidence"] = "low"
+                item["_verify_reason"] = "quoted evidence was not found in the file"
+        kept.append(item)
+    items = kept
+
+    if settings.verify and items:
+        survivors = []
+        for item in items:
+            verdict = verify_item(client, workspace, cond, item, raw_files, hints)
+            if verdict == "refuted":
+                notes.append(
+                    f"Layer 2: {cond.id} at {item.get('file')} dropped on verification: "
+                    f"{item.get('_verify_reason') or 'refuted'}"
+                )
+                continue
+            survivors.append(item)
+        items = survivors
+    result = dict(result, findings=items)
+    return _result_to_findings(cond, result), None, notes
+
+
+_REPAIR_SYSTEM = (
+    "You fix malformed JSON. Return ONLY the corrected JSON object: escape quotes "
+    "and newlines inside strings, close unterminated strings and brackets, and "
+    "change nothing else."
+)
+
+
+def _parse_or_repair(client: LLMClient, raw: str) -> dict[str, Any]:
+    """Parse the model's JSON; on a syntax error ask the model to repair its
+    own reply once. A repair call carries only the broken reply, so it is far
+    cheaper than re-running a detection over the same files."""
+    try:
+        return parse_json(raw)
+    except ValueError as e:
+        fixed = client.complete(
+            _REPAIR_SYSTEM,
+            f"This reply was not valid JSON ({brief_error(e)}):\n\n{raw}",
+        )
+        return parse_json(fixed)
+
+
+def _merge_locations(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """One finding for a repo-wide question, with every location listed."""
+    first = dict(items[0])
+    locs = []
+    for it in items:
+        if it.get("file"):
+            locs.append(
+                f"{it['file']}:{it['line']}" if it.get("line") else str(it["file"])
+            )
+    shown = ", ".join(locs[:6]) + (f", +{len(locs) - 6} more" if len(locs) > 6 else "")
+    first["evidence"] = f"{len(items)} location(s): {shown}. " + str(
+        first.get("evidence", "")
+    )
+    ranks = {"high": 3, "medium": 2, "low": 1}
+    first["confidence"] = max(
+        (it.get("confidence", "high") for it in items), key=lambda c: ranks.get(c, 0)
+    )
+    return first
+
+
+def run_layer2(
+    client: LLMClient | None,
+    workspace: str | Path,
+    inventory: dict[str, Any],
+    taxonomy: Taxonomy,
+    max_bytes: int = _DEFAULT_MAX_BYTES,
+    progress: Callable[[str], None] | None = None,
+    max_workers: int = _DEFAULT_MAX_WORKERS,
+    settings: Settings = DEFAULTS,
+    only: set[str] | None = None,
+) -> tuple[list[Finding], list[ConditionSkip], list[str]]:
+    notes: list[str] = []
+    if client is None:
+        no_client_skips = [
+            ConditionSkip(c.id, "Layer 2 (LLM) not run: no model client configured")
+            for c in taxonomy.by_layer(2)
+        ]
+        notes.append(NO_LLM_NOTE)
+        return [], no_client_skips, notes
+    contract = (paths.prompts_dir() / "_contract.md").read_text()
+    workspace = Path(workspace)
+    conds = [c for c in taxonomy.by_layer(2) if only is None or c.id in only]
+    if progress:
+        progress(
+            f"▶ Layer 2 (LLM reasoning): starting {len(conds)} checks "
+            f"({max(1, max_workers)} workers)…"
+        )
+    results: dict[str, tuple[list[Finding], ConditionSkip | None, list[str]]] = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
+        futures = {}
+        for i, cond in enumerate(conds):
+            if i:
+                time.sleep(_SUBMIT_STAGGER_SECONDS)
+            futures[
+                pool.submit(
+                    run_condition,
+                    client,
+                    workspace,
+                    inventory,
+                    cond,
+                    contract,
+                    max_bytes,
+                    settings,
+                )
+            ] = cond
+        for future in as_completed(futures):
+            cond = futures[future]
+            done += 1
+            results[cond.id] = future.result()
+            if progress:
+                skip = results[cond.id][1]
+                state = "timed out" if skip and "timed out" in skip.reason else "done"
+                progress(
+                    f"Layer 2 (LLM reasoning): {cond.id} {state} [{done}/{len(conds)}]"
+                )
+
+    # Aggregate in taxonomy order so reports stay deterministic across runs.
+    findings: list[Finding] = []
+    skips: list[ConditionSkip] = []
+    dropped = 0
+    for cond in conds:
+        f, skip, cond_notes = results[cond.id]
+        findings += f
+        if skip:
+            skips.append(skip)
+        notes += cond_notes
+        dropped += sum(1 for n in cond_notes if "dropped on verification" in n)
+    if settings.verify:
+        verified = sum(1 for f in findings if f.verified)
+        notes.append(
+            f"Layer 2: {verified} finding(s) confirmed by a second verification pass, "
+            f"{dropped} dropped as refuted (--no-verify disables the pass)."
+        )
+    return findings, skips, notes
