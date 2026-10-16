@@ -24,6 +24,7 @@ A 403 that says `Workload API is disabled in feature flags` means it's off. That
 
 ## Use Pulumi if any of these are true
 
+- The code doesn't fit in one container, or a Workload deploy already failed for that reason: a dependency outside `<target_dir>` (a `file://` path, a symlink, or `Distribution not found at: file:///...` in the build log), or an app that needs more than one process or port. Don't try the Workload API again for this project.
 - A tool needs a GPU, a lot of memory, or moves a lot of data (tens of GB). That tool should be its own deployment so it can scale on its own.
 - Some tools call complicated third-party systems that the user wants to deploy, debug and version separately from the agent.
 - The tools have to be published as a standalone MCP server that other agents or teams use on their own schedule. One agent serving chat, A2A, MCP and a web UI from the same process still fits in a single container.
