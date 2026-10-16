@@ -36,6 +36,7 @@ Thumbs.db
 *.csv
 *.parquet
 *.json
+!tests/behavioral/fixtures/*.csv
 !gemini-extension.json
 !.cursor-plugin/plugin.json
 !.codex-plugin/plugin.json
@@ -61,3 +62,7 @@ evaluation_criteria.md
 
 # Generated public Codex plugin packages
 datarobot-agent-skills-public-*.zip
+
+# Behavioral test runs (workspaces, transcripts, results)
+.behavioral-runs/
+.behavioral-results/

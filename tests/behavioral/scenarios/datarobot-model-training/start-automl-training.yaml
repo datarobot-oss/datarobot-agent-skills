@@ -1,0 +1,38 @@
+---
+scenarios:
+  - id: training-start-automl
+    kind: behavioral
+    name: "Model training: create project and start Quick AutoML"
+    difficulty: easy
+    skills_under_test:
+      - datarobot-model-training
+    prompt: |
+      I have customer churn data in ./data/churn_train.csv. Create a new
+      DataRobot project for it and start AutoML training to predict the
+      "churn" column — Quick mode is fine. I don't have an existing Use Case,
+      so create whatever you need. Don't wait for training to finish: kick it
+      off, then tell me the project ID and how I can monitor progress.
+    fixtures:
+      - source: ../../fixtures/churn_train.csv
+        dest: data/churn_train.csv
+    env:
+      automl_mode: quick
+      resource_prefix: "{run_id}"
+    success_checks:
+      - type: dr_use_case_exists
+        name_contains: "{run_id}"
+      - type: dr_project_exists
+        name_contains: "{run_id}"
+        stage: modeling
+        deadline_seconds: 180
+    rubric: |
+      Process quality only — pass/fail comes from success_checks. Penalize:
+      skipping the Use Case linkage the skill mandates; blocking on
+      wait_for_autopilot after being told not to wait; hallucinated SDK
+      methods followed by retries; legacy Project.start()-era flows.
+    common_pitfalls:
+      - Forgetting to create/link a Use Case before creating the project
+      - Blocking until autopilot completes despite being told not to wait
+      - Passing the CSV path where an uploaded dataset ID is required
+      - Asking the user for a Use Case ID instead of creating one
+    timeout_minutes: 15

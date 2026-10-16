@@ -110,6 +110,7 @@ The easiest way to create a new skill is to start from an existing one close to 
 5. Add an entry for the new skill in `.well-known/ai-catalog.json`. Copy an existing entry and update the `identifier`, `displayName`, `url`, `description`, and `representativeQueries` fields. Write `representativeQueries` as natural-language phrases a user would type to discover the skill—these drive semantic search quality in ARD discovery services.
 6. Reinstall or reload the skill bundle in the coding agent so the updated skill is available.
 7. Test the skill with a prompt that exercises the expected user workflow.
+8. Add at least one behavioral scenario for your skill under `tests/behavioral/scenarios/<skill-name>/` (multi-skill journeys go in `tests/behavioral/journeys/`). A scenario is a realistic user prompt plus programmatic `success_checks` asserting the DataRobot state your skill should produce — see [tests/behavioral/README.md](tests/behavioral/README.md) for the schema and check-type library. Run it against your own account with `task test:behavioral` before opening the PR. (Encouraged today; required once behavioral CI covers your skill's area.)
 
 ## Workflow rules
 
@@ -130,6 +131,8 @@ Every merge bumps **minor** (`x.N.0`) by default&mdash;this is a skills/marketpl
 ```bash
 task version:bump -- --bump patch
 ```
+
+PRs that only touch `tests/behavioral/` scenarios/fixtures or CI workflows ship nothing to users: **no version bump and no changelog entry** for those.
 
 ## Changelog
 

@@ -28,6 +28,21 @@ e2e = [
     "pytest",
     "pytest-asyncio",
 ]
+behavioral = [
+    # Behavioral test engine (agent driver, DataRobot outcome checks, teardown).
+    # Pinned to the head of datarobot-oss/datarobot-agent-tester#11 (the engine
+    # PR; not yet merged). Once it merges and the engine cuts a release tag,
+    # replace this with the tag (then a PyPI `==` pin). The e2e group pins an
+    # older engine commit, so the two groups are declared conflicting below
+    # and are only ever installed separately. For local development against
+    # an engine checkout: uv pip install -e '../datarobot-agent-tester[behavioral]'
+    "datarobot-agent-tester[behavioral] @ git+https://github.com/datarobot-oss/datarobot-agent-tester@13bde1382a398618b2f07db299596d54a5e7a85f",
+    "python-dotenv>=1.2.2",
+]
+
+[tool.uv]
+# e2e and behavioral pin different engine commits; never install both at once.
+conflicts = [[{ group = "e2e" }, { group = "behavioral" }]]
 
 [tool.pytest.ini_options]
 

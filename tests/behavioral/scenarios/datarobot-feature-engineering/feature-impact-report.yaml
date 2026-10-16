@@ -1,0 +1,39 @@
+---
+scenarios:
+  - id: feature-impact-report
+    kind: behavioral
+    name: "Feature engineering: analyze feature importance for a trained model"
+    difficulty: medium
+    skills_under_test:
+      - datarobot-feature-engineering
+    requires_env:
+      - BEHAVIORAL_FIXTURE_PROJECT_ID
+      - BEHAVIORAL_FIXTURE_MODEL_ID
+    prompt: |
+      We're doing feature engineering on our churn model and I want to know
+      which features actually matter. It's project
+      {env:BEHAVIORAL_FIXTURE_PROJECT_ID}, model
+      {env:BEHAVIORAL_FIXTURE_MODEL_ID} in DataRobot. Analyze the feature
+      importance and write a short report to ./feature_impact.md listing the
+      top features by impact with their scores, flagging any low-impact
+      features we could drop, plus a sentence on what drives churn according
+      to the model.
+    success_checks:
+      - type: file_exists
+        path: feature_impact.md
+        min_bytes: 100
+      - type: file_matches
+        path: feature_impact.md
+        pattern: "(?i)(tenure_months|contract_type|monthly_charges|num_support_tickets)"
+        min_count: 2
+    rubric: |
+      Process quality only — pass/fail comes from success_checks. Penalize:
+      calling SDK functions that don't exist (get_feature_importance,
+      export_feature_list) and retrying; recomputing Feature Impact when it is
+      already available; reporting raw impactUnnormalized values without
+      normalization context.
+    common_pitfalls:
+      - Calling nonexistent SDK helpers instead of model.get_feature_impact()
+      - Assuming Feature Impact must be recomputed when it is already available
+      - Reporting the feature list without impact scores
+    timeout_minutes: 15
