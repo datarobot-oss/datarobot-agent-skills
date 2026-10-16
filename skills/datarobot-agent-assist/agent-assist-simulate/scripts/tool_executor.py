@@ -18,7 +18,6 @@ import os
 import sys
 from pathlib import Path
 
-
 _REEXEC_GUARD_ENV = "TOOL_EXECUTOR_REEXECED"
 
 
@@ -38,7 +37,9 @@ def _reexec_into_tools_venv(tools_path: Path) -> None:
         if python.is_file():
             if Path(sys.prefix).resolve() != python.parent.parent.resolve():
                 os.environ[_REEXEC_GUARD_ENV] = "1"
-                os.execv(
+                # The script imports and runs tools_path next, so the project's own
+                # interpreter adds no trust beyond that. No shell is involved.
+                os.execv(  # noqa: S606
                     str(python),
                     [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
                 )

@@ -310,6 +310,32 @@ def test_catalog_sql_per_dialect(mod: Any) -> None:
     assert "'a\\\\b\\'c'" in mod.columns_sql("databricks", None, None, "a\\b'c")
 
 
+@pytest.mark.parametrize(
+    "dialect",
+    ["snowflake", "redshift", "postgresql", "oracle", "mysql", "sqlserver", "trino"],
+)
+def test_backslash_cannot_end_a_catalog_literal_early(mod: Any, dialect: str) -> None:
+    # Snowflake and Redshift read `\'` as an escaped quote, so `x\'' OR ...`
+    # would close the string unless the backslash is doubled too.
+    columns = mod.columns_sql(dialect, None, None, "x\\' OR 1=1 --")
+    assert "UPPER('x\\\\'' OR 1=1 --')" in columns
+    tables = mod.tables_sql(dialect, None, "x\\' OR 1=1 --")
+    assert "UPPER('x\\\\'' OR 1=1 --')" in tables
+
+
+def test_backslash_cannot_end_a_sap_literal_early(mod: Any) -> None:
+    columns = mod.columns_sql("sap", None, "s\\' OR 1=1 --", "t\\' OR 1=1 --")
+    assert columns.count("UPPER('t\\\\'' OR 1=1 --')") == 2
+    assert columns.count("UPPER('s\\\\'' OR 1=1 --')") == 2
+
+
+@pytest.mark.parametrize("dialect", ["bigquery", "databricks", "spark"])
+def test_backslash_in_an_identifier_is_rejected(mod: Any, dialect: str) -> None:
+    # A backslash can escape the closing backtick in these dialects.
+    with pytest.raises(mod.UsageError, match="backslash"):
+        mod.tables_sql(dialect, "c\\", "s")
+
+
 def test_postgres_discovery_uses_pg_catalog(mod: Any) -> None:
     tables = mod.tables_sql("postgresql", None, "rnacen")
     assert "pg_catalog.pg_class" in tables and "has_table_privilege" in tables
