@@ -4,7 +4,7 @@ Store each tool secret as a DataRobot credential yourself, once the user has put
 
 ```bash
 eval "$(dr auth export)"
-uv run --with python-dotenv --with httpx python - "<target_dir>/.env" <<'PY'
+uv run --no-project --with python-dotenv --with httpx python - "<target_dir>/.env" <<'PY'
 import os, sys, httpx
 from dotenv import dotenv_values
 name = "SOME_TOOL_API_KEY"
