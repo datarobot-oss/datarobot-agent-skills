@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Changed
+
+- `repo`: Configured pytest (`testpaths`, strict markers and config) so a bare `pytest` runs the integration tests, and made the pre-commit hook run ruff on staged Python files before the skill e2e step.
+
 ## [1.24.0] - 2026-10-16
 
 ### Changed
