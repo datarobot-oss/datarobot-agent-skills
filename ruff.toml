@@ -1,19 +1,18 @@
 # Ruff configuration for DataRobot Agent Skills
 # https://docs.astral.sh/ruff/configuration/
 
+# The target version comes from `requires-python` in pyproject.toml. These skills
+# document Python 3.9 support, so ruff must not suggest newer syntax for them.
+per-file-target-version = { "skills/datarobot-connectivity-*-sql/**" = "py39" }
+
 [lint]
-# Default rules (E4, E7, E9, F) plus import order, bugbear and the bandit
-# security rules. Skill scripts are copied by agents, so unsafe calls in them
-# spread. pyupgrade (UP) is left out on purpose: skill scripts run in users'
-# environments, and its rewrites (datetime.UTC, TimeoutError) need Python 3.10
-# or 3.11.
+# Ruff's default rules plus import order, bugbear and the bandit security rules.
+# Skill scripts are copied by agents, so unsafe calls in them spread.
 extend-select = ["I", "B", "S"]
 ignore = [
     # Skill scripts are often snippets/examples where variables like `client` are
     # initialized but may not be fully used.
     "F841",
-    # `zip(strict=True)` needs Python 3.10.
-    "B905",
     # Tests use bare asserts.
     "S101",
     # Scripts call CLIs such as `dr` and `git` by name on purpose.
@@ -28,6 +27,9 @@ ignore = [
 "tests/**" = ["S105", "S108"]
 
 [format]
+# Ruff 0.16 formats Python code blocks in Markdown. Skill docs are written by hand.
+exclude = ["*.md"]
+
 # Use double quotes for strings
 quote-style = "double"
 

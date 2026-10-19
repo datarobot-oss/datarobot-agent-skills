@@ -17,7 +17,7 @@ SCRIPTS_DIR = (
 )
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from agent_assist_contracts import (  # noqa: E402
+from agent_assist_contracts import (
     map_deployed_listing,
     map_gateway_listing,
 )

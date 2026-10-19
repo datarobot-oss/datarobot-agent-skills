@@ -62,7 +62,7 @@ def _load_tools_module(tools_path: Path) -> object:
         sys.path.insert(0, project_dir)
     try:
         spec.loader.exec_module(module)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - report any error from user tool code
         print(f"import error in {tools_path}: {exc}", file=sys.stderr)
         sys.exit(1)
     return module
@@ -130,7 +130,7 @@ def main() -> None:
         else:
             print(f"{tool_name} is not callable", file=sys.stderr)
             sys.exit(1)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - report any error from user tool code
         print(f"{tool_name} raised {type(exc).__name__}: {exc}", file=sys.stderr)
         sys.exit(1)
 

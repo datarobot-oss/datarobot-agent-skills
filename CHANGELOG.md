@@ -16,6 +16,19 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `datarobot-agent-assist`: Bumped application template version to 11.12.7.
 
+## [1.25.0] - 2026-10-16
+
+### Added
+
+- `datarobot-agent-assist-deploy-workload`: New sub-skill that deploys a single-container agent with the Workload API (`dr workload up`) instead of Pulumi. It applies to projects without an `infra/Pulumi.yaml`. Agent assist still uses Pulumi for the agent template, for agents that need a GPU, a standalone MCP server, guard models or many tools, and when the Workload API is off for the account.
+
+## [1.24.0] - 2026-10-16
+
+### Changed
+
+- `repo`: Pinned the ruff rule set to the pre-0.16 defaults plus import order, bugbear and security rules, and excluded Markdown from `ruff format`, so upgrading ruff to 0.16 or later no longer adds rules or reformats skill docs.
+- `repo`: Raised `requires-python` to 3.12, adopted ruff's expanded default rules and fixed what they found in the skill scripts and tests: `datetime.UTC`, an explicit `check=` on `subprocess.run`, `zip(strict=True)`, executable bits on scripts with a shebang, and parenthesized implicit string concatenations. `zip` in the `list_llm_models.py` table renderer now raises on mismatched lengths instead of truncating.
+
 ## [1.23.0] - 2026-10-16
 
 ### Fixed

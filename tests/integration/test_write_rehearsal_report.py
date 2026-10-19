@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +16,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[2] / (
 REHEARSAL_SCRIPT = SCRIPTS_DIR / "rehearsal.py"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from write_rehearsal_report import (  # noqa: E402
+from write_rehearsal_report import (
     _summarize_turns,
     default_report_path,
     write_rehearsal_report,

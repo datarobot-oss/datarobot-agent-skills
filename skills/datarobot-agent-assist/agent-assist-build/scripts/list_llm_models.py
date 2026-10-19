@@ -270,7 +270,9 @@ def _fetch_json_paginated(
             raise RuntimeError(f"Unexpected {label} response format: {type(data)}")
 
         if not isinstance(page, list):
-            raise RuntimeError(f"Unexpected {label} page format: {type(page)}")
+            raise RuntimeError(  # noqa: TRY004 - callers catch RuntimeError for bad responses
+                f"Unexpected {label} page format: {type(page)}"
+            )
 
         results.extend(page)
         url = str(next_url) if next_url else None
@@ -354,7 +356,9 @@ def _fetch_llm_models_via_cli(
 
     llms = envelope.get("llms")
     if not isinstance(llms, list):
-        raise RuntimeError("Unexpected dr llm-gateway list JSON format")
+        raise RuntimeError(  # noqa: TRY004 - callers catch RuntimeError for bad responses
+            "Unexpected dr llm-gateway list JSON format"
+        )
 
     models: list[LLMModel] = []
     for entry in llms:
@@ -477,7 +481,7 @@ def format_as_table(models: list[LLMModel]) -> str:
         last = len(cells) - 1
         return " | ".join(
             cell.rjust(width) if i == last else cell.ljust(width)
-            for i, (cell, width) in enumerate(zip(cells, widths))
+            for i, (cell, width) in enumerate(zip(cells, widths, strict=True))
         )
 
     header = render(headers)
