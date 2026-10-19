@@ -1,0 +1,23 @@
+---
+# zizmor audits the workflows in CI (`task zizmor`). Each ignore below is deliberate.
+rules:
+  dangerous-triggers:
+    ignore:
+      # The org-wide review router reacts to comments on purpose.
+      - review-router.yml
+  secrets-inherit:
+    ignore:
+      - review-router.yml
+  unpinned-uses:
+    config:
+      policies:
+        # Shared org workflows track the default branch.
+        datarobot-oss/*: ref-pin
+  artipacked:
+    ignore:
+      # The release job pushes with the checkout's credentials.
+      - version-bump.yml
+  github-app:
+    ignore:
+      # Scoping the release app token needs a test release. Tracked as a follow-up.
+      - version-bump.yml

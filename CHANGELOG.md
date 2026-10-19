@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Changed
+
+- `repo`: Pinned the tools and actions the CI workflows use (yamlfmt, license-eye, the claude, gemini and codex CLIs, and every GitHub Action by commit SHA), locked the `uv` install with `--locked`, set the Python version in `.python-version`, and limited the lint and e2e workflows to read-only permissions. Added zizmor to `task lint` to audit the workflows. Ruff and mypy updates now come from Dependabot in their own PR, and Dependabot waits 7 days after a release.
+
 ## [1.27.0] - 2026-10-19
 
 - `datarobot-agent-assist`: Added NO_COLOR=True to for shell commands to prevent ANSI color escape codes

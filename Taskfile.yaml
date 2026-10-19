@@ -40,6 +40,11 @@ tasks:
     cmds:
       - actionlint
 
+  zizmor:
+    desc: Audit GitHub Actions workflows for security issues
+    cmds:
+      - uv run --group dev zizmor --offline --min-severity medium .github
+
   yamlfmt:
     desc: Format all YAML files with yamlfmt
     cmds:
@@ -78,7 +83,7 @@ tasks:
       - uv run scripts/package_codex_plugin.py {{.CLI_ARGS}}
 
   lint:
-    desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + actionlint + yamlfmt + license)
+    desc: Run all linting checks (validate skills + ruff + mypy + shellcheck + actionlint + zizmor + yamlfmt + license)
     deps:
       - test:integration
       - ruff:check
@@ -86,6 +91,7 @@ tasks:
       - mypy
       - shellcheck
       - actionlint
+      - zizmor
       - yamlfmt:check
       - license:check
 
