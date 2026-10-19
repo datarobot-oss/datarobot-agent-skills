@@ -323,6 +323,7 @@ def initialize_pulumi(
 
     env = os.environ.copy()
     env["DATAROBOT_CLI_NON_INTERACTIVE"] = "True"
+    env["NO_COLOR"] = "True"
     env["PULUMI_CONFIG_PASSPHRASE"] = passphrase
 
     try:
@@ -384,6 +385,7 @@ def run_command(
 
     env = os.environ.copy()
     env["DATAROBOT_CLI_NON_INTERACTIVE"] = "True"
+    env["NO_COLOR"] = "True"
 
     try:
         result = subprocess.run(

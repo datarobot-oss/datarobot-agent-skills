@@ -49,7 +49,7 @@ Show this menu first. After the user selects an option (`1`, `2`, `3`, or `4`), 
 
 - Options **1** and **2** — read and follow [agent-assist-build/references/workspace-resolution.md](agent-assist-build/references/workspace-resolution.md), then proceed to the selected workflow.
 - Option **3** — read `agent-assist-simulate/SKILL.md` and jump to **Pre-flight Check** (Pre-requisite Check and Script Path Resolution still apply first).
-- Option **4** — skip Workspace Resolution; `<target_dir>` is resolved in the [Pre-deployment Checklist](agent-assist-build/references/pre-deployment-checklist.md) when unset.
+- Option **4** — skip Workspace Resolution; go to [4. Deploying an AI Agent](#4-deploying-an-ai-agent).
 
 ---
 
@@ -259,7 +259,7 @@ Swarm requires an implemented agent; if none exists, explain and offer option 2.
 
 ## 4. Deploying an AI Agent
 
-Read and follow [agent-assist-build/references/pre-deployment-checklist.md](agent-assist-build/references/pre-deployment-checklist.md) end to end.
+Read and follow [agent-assist-deploy-workload/references/deploy-path.md](agent-assist-deploy-workload/references/deploy-path.md). It picks the Workload API or the Pulumi deploy. If `<target_dir>` is unset, resolve it first as in step 1 of the [Pre-deployment Checklist](agent-assist-build/references/pre-deployment-checklist.md).
 
 ---
 
