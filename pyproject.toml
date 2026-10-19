@@ -9,6 +9,7 @@ dependencies = []
 dev = [
     "mypy>=1.10",
     "ruff==0.17.0",
+    "zizmor==1.31.1",
 ]
 integration = [
     "datarobot-predict",

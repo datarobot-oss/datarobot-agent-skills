@@ -27,6 +27,9 @@ on:
           - "0"
           - "1"
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     name: Skill quality evaluation
@@ -34,21 +37,23 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
 
       - name: Install e2e dependencies
         run: uv sync --group e2e
 
       - name: Restore skill hash cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: tests/e2e/skill_hashes.json
           key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}
@@ -75,7 +80,7 @@ jobs:
 
       - name: Save skill hash cache
         if: ${{ !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: tests/e2e/skill_hashes.json
           key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}
