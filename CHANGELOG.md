@@ -18,6 +18,21 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 - `repo`: Configured pytest (`testpaths`, strict markers and config) so a bare `pytest` runs the integration tests, and made the pre-commit hook run ruff on staged Python files before the skill e2e step.
 
+## [1.27.0] - 2026-10-19
+
+- `datarobot-agent-assist`: Added NO_COLOR=True to for shell commands to prevent ANSI color escape codes
+- `datarobot-agent-assist`: Revert application template version to 11.12.2.
+
+## [1.26.0] - 2026-10-19
+
+- `datarobot-agent-assist`: Bumped application template version to 11.12.7.
+
+## [1.25.0] - 2026-10-16
+
+### Added
+
+- `datarobot-agent-assist-deploy-workload`: New sub-skill that deploys a single-container agent with the Workload API (`dr workload up`) instead of Pulumi. It applies to projects without an `infra/Pulumi.yaml`. Agent assist still uses Pulumi for the agent template, for agents that need a GPU, a standalone MCP server, guard models or many tools, and when the Workload API is off for the account.
+
 ## [1.24.0] - 2026-10-16
 
 ### Changed
