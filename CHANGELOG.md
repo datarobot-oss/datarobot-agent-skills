@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+- `datarobot-agent-assist`: Added NO_COLOR=True to for shell commands to prevent ANSI color escape codes
+
 ## [1.26.0] - 2026-10-19
 
 - `datarobot-agent-assist`: Bumped application template version to 11.12.7.
