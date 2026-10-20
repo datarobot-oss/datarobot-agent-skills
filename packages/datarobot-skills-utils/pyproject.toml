@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarobot-skills-utils"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Shared runtime utilities for DataRobot agent skills: opencode server lifecycle, worker invocation, and event-stream parsing."
 readme = "README.md"
 license = "Apache-2.0"
@@ -18,6 +18,10 @@ classifiers = [
 
 [project.urls]
 Repository = "https://github.com/datarobot-oss/datarobot-agent-skills"
+
+# The version lives only in the package's __version__.
+[tool.hatch.version]
+path = "src/datarobot_skills_utils/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/datarobot_skills_utils"]

@@ -131,7 +131,7 @@ Every merge bumps **minor** (`x.N.0`) by default&mdash;this is a skills/marketpl
 task version:bump -- --bump patch
 ```
 
-`packages/datarobot-skills-utils` is versioned on its own (`version` in its `pyproject.toml`, starting at 0.1.0) and is not touched by the automated bump. Bump it in the PR that changes the package, together with the exact pin in every `_bootstrap.py` copy (`test_bootstrap_pin_matches_package_version` fails until they match); every GitHub Release then runs `publish-pypi.yml`, which uploads that version to PyPI and skips silently when it is already published.
+`packages/datarobot-skills-utils` is versioned on its own (`__version__` in `src/datarobot_skills_utils/__init__.py`, its single version source, which `pyproject.toml` reads; starting at 0.1.0) and is not touched by the automated bump. Bump it in the PR that changes the package, together with the exact pin in every `_bootstrap.py` copy (`test_bootstrap_pin_matches_package_version` fails until they match); every GitHub Release then runs `publish-pypi.yml`, which uploads that version to PyPI and skips silently when it is already published.
 
 Skills locate the package through a small `_bootstrap.py` shim, which tries in order: a sibling `packages/datarobot-skills-utils/src` directory (a repo checkout, or a plugin install that copies `packages/` next to `skills/`, so local edits win); an already installed distribution; then a one-time `pip install datarobot-skills-utils==<pinned version>` (or `uv pip install` when the interpreter has no pip). Running `python3 _bootstrap.py` performs the same resolution ahead of time and prints where the package was found. The package README is its PyPI page, so keep it written for package users; maintainer notes belong here.
 

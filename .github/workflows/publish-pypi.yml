@@ -29,7 +29,7 @@ jobs:
       - name: Build
         run: |
           uv build packages/datarobot-skills-utils --out-dir dist
-          echo "Built datarobot-skills-utils $(uv version --project packages/datarobot-skills-utils --short)"
+          ls dist
 
       # The package is versioned independently of the plugin, so most releases
       # re-build a version that is already on PyPI; skip-existing makes that a no-op.

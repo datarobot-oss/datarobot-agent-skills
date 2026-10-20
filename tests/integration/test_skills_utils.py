@@ -319,12 +319,10 @@ def test_bootstrap_copies_stay_identical():
 
 
 def test_bootstrap_pin_matches_package_version():
-    import tomllib
+    from datarobot_skills_utils import __version__
 
     root = Path(__file__).resolve().parents[2]
-    pyproject = root / "packages" / "datarobot-skills-utils" / "pyproject.toml"
-    version = tomllib.loads(pyproject.read_text())["project"]["version"]
-    expected = f'SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils=={version}"'
+    expected = f'SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils=={__version__}"'
     for copy in sorted((root / "skills").rglob("_bootstrap.py")):
         assert expected in copy.read_text(), str(copy)
 

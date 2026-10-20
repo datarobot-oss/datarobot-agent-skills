@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 
 # Exact pin: an unpinned install would take whatever is newest on PyPI. Keep in
-# step with `version` in packages/datarobot-skills-utils/pyproject.toml (a test
-# enforces it).
+# step with `__version__` in the package's __init__.py, its single version
+# source (a test enforces it).
 SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils==0.1.0"
 
 INSTALL_HINT = (
