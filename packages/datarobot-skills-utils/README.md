@@ -1,54 +1,80 @@
 # datarobot-skills-utils
 
-Shared runtime utilities for the DataRobot agent skills in
+Runtime utilities for running LLM calls through the DataRobot CLI's `dr opencode`
+runtime, used by the DataRobot agent skills in
 [datarobot-agent-skills](https://github.com/datarobot-oss/datarobot-agent-skills).
-Pure standard library, Python 3.11+.
 
-## datarobot_skills_utils.opencode
+> **Beta.** This package exists to support the DataRobot agent skills. Its API may change
+> between minor versions without notice, and it carries no official support. Pin an exact
+> version if you depend on it.
 
-LLM execution through the DataRobot CLI's opencode runtime, extracted from the
-`datarobot-gap-analysis` and `datarobot-agent-assist` (swarm simulation) skills:
+## Prerequisites
 
-- `OpenCodeServer` — lifecycle of a private `dr opencode serve`: free random
-  port, git-initialized isolated temp workdir (attached sessions take their
-  project context from the server's cwd, and opencode's snapshotting needs a
-  git repo), bounded health check, context-manager cleanup.
-- `worker_env(models, setting)`, `resolve_effort(model, setting)`,
-  `max_reasoning_effort(model)`: reasoning effort for gateway-served models.
-  `OpenCodeServer(models=[...], reasoning="max")` injects
-  `options.reasoningEffort` for those models through `OPENCODE_CONFIG_CONTENT`
-  (merged over any existing value), so opencode sends `reasoning_effort` without
-  the user's `opencode.json` being edited. "max" resolves to the highest value
-  each provider accepts; models without a reasoning mode are left untouched.
-  The same injection sets `limit.output` (and `context`) per model family:
-  the DataRobot opencode config declares 8k output tokens for every model, and
-  with reasoning enabled the thinking counts against that, so a long JSON reply
-  is cut mid-string. `token_limits(model)` returns the pair used.
-- `UsageMeter(model, reasoning_effort)`: thread-safe token accounting across a
-  run; set `phase` before a batch of calls and `record(meta)` after each, then
-  `snapshot()` gives per-phase and total calls, input, output, reasoning and
-  cache tokens. `parse_events` now reports `reasoning_tokens`.
-- `run_worker(...)` — one `dr opencode run` completion attached to a shared
-  server (or in an isolated directory), with the anti-tool worker preamble,
-  NUL/argv-size sanitization, and retry on empty output.
-- `parse_events(...)` — parse the `--format json` JSONL event stream into the
-  assistant text plus token/cost accounting; `strip_code_fences(...)` for
-  JSON-contract consumers.
+- Python 3.11 or later. The package has no third-party dependencies.
+- The [DataRobot CLI](https://github.com/datarobot-oss/cli) (`dr`) on your `PATH`, logged in
+  with `dr auth login`. Every LLM call goes through `dr opencode`, so the CLI's login and
+  model access apply.
 
-## Installation and versioning
+## Installation
 
-Published to PyPI as `datarobot-skills-utils` by `.github/workflows/publish-pypi.yml`
-on every GitHub release of this repo. The package has its own version (`version` in
-`pyproject.toml`); bump it when the package changes, and the next release uploads it.
-Releases that do not change the version skip the upload. Skills locate the package
-through a small `_bootstrap.py` shim that tries, in order:
+```bash
+pip install datarobot-skills-utils
+```
 
-1. a sibling `packages/datarobot-skills-utils/src` directory (repo checkout, or a
-   plugin install that copies `packages/` next to `skills/`), so local edits win;
-2. an already installed distribution;
-3. a one-time `pip install datarobot-skills-utils==<pinned version>` (or `uv pip
-   install` when the interpreter has no pip) into the running interpreter. The pin
-   lives in `_bootstrap.py` and must match `version` in `pyproject.toml`.
+## Example
 
-Running the shim directly (`python3 _bootstrap.py`) performs the same resolution
-ahead of time and prints where the package was found.
+Start one private `dr opencode serve` for a batch of calls, send a prompt, and read the
+token usage:
+
+```python
+from datarobot_skills_utils.opencode import (
+    OpenCodeServer,
+    UsageMeter,
+    dr_available,
+    run_worker,
+)
+
+model = "datarobot/anthropic/claude-sonnet-4-6"  # any model listed by `dr opencode models`
+
+if not dr_available():
+    raise SystemExit("The DataRobot CLI (dr) is not on PATH.")
+
+usage = UsageMeter(model)
+with OpenCodeServer(models=[model], reasoning="max") as server:
+    text, meta = run_worker(
+        "Name three risks of hard-coding API keys.",
+        model,
+        server_url=server.url,
+        cwd=server.workdir,
+    )
+    usage.record(meta)
+
+print(text)
+print(usage.snapshot()["total"])  # calls, input/output/reasoning/cache tokens, cost
+```
+
+## API
+
+Everything is exported from `datarobot_skills_utils.opencode`.
+
+- `OpenCodeServer(models=(), reasoning=None)`: a private `dr opencode serve` on a free
+  localhost port, in an isolated temporary working directory. Use it as a context manager;
+  `url` and `workdir` are set while it runs. Passing `models` and `reasoning` (`"max"`,
+  `"off"`, or a specific effort) sets the reasoning effort and output-token limits for those
+  models without editing your `opencode.json`.
+- `run_worker(message, model, server_url=None, cwd=None, timeout=120, attempts=2, ...)`: one
+  `dr opencode run` completion, attached to a server or run standalone. Returns
+  `(text, token_meta)`, and retries an empty response.
+- `UsageMeter(model, reasoning_effort=None)`: thread-safe token and cost accounting across a
+  run. Set `phase` before a batch, call `record(meta)` after each call, and read totals with
+  `snapshot()`.
+- `parse_events(stdout)` and `strip_code_fences(text)`: parse `dr opencode run --format json`
+  output into text plus token accounting, and strip Markdown fences from JSON replies.
+- `dr_available()`, `worker_env(...)`, `resolve_effort(...)`, `max_reasoning_effort(...)`,
+  `token_limits(...)`: helpers for checking the CLI and resolving per-model reasoning effort
+  and output limits.
+
+## License
+
+Apache License 2.0. See
+[LICENSE](https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/packages/datarobot-skills-utils/LICENSE).
