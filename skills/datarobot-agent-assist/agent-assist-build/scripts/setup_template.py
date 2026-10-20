@@ -24,10 +24,10 @@ import base64
 import os
 import re
 import secrets
+import shlex
 import subprocess
 import sys
 from pathlib import Path
-
 from urllib.error import HTTPError
 
 from env_utils import read_env_variable
@@ -323,13 +323,13 @@ def initialize_pulumi(
 
     env = os.environ.copy()
     env["DATAROBOT_CLI_NON_INTERACTIVE"] = "True"
+    env["NO_COLOR"] = "True"
     env["PULUMI_CONFIG_PASSPHRASE"] = passphrase
 
     try:
         result = subprocess.run(
-            command,
+            shlex.split(command),
             cwd=work_dir,
-            shell=True,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -385,12 +385,12 @@ def run_command(
 
     env = os.environ.copy()
     env["DATAROBOT_CLI_NON_INTERACTIVE"] = "True"
+    env["NO_COLOR"] = "True"
 
     try:
         result = subprocess.run(
-            command,
+            shlex.split(command),
             cwd=target_dir,
-            shell=True,
             capture_output=True,
             text=True,
             timeout=timeout,

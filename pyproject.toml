@@ -2,13 +2,14 @@
 name = "datarobot-agent-skills"
 version = "0.0.1"
 description = "DataRobot agent skills"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = []
 
 [dependency-groups]
 dev = [
     "mypy>=1.10",
-    "ruff==0.15.22",
+    "ruff==0.17.0",
+    "zizmor==1.31.1",
 ]
 integration = [
     "datarobot-predict",
@@ -30,6 +31,9 @@ e2e = [
 ]
 
 [tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests/integration"]
+addopts = "-ra --strict-markers --strict-config"
 
 [tool.mypy]
 # The strategy moving forward is to delete these one by one and get the errors back to zero.

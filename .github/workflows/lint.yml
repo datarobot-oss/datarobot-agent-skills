@@ -8,29 +8,39 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: arduino/setup-task@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v2
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Install claude CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.301
       - name: Install gemini CLI
-        run: npm install -g @google/gemini-cli
+        run: npm install -g @google/gemini-cli@0.64.0
       - name: Install Codex CLI
-        run: npm install -g @openai/codex
-      - uses: actions/setup-go@v6
+        run: npm install -g @openai/codex@0.163.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.25.3"
       - name: Install go tools
         run: |
-          go install github.com/google/yamlfmt/cmd/yamlfmt@latest
-          go install github.com/apache/skywalking-eyes/cmd/license-eye@latest
+          go install github.com/google/yamlfmt/cmd/yamlfmt@v0.21.0
+          go install github.com/apache/skywalking-eyes/cmd/license-eye@v0.9.0
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
       - name: Install integration dependencies
-        run: uv sync --group integration
+        run: uv sync --locked --group integration
       - name: Run lint
         run: task lint

@@ -12,7 +12,6 @@ from typing import Any
 
 import yaml
 from pydantic import ValidationError
-
 from swarm_contracts import AgentSpec, Scenario, SimulationConfig
 
 

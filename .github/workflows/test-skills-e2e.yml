@@ -27,6 +27,9 @@ on:
           - "0"
           - "1"
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     name: Skill quality evaluation
@@ -34,21 +37,23 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
 
       - name: Install e2e dependencies
         run: uv sync --group e2e
 
       - name: Restore skill hash cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/e2e/skill_hashes.json
           key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}
@@ -61,11 +66,21 @@ jobs:
           DATAROBOT_ENDPOINT: ${{ secrets.DATAROBOT_ENDPOINT }}
           DATAROBOT_API_TOKEN: ${{ secrets.DATAROBOT_API_TOKEN }}
           SKILLS_E2E_FORCE_ALL: ${{ github.event.inputs.force_all || '0' }}
-        run: uv run --group e2e pytest tests/e2e/ -v --tb=short -rs
+        run: |
+          set -o pipefail
+          uv run --group e2e pytest tests/e2e/ -v --tb=short -rs 2>&1 | tee e2e.log
+
+      - name: Fail when the LLM gateway was unreachable
+        if: ${{ !cancelled() }}
+        run: |
+          if grep -q "LLM unavailable in this environment" e2e.log; then
+            echo "::error::Skills were skipped because the LLM gateway call failed. Check the DATAROBOT_ENDPOINT and DATAROBOT_API_TOKEN secrets."
+            exit 1
+          fi
 
       - name: Save skill hash cache
         if: ${{ !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: tests/e2e/skill_hashes.json
           key: skill-hashes-${{ github.ref_name }}-${{ github.run_id }}

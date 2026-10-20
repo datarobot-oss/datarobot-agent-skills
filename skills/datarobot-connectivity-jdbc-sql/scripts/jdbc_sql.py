@@ -41,17 +41,17 @@ import io
 import json
 import os
 import re
-import socket
 import ssl
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import product
 from pathlib import Path
-from typing import IO, Any, Callable, NoReturn, Sequence
+from typing import IO, Any, NoReturn
 
 EXIT_OK = 0
 EXIT_USAGE = 1
@@ -70,16 +70,16 @@ EXECUTE_ROUTE = "jdbcExecution/"
 PROBE_TIMEOUT = 30  # validation answers at once; no database is contacted
 
 # `query` accepts only statements that start with one of these...
-READ_STARTS = frozenset("SELECT WITH VALUES TABLE".split())
+READ_STARTS = frozenset(["SELECT", "WITH", "VALUES", "TABLE"])
 # ...and contain none of these words anywhere outside quotes and comments.
-WRITE_WORDS = frozenset("INSERT UPDATE DELETE MERGE UPSERT INTO".split())
-DML_WORDS = frozenset("INSERT UPDATE DELETE MERGE UPSERT".split())
+WRITE_WORDS = frozenset(["INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "INTO"])
+DML_WORDS = frozenset(["INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT"])
 # Reads that cannot run inside the `select * from (<sql>) _table` wrapper.
-NOT_WRAPPABLE = frozenset("SHOW DESCRIBE DESC EXPLAIN".split())
+NOT_WRAPPABLE = frozenset(["SHOW", "DESCRIBE", "DESC", "EXPLAIN"])
 SENSITIVE_KEY = re.compile(
     r"(pass|pwd|secret|token|private_?key|pvtkey|credential|apikey|api_key"
     r"|clientkey|accountkey)",
-    re.I,
+    re.IGNORECASE,
 )
 # Dialects whose string literals escape with a backslash.
 BACKSLASH_DIALECTS = frozenset({"bigquery", "databricks", "spark"})
@@ -276,7 +276,9 @@ def load_env_file(path: str) -> None:
 def _ssl_context() -> ssl.SSLContext | None:
     verify = os.environ.get("DATAROBOT_SSL_VERIFY", "").strip()
     if verify.lower() in ("false", "0", "no", "off"):
-        return ssl._create_unverified_context()
+        # Explicit opt-in through the DataRobot SDK's own variable, for endpoints with
+        # a self-signed certificate. Requests go only to the configured endpoint.
+        return ssl._create_unverified_context()  # noqa: S323
     if verify and verify.lower() not in ("true", "1", "yes", "on"):
         return ssl.create_default_context(cafile=verify)
     return None
@@ -366,7 +368,7 @@ class DataRobotClient:
                 raise TransportError(
                     f"unreadable response from DataRobot ({type(exc).__name__})"
                 ) from None
-            except (urllib.error.URLError, socket.timeout, OSError) as exc:
+            except (TimeoutError, urllib.error.URLError, OSError) as exc:
                 reason = getattr(exc, "reason", None) or exc
                 raise TransportError(str(reason)) from None
         raise TransportError("request was not sent")
@@ -393,7 +395,7 @@ class Connection:
 
     @property
     def dialect(self) -> str:
-        match = re.match(r"jdbc:([a-z0-9]+):", self.url, re.I)
+        match = re.match(r"jdbc:([a-z0-9]+):", self.url, re.IGNORECASE)
         return match.group(1).lower() if match else ""
 
     def masked_parameters(self) -> dict[str, str]:
@@ -696,7 +698,7 @@ def check_read_only(sql: str, lexings: Sequence[Lexing] = (STANDARD,)) -> str:
         found = WRITE_WORDS & set(words)
         if found:
             raise UsageError(
-                f"`query` is read-only and this SQL contains {sorted(found)[0]}. "
+                f"`query` is read-only and this SQL contains {min(found)}. "
                 "Use `execute`, which needs the user's explicit approval."
             )
     return strip_trailing(sql, lexings)
@@ -780,20 +782,28 @@ def parse_binds(raw: str | None) -> list[Any] | None:
 # --------------------------------------------------------------------------- #
 # Dialect-aware catalog SQL (there are no metadata routes for JDBC URLs)
 # --------------------------------------------------------------------------- #
+# Ruff S608 (`noqa` below): every interpolated piece in these builders is a constant,
+# an `_identifier`-quoted name, or a `_literal` result. Values from the caller
+# never reach the SQL any other way.
 
 
 def _literal(value: str, dialect: str) -> str:
+    """Quote a catalog value. Backslashes are doubled for every dialect: Snowflake,
+    Redshift, MySQL and others read `\\'` as an escaped quote, so an undoubled
+    backslash could end the string early. Where a backslash is an ordinary
+    character, a name that contains one matches nothing, which is the safe failure."""
+    escaped = value.replace("\\", "\\\\")
     if dialect in BACKSLASH_DIALECTS:
-        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
-    if dialect in ("mysql", "mariadb"):
-        return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
-    return "'" + value.replace("'", "''") + "'"
+        return "'" + escaped.replace("'", "\\'") + "'"
+    return "'" + escaped.replace("'", "''") + "'"
 
 
 def _identifier(name: str, dialect: str) -> str:
     if dialect in BACKTICK_DIALECTS:
         if "`" in name:
             raise UsageError("Names containing a backtick are not supported.")
+        if "\\" in name and dialect in BACKSLASH_DIALECTS:
+            raise UsageError("Names containing a backslash are not supported.")
         return f"`{name}`"
     if dialect == "sqlserver":
         return "[" + name.replace("]", "]]") + "]"
@@ -848,7 +858,7 @@ def tables_sql(
         if like:
             conditions.append(_name_filter("c.relname", like, dialect))
         return (
-            "SELECT n.nspname AS table_schema, c.relname AS table_name, "
+            "SELECT n.nspname AS table_schema, c.relname AS table_name, "  # noqa: S608
             "CASE c.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' "
             "WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END AS table_type, "
             "has_schema_privilege(n.oid, 'USAGE') "
@@ -868,7 +878,7 @@ def tables_sql(
             tables_where += " AND " + _name_filter("TABLE_NAME", like, dialect)
             views_where += " AND " + _name_filter("VIEW_NAME", like, dialect)
         return (
-            "SELECT SCHEMA_NAME AS table_schema, TABLE_NAME AS table_name, "
+            "SELECT SCHEMA_NAME AS table_schema, TABLE_NAME AS table_name, "  # noqa: S608
             f"'TABLE' AS table_type FROM SYS.TABLES WHERE {tables_where} UNION ALL "
             f"SELECT SCHEMA_NAME, VIEW_NAME, 'VIEW' FROM SYS.VIEWS WHERE {views_where}"
         )
@@ -895,7 +905,7 @@ def tables_sql(
         name_filter = _name_filter(name_column, like, dialect)
         where = f"{where} AND {name_filter}" if where else f" WHERE {name_filter}"
     view = "TABLES" if dialect in ("sqlserver", "bigquery") else "tables"
-    return f"SELECT {columns} FROM {source}{view}{where}"
+    return f"SELECT {columns} FROM {source}{view}{where}"  # noqa: S608
 
 
 def columns_sql(
@@ -910,7 +920,7 @@ def columns_sql(
         if schema:
             filters.append(f"UPPER(n.nspname) = UPPER({_literal(schema, dialect)})")
         return (
-            "SELECT n.nspname AS table_schema, a.attnum AS ordinal_position, "
+            "SELECT n.nspname AS table_schema, a.attnum AS ordinal_position, "  # noqa: S608
             "a.attname AS column_name, "
             "pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type, "
             "CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable, "
@@ -933,7 +943,7 @@ def columns_sql(
             ("SYS.VIEW_COLUMNS", "VIEW_NAME"),
         ):
             parts.append(
-                "SELECT SCHEMA_NAME AS table_schema, POSITION AS ordinal_position, "
+                "SELECT SCHEMA_NAME AS table_schema, POSITION AS ordinal_position, "  # noqa: S608
                 "COLUMN_NAME AS column_name, DATA_TYPE_NAME AS data_type, "
                 f"IS_NULLABLE AS is_nullable FROM {source} WHERE UPPER({name}) = "
                 f"UPPER({_literal(table, dialect)}){schema_filter}"
@@ -955,7 +965,7 @@ def columns_sql(
     if schema and dialect != "bigquery":
         filters.append(f"UPPER({schema_column}) = UPPER({_literal(schema, dialect)})")
     view = "COLUMNS" if dialect in ("sqlserver", "bigquery") else "columns"
-    return f"SELECT {columns} FROM {source}{view} WHERE {' AND '.join(filters)}"
+    return f"SELECT {columns} FROM {source}{view} WHERE {' AND '.join(filters)}"  # noqa: S608
 
 
 # --------------------------------------------------------------------------- #
@@ -1330,8 +1340,10 @@ def cmd_routes(client: DataRobotClient, args: argparse.Namespace) -> int:
                 status = f"HTTP {exc.status}: {exc.message[:80]}"
         rows.append([route.rstrip("/"), used_by, status, binds])
     notes = [
-        "probed with requests that fail validation; no SQL ran and no database "
-        "was contacted",
+        (
+            "probed with requests that fail validation; no SQL ran and no database "
+            "was contacted"
+        ),
         "the answer is for the API token in use; an app's own API key can differ",
     ]
     columns = ["route", "used by", "status", "bind parameters"]
@@ -1399,58 +1411,78 @@ PRIVILEGE_DENIED = re.compile(
 HINTS: list[tuple[Callable[[ApiError], bool], str]] = [
     (
         lambda e: e.status == 401,
-        "The API token was rejected (the body may be empty): check "
-        "DATAROBOT_API_TOKEN or run the datarobot-setup skill.",
+        (
+            "The API token was rejected (the body may be empty): check "
+            "DATAROBOT_API_TOKEN or run the datarobot-setup skill."
+        ),
     ),
     (
         lambda e: 300 <= e.status < 400,
-        "DataRobot answered with a redirect, which the script does not follow "
-        "because it would carry the API token elsewhere. Check DATAROBOT_ENDPOINT "
-        "(https, host, /api/v2).",
+        (
+            "DataRobot answered with a redirect, which the script does not follow "
+            "because it would carry the API token elsewhere. Check DATAROBOT_ENDPOINT "
+            "(https, host, /api/v2)."
+        ),
     ),
     (
         lambda e: "No suitable JDBC driver" in e.message,
-        "DataRobot has no driver for this URL prefix. Supported prefixes are in "
-        "references/jdbc-urls.md.",
+        (
+            "DataRobot has no driver for this URL prefix. Supported prefixes are in "
+            "references/jdbc-urls.md."
+        ),
     ),
     (
         lambda e: e.status == 403 and bool(PRIVILEGE_DENIED.search(e.message)),
-        "The login works but lacks a privilege (see Details). Ask for the grants, "
-        "e.g. USAGE on the schema and SELECT on the table.",
+        (
+            "The login works but lacks a privilege (see Details). Ask for the grants, "
+            "e.g. USAGE on the schema and SELECT on the table."
+        ),
     ),
     (
         lambda e: e.status == 403 and "Details:" in e.message,
-        "The database rejected the login or a privilege (see Details). For "
-        "authentication or password errors check the user and password "
-        "properties; otherwise check the grants.",
+        (
+            "The database rejected the login or a privilege (see Details). For "
+            "authentication or password errors check the user and password "
+            "properties; otherwise check the grants."
+        ),
     ),
     (
         lambda e: "bindParams is not allowed key" in e.message,
-        "Bind parameters need DataRobot API 2.46 or later; inline the values as "
-        "SQL literals instead.",
+        (
+            "Bind parameters need DataRobot API 2.46 or later; inline the values as "
+            "SQL literals instead."
+        ),
     ),
     (
         lambda e: "not allowed key" in e.message,
-        "Request fields are camelCase (jdbcUrl, sql, maxRows, parameters, "
-        "bindParams); JDBC routes have no credentialId.",
+        (
+            "Request fields are camelCase (jdbcUrl, sql, maxRows, parameters, "
+            "bindParams); JDBC routes have no credentialId."
+        ),
     ),
     (
         lambda e: e.status == 400 and "connection attempt failed" in e.message.lower(),
-        "DataRobot could not reach the database. It must be reachable from "
-        "DataRobot, not only from your machine: check host, port, and that the "
-        "database firewall allows DataRobot.",
+        (
+            "DataRobot could not reach the database. It must be reachable from "
+            "DataRobot, not only from your machine: check host, port, and that the "
+            "database firewall allows DataRobot."
+        ),
     ),
     (
         lambda e: e.status == 408,
-        "Over the 300 s preview limit: add WHERE/LIMIT/aggregation, or let a cold "
-        "warehouse start and retry.",
+        (
+            "Over the 300 s preview limit: add WHERE/LIMIT/aggregation, or let a cold "
+            "warehouse start and retry."
+        ),
     ),
     (lambda e: e.status == 413, "Request over 8 MB: send less SQL or fewer binds."),
     (lambda e: e.status == 429, "Too many concurrent requests; wait and retry."),
     (
         lambda e: e.status == 400 and e.message.startswith("SQL ["),
-        "The database rejected the SQL. The preview wraps it as `select * from "
-        "(<sql>) _table limit N`; see the dialect limits in references/jdbc-urls.md.",
+        (
+            "The database rejected the SQL. The preview wraps it as `select * from "
+            "(<sql>) _table limit N`; see the dialect limits in references/jdbc-urls.md."
+        ),
     ),
 ]
 

@@ -158,6 +158,7 @@ Install these tools before running validation tasks:
 - [Task](https://taskfile.dev/)&mdash;task runner (`brew install go-task`).
 - [uv](https://docs.astral.sh/uv/)&mdash;Python package and environment manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 - [license-eye](https://github.com/apache/skywalking-eyes)&mdash;license header checker (`go install github.com/apache/skywalking-eyes/cmd/license-eye@latest`, then ensure `~/go/bin` is on the PATH).
+- [actionlint](https://github.com/rhysd/actionlint)&mdash;GitHub Actions workflow linter (`go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7`, then ensure `~/go/bin` is on the PATH).
 - [jq](https://jqlang.org/)&mdash;JSON processor used by `scripts/version_bump.py` (`brew install jq`).
 
 ### Common tasks
@@ -217,9 +218,9 @@ OpenCode (via Bun) resolves `file:` paths and loads the plugin directly from dis
 
 This repository uses GitHub Actions for automated checks:
 
-- **Lint**&mdash;runs `task lint` (skill validation, ruff, mypy, shellcheck, yamlfmt, license headers) on every push and pull request.
+- **Lint**&mdash;runs `task lint` (skill validation, ruff, mypy, shellcheck, actionlint, yamlfmt, license headers) on every push and pull request.
 - **Test Skills E2E**&mdash;runs the LLM-judge skill quality suite on pushes/PRs that touch `skills/**` or `tests/e2e/**`.
-- **Trivy security scan**&mdash;scans for secrets and security issues daily and on every push and pull request.
+- **Trivy security scan**&mdash;scans for secrets daily and on every push and pull request, and fails the build on findings.
 - **Version Bump**&mdash;on every push to `main`, bumps the plugin version, tags, and cuts a GitHub Release if `skills/` changed (see "Plugin version management" above).
 - **Publish to npm**&mdash;publishes to npm whenever a GitHub Release is published.
 - **Publish AI Catalog**&mdash;deploys `docs/` to GitHub Pages when it changes on `main`.

@@ -136,7 +136,7 @@ def test_sensitive_findings_flags_internal_and_secret_strings(
 
 
 def test_sensitive_findings_accepts_public_text_and_placeholders() -> None:
-    text = "\n".join(
+    text = "\n".join(  # noqa: FLY002 - one fixture line per item
         [
             "endpoint = https://app.datarobot.com/api/v2",
             'api_key = "<your-api-key>"',
@@ -198,7 +198,7 @@ def test_sensitive_findings_flags_unquoted_and_encoded_secrets(
 
 
 def test_sensitive_findings_accepts_public_hosts_role_mailboxes_and_calls() -> None:
-    text = "\n".join(
+    text = "\n".join(  # noqa: FLY002 - one fixture line per item
         [
             "https://your-company.atlassian.net/browse/X-1",
             "https://hooks.slack.com/services/T000/B000/xxxx",

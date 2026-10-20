@@ -9,6 +9,17 @@
 set -euo pipefail
 
 staged_paths=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Fast lint on staged Python files, the same checks CI runs.
+python_files=()
+while IFS= read -r path; do
+    [[ -n "$path" ]] && python_files+=("$path")
+done < <(grep -E '\.py$' <<<"$staged_paths" || true)
+if ((${#python_files[@]})); then
+    uv run --group dev ruff check "${python_files[@]}"
+    uv run --group dev ruff format --check "${python_files[@]}"
+fi
+
 if ! grep -qE '^(skills/|tests/e2e/)' <<<"$staged_paths"; then
     exit 0
 fi

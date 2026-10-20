@@ -86,9 +86,12 @@ def preserved_lines(path: Path, owned: set[str]) -> list[str]:
     kept = []
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
-        if "=" in stripped and not stripped.startswith("#"):
-            if stripped.partition("=")[0].strip() in owned:
-                continue
+        if (
+            "=" in stripped
+            and not stripped.startswith("#")
+            and stripped.partition("=")[0].strip() in owned
+        ):
+            continue
         kept.append(line)
     while kept and not kept[-1].strip():
         kept.pop()

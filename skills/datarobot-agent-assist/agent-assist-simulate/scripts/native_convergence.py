@@ -9,24 +9,25 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import ValidationError
-
 from artifacts import (
+    load_criteria,
+    load_json,
+    load_native_config,
+    load_spec,
     one_line,
     resolve_project_file,
     resolve_swarm_dir,
     resolve_under_root,
     scenario_id,
-    load_criteria,
-    load_json,
-    load_native_config,
-    load_spec,
     write_json,
 )
+from native_execution import RESULT_FILENAME, NativeRunState
+from native_execution import STATE_FILENAME as RUN_STATE_FILENAME
+from pydantic import ValidationError
 from swarm_contracts import (
     NativeReportSummary,
     Scenario,
@@ -35,8 +36,6 @@ from swarm_contracts import (
     StrictOutput,
     SwarmResults,
 )
-from native_execution import RESULT_FILENAME, STATE_FILENAME as RUN_STATE_FILENAME
-from native_execution import NativeRunState
 from write_report import write_native_report
 
 STATE_FILENAME = "state.json"
@@ -111,10 +110,8 @@ def initialize(
         status="open" if has_breaches else "complete",
         spec_path=str(resolved_spec),
         convergence_dir=str(resolved_convergence_dir),
-        started_at=datetime.now(timezone.utc).isoformat(),
-        completed_at=datetime.now(timezone.utc).isoformat()
-        if not has_breaches
-        else None,
+        started_at=datetime.now(UTC).isoformat(),
+        completed_at=datetime.now(UTC).isoformat() if not has_breaches else None,
         actual_model=actual_model,
         config=config,
         initial_results=initial_results,
@@ -187,7 +184,7 @@ def advance(
 
     if not any(r.status == "breach" for r in state.latest_results):
         state.status = "complete"
-        state.completed_at = datetime.now(timezone.utc).isoformat()
+        state.completed_at = datetime.now(UTC).isoformat()
 
     write_json(state_path, state.model_dump(mode="json"))
     return _status_payload(state, resolved_convergence_dir)

@@ -36,17 +36,17 @@ import io
 import json
 import os
 import re
-import socket
 import ssl
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import product
 from pathlib import Path
-from typing import IO, Any, Callable, NoReturn, Sequence
+from typing import IO, Any, NoReturn
 
 EXIT_OK = 0
 EXIT_USAGE = 1
@@ -83,10 +83,12 @@ DEFAULT_TRANSACTION_NOTE = (
 )
 
 # `query` and `preview` accept only statements that start with one of these...
-READ_STARTS = frozenset("SELECT WITH VALUES TABLE SHOW DESCRIBE DESC EXPLAIN".split())
+READ_STARTS = frozenset(
+    ["SELECT", "WITH", "VALUES", "TABLE", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
+)
 # ...and contain none of these words anywhere outside quotes and comments.
-WRITE_WORDS = frozenset("INSERT UPDATE DELETE MERGE UPSERT INTO".split())
-DML_WORDS = frozenset("INSERT UPDATE DELETE MERGE UPSERT".split())
+WRITE_WORDS = frozenset(["INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "INTO"])
+DML_WORDS = frozenset(["INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT"])
 
 
 class UsageError(Exception):
@@ -192,7 +194,8 @@ def load_config() -> tuple[str, str]:
 def _ssl_context() -> ssl.SSLContext | None:
     verify = os.environ.get("DATAROBOT_SSL_VERIFY", "").strip()
     if verify.lower() in ("false", "0", "no", "off"):
-        return ssl._create_unverified_context()
+        # Opt-in through DATAROBOT_SSL_VERIFY=false for clusters with a private CA.
+        return ssl._create_unverified_context()  # noqa: S323
     if verify and verify.lower() not in ("true", "1", "yes", "on"):
         return ssl.create_default_context(cafile=verify)
     return None
@@ -293,7 +296,7 @@ class DataRobotClient:
                 raise TransportError(
                     f"unreadable response from DataRobot ({type(exc).__name__})"
                 ) from None
-            except (urllib.error.URLError, socket.timeout, OSError) as exc:
+            except (TimeoutError, urllib.error.URLError, OSError) as exc:
                 reason = getattr(exc, "reason", None) or exc
                 raise TransportError(str(reason)) from None
         raise TransportError("request was not sent")
@@ -517,7 +520,7 @@ def check_read_only(sql: str) -> str:
             )
         found = WRITE_WORDS & set(words)
         if found or (keyword == "EXPLAIN" and {"ANALYZE", "ANALYSE"} & set(words)):
-            word = sorted(found)[0] if found else "EXPLAIN ANALYZE"
+            word = min(found) if found else "EXPLAIN ANALYZE"
             raise UsageError(
                 f"`query` and `preview` are read-only and this SQL contains "
                 f"{word}. Use `execute`, which needs the user's explicit approval."
@@ -881,8 +884,10 @@ def cmd_datastores(client: DataRobotClient, args: argparse.Namespace) -> int:
     columns = ["id", "name", "type", "driver", "role", "sql"]
     notes = [
         "role = your access to the connection (OWNER, EDITOR, CONSUMER)",
-        "sql = what DataRobot can do with the connection's driver; writes need "
-        "'read (fast) + write'. It does not check the credential's grants",
+        (
+            "sql = what DataRobot can do with the connection's driver; writes need "
+            "'read (fast) + write'. It does not check the credential's grants"
+        ),
     ]
     if not args.name:
         notes.append(f"these are all {len(rows)} connections you can access")
@@ -1002,7 +1007,8 @@ def cmd_preview(client: DataRobotClient, args: argparse.Namespace) -> int:
     driver = str(get_store(client, args.datastore_id).get("driverClassType") or "")
     parts = (args.catalog, args.schema, args.table)
     name = ".".join(quote_identifier(p, driver) for p in parts if p)
-    sql = check_read_only(f"SELECT * FROM {name}")
+    # Every part is quoted by quote_identifier and the result must pass check_read_only.
+    sql = check_read_only(f"SELECT * FROM {name}")  # noqa: S608
     result = run_verify_sql(
         client, args.datastore_id, sql, max_rows, args.credential_id, notes
     )
@@ -1196,8 +1202,10 @@ def cmd_routes(client: DataRobotClient, args: argparse.Namespace) -> int:
     notes = [
         f"connection {store.get('canonicalName')!r}: driver {driver}, sql = {support}",
         "probed with empty requests that fail validation; no SQL ran",
-        "reads fall back to the legacy /verifySQL/ when the newer routes are "
-        "unavailable; writes have no fallback",
+        (
+            "reads fall back to the legacy /verifySQL/ when the newer routes are "
+            "unavailable; writes have no fallback"
+        ),
     ]
     return emit(Result(["route", "used by", "status"], rows, notes=notes), args)
 
@@ -1272,20 +1280,26 @@ DISCOVERY_HINT = (
 HINTS: list[tuple[Callable[[ApiError], bool], str]] = [
     (
         lambda e: e.status == 401,
-        "The API token was rejected: check DATAROBOT_API_TOKEN or run the "
-        "datarobot-setup skill.",
+        (
+            "The API token was rejected: check DATAROBOT_API_TOKEN or run the "
+            "datarobot-setup skill."
+        ),
     ),
     (
         lambda e: 300 <= e.status < 400,
-        "DataRobot answered with a redirect, which the script does not follow "
-        "because it would carry the API token elsewhere. Check DATAROBOT_ENDPOINT "
-        "(https, host, /api/v2).",
+        (
+            "DataRobot answered with a redirect, which the script does not follow "
+            "because it would carry the API token elsewhere. Check DATAROBOT_ENDPOINT "
+            "(https, host, /api/v2)."
+        ),
     ),
     (
         lambda e: "default credentials were not found" in e.message,
-        "Pass --credential-id (see `credentials`) or set a default credential. This "
-        "check runs before the connection lookup, so also confirm the id with "
-        "`datastores`.",
+        (
+            "Pass --credential-id (see `credentials`) or set a default credential. This "
+            "check runs before the connection lookup, so also confirm the id with "
+            "`datastores`."
+        ),
     ),
     (
         lambda e: "credential does not exist" in e.message,
@@ -1298,27 +1312,35 @@ HINTS: list[tuple[Callable[[ApiError], bool], str]] = [
     (lambda e: e.status == 404, "Check the data connection id with `datastores`."),
     (
         lambda e: e.status == 409,
-        "This connection type does not support the operation; see `datastores`, "
-        "column sql.",
+        (
+            "This connection type does not support the operation; see `datastores`, "
+            "column sql."
+        ),
     ),
     (
         lambda e: e.status == 408,
-        "No answer within the 300 s server limit. Common causes: a stopped or "
-        "cold warehouse (Databricks, Snowflake) still starting, or a heavy query. "
-        "Retry the read once the warehouse is up; add filters, LIMIT, or "
-        "aggregation.",
+        (
+            "No answer within the 300 s server limit. Common causes: a stopped or "
+            "cold warehouse (Databricks, Snowflake) still starting, or a heavy query. "
+            "Retry the read once the warehouse is up; add filters, LIMIT, or "
+            "aggregation."
+        ),
     ),
     (lambda e: e.status == 429, "Rate limited; wait and retry the read."),
     (
         lambda e: "invalid_grant" in e.message or "oauth" in e.message.lower(),
-        "The stored OAuth credential expired or was revoked. Re-authorize it in "
-        "DataRobot, or pick another credential (`credentials`).",
+        (
+            "The stored OAuth credential expired or was revoked. Re-authorize it in "
+            "DataRobot, or pick another credential (`credentials`)."
+        ),
     ),
     (
         lambda e: e.status == 400,
-        "The database rejected the SQL: check that the objects exist (`tables`, "
-        "`columns`), identifier case and quoting, and the dialect "
-        "(references/connector-support.md).",
+        (
+            "The database rejected the SQL: check that the objects exist (`tables`, "
+            "`columns`), identifier case and quoting, and the dialect "
+            "(references/connector-support.md)."
+        ),
     ),
 ]
 

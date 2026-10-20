@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from agent_assist_contracts import spec_fields_from_listing_entry
 
 SCRIPTS_DIR = (
