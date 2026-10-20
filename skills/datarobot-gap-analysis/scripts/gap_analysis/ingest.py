@@ -11,7 +11,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-
 _REMOTE_URL_RE = re.compile(
     r"^(https://[A-Za-z0-9.-]+/[\w.\-~/]+(?:\.git)?/?"
     r"|git@[A-Za-z0-9.-]+:[\w.\-~/]+(?:\.git)?)$"
@@ -41,7 +40,7 @@ def _validate_remote_url(url: str) -> None:
         )
 
 
-_COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$", re.I)
+_COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
 
 
 def _validate_ref(ref: str) -> None:
@@ -60,7 +59,11 @@ def _checkout_commit(dest: str, ref: str) -> None:
         ["checkout", "--detach", "FETCH_HEAD"],
     ):
         proc = subprocess.run(
-            ["git", "-C", dest, *args], capture_output=True, text=True, timeout=600
+            ["git", "-C", dest, *args],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
         )
         if proc.returncode != 0:
             raise RuntimeError(
@@ -89,7 +92,9 @@ def clone_repo(url: str, ref: str | None = None, dest: str | None = None) -> str
     # `--` stops git from ever re-interpreting the URL/dest as options, even
     # if a future change loosens `_validate_remote_url`.
     args += ["--", _auth_url(url), dest]
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=600)
+    proc = subprocess.run(
+        args, capture_output=True, text=True, timeout=600, check=False
+    )
     if proc.returncode != 0:
         # Never leak a token in error text.
         safe = re.sub(r"x-access-token:[^@]+@", "x-access-token:***@", proc.stderr)

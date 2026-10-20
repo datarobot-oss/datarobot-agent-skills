@@ -22,7 +22,7 @@ from pathlib import Path
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from gap_analysis import risk_management as rm  # noqa: E402  (path setup above)
+from gap_analysis import risk_management as rm
 
 
 def main() -> int:

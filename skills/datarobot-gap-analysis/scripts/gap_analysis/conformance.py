@@ -10,7 +10,6 @@ import json
 import shutil
 import subprocess
 import threading
-
 from typing import Any
 
 from .models import Finding
@@ -64,6 +63,7 @@ def llm_gateway_models(offline: bool = False) -> list[str]:
                     capture_output=True,
                     text=True,
                     timeout=30,
+                    check=False,
                 )
                 data = json.loads(proc.stdout or "{}")
                 models = sorted(

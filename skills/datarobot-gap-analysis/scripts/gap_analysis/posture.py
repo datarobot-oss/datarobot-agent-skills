@@ -24,9 +24,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .variants import _select_variant_text, shipped_deployment_variant
 from .models import AnalysisResult, Finding, Severity
 from .taxonomy import Taxonomy
+from .variants import _select_variant_text, shipped_deployment_variant
 
 # Severity weights — structural density is weighted, so a couple of critical structural
 # gaps outweigh a long tail of low-severity plumbing.
@@ -230,7 +230,7 @@ def _rationale(
     high_structural: list[Finding],
     advice: str = "",
 ) -> str:
-    pct = int(round(score * 100))
+    pct = round(score * 100)
     if rec == PATCH:
         return (
             f"Only {structural_count} of {total} gaps are structural "

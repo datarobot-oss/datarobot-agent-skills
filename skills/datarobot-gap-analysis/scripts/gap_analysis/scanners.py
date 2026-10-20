@@ -17,9 +17,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from collections.abc import Callable
 from typing import Any
 
 from .inventory import _DEF_EXCLUDE, _iter_files, git_ignore, glob_match, is_ignored
@@ -208,7 +208,7 @@ def run_secret_scan(
             continue
         try:
             text = p.read_text(errors="ignore")
-        except Exception:
+        except OSError:
             continue
         lines = text.splitlines()
         if any(len(line) > _MINIFIED_LINE_CHARS for line in lines):
@@ -327,6 +327,7 @@ def _export_uv_locks(root: Path, notes: list[str]) -> list[tuple[Path, str]]:
                 capture_output=True,
                 text=True,
                 timeout=120,
+                check=False,
             )
             if proc.returncode != 0:
                 notes.append(
@@ -371,6 +372,7 @@ def _audit_one(root: Path, target: Path) -> list[dict[str, Any]]:
         capture_output=True,
         text=True,
         timeout=300,
+        check=False,
     )
     if not proc.stdout.strip():
         # pip-audit exits non-zero both on findings (with JSON) and on failure
@@ -519,6 +521,7 @@ def run_sca_npm(
                 capture_output=True,
                 text=True,
                 timeout=120,
+                check=False,
             )
             data = json.loads(proc.stdout or "{}")
             vulns = data.get("vulnerabilities", {}) or {}
@@ -592,7 +595,7 @@ def _classify_semgrep(check_id: str) -> tuple[str, str] | None:
     return "SEC-011", ("medium" if ".audit." in cid else "high")
 
 
-_RELEASE_AGE_RE = re.compile(r"^\s*min-release-age\s*=\s*(\d+)", re.M)
+_RELEASE_AGE_RE = re.compile(r"^\s*min-release-age\s*=\s*(\d+)", re.MULTILINE)
 _RECOMMENDED_RELEASE_AGE_DAYS = 7
 
 
@@ -611,10 +614,14 @@ def _release_age_wording(
         return evidence, message
     days = int(m.group(1))
     return (
-        f"min-release-age set to {days} day(s) in {rel}; recommended "
-        f"{_RECOMMENDED_RELEASE_AGE_DAYS} or more",
-        f"A minimum release age of {days} day(s) gives little time for a compromised "
-        f"npm release to be pulled; raise it to {_RECOMMENDED_RELEASE_AGE_DAYS}+.",
+        (
+            f"min-release-age set to {days} day(s) in {rel}; recommended "
+            f"{_RECOMMENDED_RELEASE_AGE_DAYS} or more"
+        ),
+        (
+            f"A minimum release age of {days} day(s) gives little time for a compromised "
+            f"npm release to be pulled; raise it to {_RECOMMENDED_RELEASE_AGE_DAYS}+."
+        ),
     )
 
 
@@ -641,6 +648,7 @@ def run_sast(
             capture_output=True,
             text=True,
             timeout=600,
+            check=False,
         )
         data = json.loads(proc.stdout or "{}")
         for res in data.get("results", [])[:400]:
@@ -741,7 +749,9 @@ _LINT_CONFIG_FILES = (
     ".eslintrc.cjs",
     "biome.json",
 )
-_LINT_SECTION_RE = re.compile(r"^\[tool\.(ruff|mypy|pyright|flake8|pylint)", re.M)
+_LINT_SECTION_RE = re.compile(
+    r"^\[tool\.(ruff|mypy|pyright|flake8|pylint)", re.MULTILINE
+)
 _LINT_TOOL_RE = re.compile(
     r"\b(ruff|mypy|pyright|flake8|pylint|eslint|biome|tsc|golangci-lint|lint-check)\b"
 )
@@ -751,7 +761,7 @@ _VULN_SCAN_RE = re.compile(
 )
 _ACTION_MOVING_REF_RE = re.compile(
     r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@(main|master|latest)\s*$",
-    re.M,
+    re.MULTILINE,
 )
 _PY_MANIFESTS = ("pyproject.toml", "requirements.txt", "setup.py", "Pipfile")
 _PY_LOCKS = ("uv.lock", "poetry.lock", "Pipfile.lock", "pdm.lock", "requirements.lock")
@@ -975,20 +985,19 @@ def check_engineering_baseline(
             )
 
     c = taxonomy.get("ITA-006")
-    if c:
-        if not any(
-            (root / f).is_file()
-            for f in ("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS")
-        ):
-            findings.append(
-                _mk(
-                    c,
-                    None,
-                    None,
-                    "no CODEOWNERS file",
-                    "Nobody is automatically accountable for reviewing changes.",
-                )
+    if c and not any(
+        (root / f).is_file()
+        for f in ("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS")
+    ):
+        findings.append(
+            _mk(
+                c,
+                None,
+                None,
+                "no CODEOWNERS file",
+                "Nobody is automatically accountable for reviewing changes.",
             )
+        )
 
     c = taxonomy.get("SEC-014")
     workflows = root / ".github" / "workflows"
@@ -1047,7 +1056,9 @@ _SEV_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
 
 def _run_json(cmd: list[str], cwd: Path, timeout: int) -> Any:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
+    )
     if not proc.stdout.strip():
         raise RuntimeError(
             f"{cmd[0]} produced no output (exit {proc.returncode}): "
@@ -1207,6 +1218,7 @@ def run_trivy(
                 capture_output=True,
                 text=True,
                 timeout=150,
+                check=False,
             )
             if pre.returncode != 0:
                 raise RuntimeError(pre.stderr.strip()[-300:] or "download failed")
@@ -1345,7 +1357,9 @@ def run_gitleaks(
             cmd += ["--config", str(root / cfg)]
             break
     try:
-        subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=600)
+        subprocess.run(
+            cmd, cwd=root, capture_output=True, text=True, timeout=600, check=False
+        )
         items = json.loads(report.read_text() or "[]") if report.exists() else []
     except Exception as e:  # noqa: BLE001
         notes.append(f"gitleaks failed: {brief_error(e)}")
@@ -1417,7 +1431,7 @@ def run_hadolint(
     cmd += [str(p) for p in dockerfiles]
     try:
         proc = subprocess.run(
-            cmd, cwd=root, capture_output=True, text=True, timeout=300
+            cmd, cwd=root, capture_output=True, text=True, timeout=300, check=False
         )
         items = json.loads(proc.stdout or "[]")
     except Exception as e:  # noqa: BLE001

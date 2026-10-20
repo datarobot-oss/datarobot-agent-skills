@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .models import PILLARS, AnalysisResult, Finding
 from .posture import migration_advice
-from .models import AnalysisResult, Finding, PILLARS
 
 _SEV_BADGE = {
     "critical": "🟥 CRITICAL",
@@ -183,12 +183,14 @@ _POSTURE_BADGE = {
 def _posture_section(posture: dict[str, Any]) -> str:
     rec = posture.get("recommendation", "PATCH")
     badge = _POSTURE_BADGE.get(rec, rec)
-    pct = int(round(posture.get("score", 0.0) * 100))
+    pct = round(posture.get("score", 0.0) * 100)
     out = [
         "\n## Remediation Posture\n",
-        f"**Recommendation: {badge}** &nbsp;|&nbsp; "
-        f"structural risk: {pct}% &nbsp;|&nbsp; "
-        f"{posture.get('structural_count', 0)} of {posture.get('total', 0)} gaps structural\n",
+        (
+            f"**Recommendation: {badge}** &nbsp;|&nbsp; "
+            f"structural risk: {pct}% &nbsp;|&nbsp; "
+            f"{posture.get('structural_count', 0)} of {posture.get('total', 0)} gaps structural\n"
+        ),
         posture.get("rationale", ""),
     ]
     drivers = posture.get("drivers") or []
@@ -517,9 +519,11 @@ def _regulatory_section(result: AnalysisResult) -> str:
         if r["status"] not in ("pass", "gap", "not_applicable", "referenced")
     ]
     out = [
-        f"{len(coverage)} required mitigation(s): {len(gaps)} gap(s), {len(passed)} with "
-        f"evidence, {len(referenced)} provided by an existing deployment, "
-        f"{len(inapplicable)} not applicable, {len(unassessed)} not assessed."
+        (
+            f"{len(coverage)} required mitigation(s): {len(gaps)} gap(s), {len(passed)} with "
+            f"evidence, {len(referenced)} provided by an existing deployment, "
+            f"{len(inapplicable)} not applicable, {len(unassessed)} not assessed."
+        )
     ]
     for i, step in enumerate(compliance_path(result), start=1):
         out.append(f"\n**{i}. {step['title']}.** {step['detail']}\n")

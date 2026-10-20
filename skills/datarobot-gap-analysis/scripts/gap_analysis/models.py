@@ -90,7 +90,7 @@ class Finding:
         )
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Finding":
+    def from_dict(cls, d: dict[str, Any]) -> Finding:
         data = dict(d)
         data["severity"] = Severity(data.get("severity", "medium"))
         known = {f.name for f in fields(cls)}
@@ -140,7 +140,7 @@ class AnalysisResult:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "AnalysisResult":
+    def from_dict(cls, d: dict[str, Any]) -> AnalysisResult:
         result = cls()
         result.findings = [Finding.from_dict(f) for f in d.get("findings", [])]
         result.skipped = [ConditionSkip(**s) for s in d.get("skipped", [])]

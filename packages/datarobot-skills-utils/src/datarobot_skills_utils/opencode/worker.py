@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import subprocess
 
-from .reasoning import worker_env
-
 from .events import parse_events
+from .reasoning import worker_env
 
 _MAX_MESSAGE_BYTES = 600_000  # stay under the OS argv limit (1 MiB on macOS)
 
@@ -98,7 +97,13 @@ def run_worker(
     for _ in range(max(1, attempts)):
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
+                env=env,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             # TimeoutExpired carries argv, and with it the prompt; a chained

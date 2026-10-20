@@ -16,9 +16,9 @@ import json
 import re
 import subprocess
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Iterator
 from typing import Any
 
 try:
@@ -157,6 +157,7 @@ def _git_ignore_for(root: str) -> GitIgnore:
             capture_output=True,
             text=True,
             timeout=60,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return _NO_IGNORE
@@ -371,7 +372,7 @@ def detect_python_version(root: Path) -> str | None:
 
 def _norm_req(spec: str) -> str:
     """'requests>=2.0[extra]' -> 'requests' (lowercased)."""
-    return re.split(r"[<>=!~\[ ;@]", spec.strip(), 1)[0].strip().lower()
+    return re.split(r"[<>=!~\[ ;@]", spec.strip(), maxsplit=1)[0].strip().lower()
 
 
 def extract_dependencies(root: Path) -> list[str]:
@@ -397,7 +398,7 @@ def extract_dependencies(root: Path) -> list[str]:
     for pp in pyprojects if tomllib else []:
         try:
             data = tomllib.loads(pp.read_text(errors="ignore"))
-        except Exception:
+        except (OSError, tomllib.TOMLDecodeError):
             data = {}
         # PEP 621
         for spec in (data.get("project", {}) or {}).get("dependencies", []) or []:
@@ -424,14 +425,14 @@ def extract_dependencies(root: Path) -> list[str]:
             data = json.loads(pj.read_text(errors="ignore"))
             for key in ("dependencies", "devDependencies"):
                 deps.update(k.lower() for k in (data.get(key, {}) or {}))
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - best-effort: an unreadable or odd package.json adds no deps
             pass
 
     return sorted(deps)
 
 
 _PYPROJECT_LICENSE_RE = re.compile(
-    r'^license\s*=\s*(?:\{\s*text\s*=\s*)?["\']([^"\']+)["\']', re.M
+    r'^license\s*=\s*(?:\{\s*text\s*=\s*)?["\']([^"\']+)["\']', re.MULTILINE
 )
 
 
@@ -460,7 +461,7 @@ def extract_declared_licenses(root: Path, exclude: list[str]) -> list[list[str]]
 
 def extract_model_ids(root: Path, exclude: list[str]) -> list[str]:
     ids: set[str] = set()
-    for p, rel in _iter_files(root, exclude):
+    for p, _rel in _iter_files(root, exclude):
         if p.suffix.lower() not in {
             ".py",
             ".ts",
@@ -473,7 +474,7 @@ def extract_model_ids(root: Path, exclude: list[str]) -> list[str]:
             continue
         try:
             text = p.read_text(errors="ignore")
-        except Exception:
+        except OSError:
             continue
         for m in _MODEL_RE.finditer(text):
             if not _MIME_LIKE_RE.match(m.group(1)) and "/vnd." not in m.group(1):
@@ -664,13 +665,15 @@ def agent_template_choices(offline: bool = False) -> dict[str, str]:
             with urllib.request.urlopen(_AGENT_TEMPLATE_COPIER_URL, timeout=8) as resp:
                 text = resp.read().decode("utf-8", "ignore")
             block = re.search(
-                r"^agent_template_framework:\n(.*?)(?=^\S)", text, re.S | re.M
+                r"^agent_template_framework:\n(.*?)(?=^\S)",
+                text,
+                re.DOTALL | re.MULTILINE,
             )
             if block:
                 for m in re.finditer(
                     r'^\s{4}"?([^":\n]+)"?:\s*([A-Za-z0-9_-]+)\s*$',
                     block.group(1),
-                    re.M,
+                    re.MULTILINE,
                 ):
                     choices[m.group(1).strip()] = m.group(2).strip()
         except (OSError, ValueError):
@@ -729,7 +732,9 @@ _LLM_GATEWAY_RE = re.compile(
 )
 _LLM_GATEWAY_EXTS = (".py", ".ts", ".tsx", ".js", ".toml", ".yaml", ".yml", ".env")
 _TEST_PART_RE = re.compile(r"(^|/)(tests?|__tests__|fixtures)(/|$)|(^|/)test_[^/]*$")
-_MODEL_HOOK_RE = re.compile(r"^def (score|load_model|chat|transform|fit)\(", re.M)
+_MODEL_HOOK_RE = re.compile(
+    r"^def (score|load_model|chat|transform|fit)\(", re.MULTILINE
+)
 
 
 def detect_llm_usage(
@@ -828,7 +833,7 @@ def detect_template_sources(root: Path) -> list[str]:
             continue
         for m in _SRC_PATH_RE.finditer(f.read_text(errors="ignore")):
             name = m.group(1).rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
-            sources.add(name[:-4] if name.endswith(".git") else name)
+            sources.add(name.removesuffix(".git"))
     return sorted(sources)
 
 

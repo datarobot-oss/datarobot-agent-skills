@@ -10,12 +10,12 @@ import shutil
 import signal
 import socket
 import subprocess
-from collections.abc import Iterable
 import tempfile
 import time
-from typing import IO
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
+from typing import IO, Self
 
 from .reasoning import worker_env
 
@@ -115,7 +115,7 @@ class OpenCodeServer:
         )
         # Nothing reads the server's stderr for the rest of the run, so a pipe
         # would eventually fill and block the child; a file never does.
-        self._stderr = tempfile.TemporaryFile(
+        self._stderr = tempfile.TemporaryFile(  # noqa: SIM115 - lives until stop() closes it
             mode="w+", encoding="utf-8", errors="replace"
         )
         # `dr opencode serve` re-execs the real server twice; a fresh session puts
@@ -169,7 +169,7 @@ class OpenCodeServer:
             self.workdir = None
         self.url = None
 
-    def __enter__(self) -> "OpenCodeServer":
+    def __enter__(self) -> Self:
         self.start()
         return self
 

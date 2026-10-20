@@ -28,31 +28,30 @@ sys.path.insert(
     ),
 )
 
-from gap_analysis import scanners  # noqa: E402
-from gap_analysis.detect import _result_to_findings, layer2_files  # noqa: E402
-from gap_analysis.docs import parse_llms_txt, resolve_docs  # noqa: E402
-from gap_analysis.engine import _dedup  # noqa: E402
-from gap_analysis.ingest import clone_repo  # noqa: E402
-from gap_analysis.inventory import (  # noqa: E402
+from gap_analysis import scanners
+from gap_analysis.detect import _result_to_findings, layer2_files
+from gap_analysis.docs import parse_llms_txt, resolve_docs
+from gap_analysis.engine import _dedup
+from gap_analysis.ingest import clone_repo
+from gap_analysis.inventory import (
     _iter_files,
     build_inventory,
     detect_agent_frameworks,
-    detect_python_version,
-    detect_python_versions,
     detect_datarobot_app,
     detect_llm_usage,
     detect_model_code,
+    detect_python_version,
+    detect_python_versions,
     detect_template_sources,
     evidence_files,
     extract_dependencies,
     glob_match,
     iter_base_images,
 )
-from gap_analysis.llm import brief_error, parse_json  # noqa: E402
-from gap_analysis.models import AnalysisResult, ConditionSkip, Finding, Severity  # noqa: E402
-from gap_analysis.settings import Settings  # noqa: E402
-from gap_analysis.posture import migration_advice  # noqa: E402
-from gap_analysis.remediate import (  # noqa: E402
+from gap_analysis.llm import brief_error, parse_json
+from gap_analysis.models import AnalysisResult, ConditionSkip, Finding, Severity
+from gap_analysis.posture import migration_advice
+from gap_analysis.remediate import (
     _locked_version,
     _uv_error_line,
     create_fix_branch,
@@ -61,18 +60,19 @@ from gap_analysis.remediate import (  # noqa: E402
     pin_in_pyproject,
     remediate,
 )
-from gap_analysis.report import compliance_path, python_label, render_report  # noqa: E402
-from gap_analysis.risk_management import (  # noqa: E402
+from gap_analysis.report import compliance_path, python_label, render_report
+from gap_analysis.risk_management import (
     _detect_iac,
     _finding_for_mitigation,
 )
-from gap_analysis.scanners import (  # noqa: E402
+from gap_analysis.scanners import (
     gitleaks_findings,
     hadolint_findings,
     leaked_key,
     trivy_findings,
 )
-from gap_analysis.taxonomy import Taxonomy  # noqa: E402
+from gap_analysis.settings import Settings
+from gap_analysis.taxonomy import Taxonomy
 
 
 @pytest.fixture(scope="module")
@@ -1263,7 +1263,7 @@ def test_layer2_numbers_lines_snaps_evidence_and_verifies(
     )
     client = _ScriptedClient([detect_reply, verify_reply])
 
-    findings, skip, notes = run_condition(
+    findings, skip, _notes = run_condition(
         client,
         tmp_path,
         build_inventory(tmp_path),

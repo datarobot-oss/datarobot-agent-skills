@@ -15,7 +15,9 @@ import re
 import urllib.request
 
 LLMS_TXT_URL = "https://docs.datarobot.com/llms.txt"
-_LINE_RE = re.compile(r"^- \[([^\]]+)\]\((https?://[^)]+)\)(?::\s*(.*))?$", re.M)
+_LINE_RE = re.compile(
+    r"^- \[([^\]]+)\]\((https?://[^)]+)\)(?::\s*(.*))?$", re.MULTILINE
+)
 _WORD_RE = re.compile(r"[a-z0-9]+")
 # Classic UI, API reference and release notes describe the feature but are not
 # where a user goes to configure it; prefer the current product pages.

@@ -28,8 +28,8 @@ from _bootstrap import ensure_skills_utils
 
 ensure_skills_utils()
 
-from artifacts import resolve_swarm_dir  # noqa: E402
-from datarobot_skills_utils.opencode import (  # noqa: E402
+from artifacts import resolve_swarm_dir
+from datarobot_skills_utils.opencode import (
     WORKER_PREAMBLE,
     build_run_command,
     parse_events,

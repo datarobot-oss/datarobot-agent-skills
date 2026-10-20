@@ -6,26 +6,25 @@
 from __future__ import annotations
 
 import argparse
-import json
 import atexit
+import json
 import os
 import signal
 import sys
 import time
 import webbrowser
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .engine import analyze, fix
 from .ingest import clone_repo
-from .opencode import OpenCodeServer, OpenCodeWorkerClient, dr_available
 from .models import AnalysisResult
+from .opencode import OpenCodeServer, OpenCodeWorkerClient, dr_available
 from .policy import load_policy
 from .report import render_report, usage_summary
-from .settings import Settings
 from .report_html import render_html
-
+from .settings import Settings
 
 _T0 = time.monotonic()
 
@@ -57,8 +56,7 @@ def _load_env_file(path: str) -> list[str]:
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        if line.startswith("export "):
-            line = line[len("export ") :]
+        line = line.removeprefix("export ")
         key, _, val = line.partition("=")
         key, val = key.strip(), val.strip()
         if not key:
@@ -181,7 +179,7 @@ def _run_fix(
 
     html_path = html_path or "gap-report.html"
     final_findings = result.findings
-    selected = set(s.strip() for s in args.select.split(",")) if args.select else None
+    selected = {s.strip() for s in args.select.split(",")} if args.select else None
     _status(
         f"→ Applying fixes ({'selected: ' + ','.join(sorted(selected)) if selected else 'all auto-fixable'}) "
         "on a gap-fixes/* branch …"
@@ -409,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
 
     if args.env_file:
         try:
@@ -487,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
         llm_client=llm_client,
         progress=progress,
         settings=settings,
-        only=set(s.strip() for s in args.select.split(",")) if args.select else None,
+        only={s.strip() for s in args.select.split(",")} if args.select else None,
     )
     _status(
         f"→ Analysis complete — {len(result.findings)} gaps "

@@ -47,7 +47,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import socket
 import time
 import urllib.error
 import urllib.request
@@ -61,9 +60,9 @@ from . import paths
 from .detect import number_lines
 from .docs import resolve_docs
 from .inventory import PREDICTIVE_TARGET, evidence_files, files_matching
-from .variants import _select_variant_text, shipped_deployment_variant
 from .llm import LLMClient, brief_error, parse_json
 from .models import Finding, Severity
+from .variants import _select_variant_text, shipped_deployment_variant
 
 EU_AI_ACT_POLICY_NAME = "EU AI Act"
 _TIMEOUT_SECONDS = 30
@@ -123,7 +122,7 @@ class RiskManagementClient:
                 )
                 if e.code < 500:
                     return None
-            except (TimeoutError, socket.timeout):
+            except TimeoutError:
                 self.last_error = f"timed out after {_TIMEOUT_SECONDS}s: {url}"
             except urllib.error.URLError as e:
                 self.last_error = f"{e.reason} ({url})"

@@ -10,14 +10,13 @@ so it has no LLM-prompt-based runner here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from . import paths
@@ -172,7 +171,7 @@ def _gather_files(
         p = workspace / rel
         try:
             data = p.read_text(errors="ignore")
-        except Exception:
+        except OSError:
             continue
         # NUL bytes survive errors="ignore" but cannot travel in a subprocess
         # argv (the opencode worker path) and break most JSON transports.
@@ -515,8 +514,10 @@ def _context_sections(cond: Condition, offline: bool) -> list[tuple[str, str]]:
         return []
     return [
         (
-            "KNOWN MODEL IDS (served by the org's DataRobot LLM Gateway; these are "
-            "valid identifiers, and pinned when they carry a date or version)",
+            (
+                "KNOWN MODEL IDS (served by the org's DataRobot LLM Gateway; these are "
+                "valid identifiers, and pinned when they carry a date or version)"
+            ),
             "\n".join(catalog),
         )
     ]

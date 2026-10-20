@@ -56,7 +56,8 @@ def parse_json(text: str) -> dict[str, Any]:
     try:
         loaded = json.loads(text)
         if not isinstance(loaded, dict):
-            raise ValueError("model response is not a JSON object")
+            # ValueError, not TypeError: callers retry on ValueError like a parse error.
+            raise ValueError("model response is not a JSON object")  # noqa: TRY004
         return loaded
     except json.JSONDecodeError:
         start = text.find("{")
@@ -64,7 +65,7 @@ def parse_json(text: str) -> dict[str, Any]:
             raise
         obj, _end = json.JSONDecoder().raw_decode(text[start:])
         if not isinstance(obj, dict):
-            raise ValueError("model response is not a JSON object")
+            raise ValueError("model response is not a JSON object") from None  # noqa: TRY004
         return obj
 
 

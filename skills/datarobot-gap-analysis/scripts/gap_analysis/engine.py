@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from collections.abc import Callable
 from typing import Any
 
 from .conformance import check_conformance
@@ -17,12 +17,12 @@ from .inventory import build_inventory, git_ignore
 from .llm import get_client
 from .migrate import extract_spec, scaffold_from_spec
 from .models import AnalysisResult, ConditionSkip, Finding
-from .settings import DEFAULTS, Settings
 from .policy import load_policy
 from .posture import assess_posture
 from .remediate import remediate
 from .risk_management import EU_AI_ACT_POLICY_NAME, run_dynamic_layer4
 from .scanners import run_layer1
+from .settings import DEFAULTS, Settings
 from .taxonomy import Taxonomy
 
 

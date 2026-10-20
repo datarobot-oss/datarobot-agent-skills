@@ -16,16 +16,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .models import AnalysisResult, Finding, PILLARS
 from .agent_prompt import agent_prompt
+from .models import PILLARS, AnalysisResult, Finding
 from .report import (
     CONFORMANCE_ROWS,
     _clip,
     _short_title,
-    compliance_path,
-    python_label,
-    coverage_lines,
     approval_caveat,
+    compliance_path,
+    coverage_lines,
+    python_label,
     usage_rows,
 )
 
@@ -126,8 +126,10 @@ def _verification_banner(v: dict[str, Any]) -> str:
     )
     # before -> after deltas
     rows = [
-        f"<b>{v.get('closed', 0)}</b> gaps closed "
-        f"({b.get('total', 0)} → {a.get('total', 0)} total)",
+        (
+            f"<b>{v.get('closed', 0)}</b> gaps closed "
+            f"({b.get('total', 0)} → {a.get('total', 0)} total)"
+        ),
         f"posture {_esc(b.get('posture', '?'))} → {_esc(a.get('posture', '?'))}",
     ]
     deltas = []
@@ -326,7 +328,7 @@ def render_html(
 def _posture_banner(posture: dict[str, Any], repo: str = "") -> str:
     rec = posture.get("recommendation", "PATCH")
     label, cls = _POSTURE.get(rec, (rec, "patch"))
-    pct = int(round(posture.get("score", 0.0) * 100))
+    pct = round(posture.get("score", 0.0) * 100)
     out = [f'<section class="posture {cls}">']
     out.append(
         f'<div class="posture-top"><span class="badge">{_esc(label)}</span>'
@@ -578,10 +580,12 @@ def _regulatory_section(
     ]
     out = [
         head,
-        f'<p class="sub">{len(coverage)} required mitigation(s): {len(gaps)} gap(s), '
-        f"{len(passed)} with evidence, {len(referenced)} provided by an existing "
-        f"deployment, {len(inapplicable)} not applicable, {len(unassessed)} not "
-        "assessed. Expand a gap for its evidence and fix.</p>",
+        (
+            f'<p class="sub">{len(coverage)} required mitigation(s): {len(gaps)} gap(s), '
+            f"{len(passed)} with evidence, {len(referenced)} provided by an existing "
+            f"deployment, {len(inapplicable)} not applicable, {len(unassessed)} not "
+            "assessed. Expand a gap for its evidence and fix.</p>"
+        ),
     ]
     for i, step in enumerate(compliance_path(result), start=1):
         out.append(

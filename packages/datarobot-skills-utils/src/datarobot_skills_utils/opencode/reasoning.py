@@ -25,12 +25,15 @@ OFF = "off"
 # Highest effort each family accepted on the gateway (checked against
 # app.datarobot.com). Order matters: the first match wins.
 _FAMILY_MAX: list[tuple[re.Pattern[str], str | None]] = [
-    (re.compile(r"claude.*haiku", re.I), "high"),  # "max" exceeds the 8k token cap
-    (re.compile(r"claude[-.]?(sonnet|opus)[-.]?4|claude-4", re.I), "max"),
-    (re.compile(r"gpt-5.*codex", re.I), None),  # rejects reasoning_effort
-    (re.compile(r"azure/gpt-5|/o[1-9](-|$)|/gpt-5", re.I), "xhigh"),
-    (re.compile(r"gpt-oss", re.I), "high"),
-    (re.compile(r"gemini-(2\.5|3)", re.I), "high"),
+    (
+        re.compile(r"claude.*haiku", re.IGNORECASE),
+        "high",
+    ),  # "max" exceeds the 8k token cap
+    (re.compile(r"claude[-.]?(sonnet|opus)[-.]?4|claude-4", re.IGNORECASE), "max"),
+    (re.compile(r"gpt-5.*codex", re.IGNORECASE), None),  # rejects reasoning_effort
+    (re.compile(r"azure/gpt-5|/o[1-9](-|$)|/gpt-5", re.IGNORECASE), "xhigh"),
+    (re.compile(r"gpt-oss", re.IGNORECASE), "high"),
+    (re.compile(r"gemini-(2\.5|3)", re.IGNORECASE), "high"),
 ]
 
 
@@ -38,10 +41,10 @@ _FAMILY_MAX: list[tuple[re.Pattern[str], str | None]] = [
 # opencode config declares 8k for every model, and with reasoning enabled the
 # thinking counts against that, so a long JSON reply is cut mid-string.
 _FAMILY_LIMIT: list[tuple[re.Pattern[str], tuple[int, int]]] = [
-    (re.compile(r"claude", re.I), (200_000, 64_000)),
-    (re.compile(r"gpt-5|/o[1-9](-|$)", re.I), (400_000, 128_000)),
-    (re.compile(r"gemini-(2\.5|3)", re.I), (1_000_000, 65_536)),
-    (re.compile(r"gpt-oss", re.I), (128_000, 32_000)),
+    (re.compile(r"claude", re.IGNORECASE), (200_000, 64_000)),
+    (re.compile(r"gpt-5|/o[1-9](-|$)", re.IGNORECASE), (400_000, 128_000)),
+    (re.compile(r"gemini-(2\.5|3)", re.IGNORECASE), (1_000_000, 65_536)),
+    (re.compile(r"gpt-oss", re.IGNORECASE), (128_000, 32_000)),
 ]
 
 

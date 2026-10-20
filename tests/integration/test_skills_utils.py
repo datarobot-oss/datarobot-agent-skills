@@ -19,7 +19,7 @@ sys.path.insert(
     ),
 )
 
-from datarobot_skills_utils.opencode import (  # noqa: E402
+from datarobot_skills_utils.opencode import (
     WORKER_PREAMBLE,
     build_run_command,
     parse_events,

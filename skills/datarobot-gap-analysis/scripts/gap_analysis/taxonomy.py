@@ -74,7 +74,7 @@ class Condition:
     context: str = ""
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Condition":
+    def from_dict(cls, d: dict[str, Any]) -> Condition:
         fix_type = d.get("fix_type", "advisory")
         fix_risk = d.get("fix_risk") or _derive_fix_risk(fix_type)
         if fix_risk not in _FIX_RISK_VALUES:
@@ -111,7 +111,7 @@ class Taxonomy:
         self._by_id = {c.id: c for c in conditions}
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "Taxonomy":
+    def load(cls, path: str | Path | None = None) -> Taxonomy:
         p = Path(path) if path else paths.taxonomy_file()
         data = yaml.safe_load(p.read_text())
         return cls([Condition.from_dict(c) for c in data.get("conditions", [])])

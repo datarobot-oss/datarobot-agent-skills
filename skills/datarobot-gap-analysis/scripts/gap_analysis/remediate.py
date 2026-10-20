@@ -23,13 +23,15 @@ from typing import Any
 
 from .llm import LLMClient
 from .models import Finding
-from .scanners import _SECRET_PATTERNS, _PLACEHOLDER
+from .scanners import _PLACEHOLDER, _SECRET_PATTERNS
 
 # ───────────────────────── git helpers ─────────────────────────
 
 
 def _git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=workspace, capture_output=True, text=True)
+    return subprocess.run(
+        ["git", *args], cwd=workspace, capture_output=True, text=True, check=False
+    )
 
 
 # The run's own report files, plus desktop metadata no codemod ever touches.
@@ -222,7 +224,9 @@ def fix_version_from(explanation: str) -> str | None:
 
 def _locked_version(lock_text: str, pkg: str) -> str | None:
     m = re.search(
-        rf'^name = "{re.escape(pkg)}"\nversion = "([^"]+)"', lock_text, re.M | re.I
+        rf'^name = "{re.escape(pkg)}"\nversion = "([^"]+)"',
+        lock_text,
+        re.MULTILINE | re.IGNORECASE,
     )
     return m.group(1) if m else None
 
@@ -263,10 +267,10 @@ def pin_in_pyproject(text: str, pkg: str, fix_ver: str) -> tuple[str, str]:
             m.end() :
         ], how
     entry = f'    "{pkg}>={fix_ver}",\n'
-    cm = re.search(r"^constraint-dependencies\s*=\s*\[\n", text, re.M)
+    cm = re.search(r"^constraint-dependencies\s*=\s*\[\n", text, re.MULTILINE)
     if cm:
         return text[: cm.end()] + entry + text[cm.end() :], "constraint"
-    um = re.search(r"^\[tool\.uv\]\n", text, re.M)
+    um = re.search(r"^\[tool\.uv\]\n", text, re.MULTILINE)
     block = f"constraint-dependencies = [\n{entry}]\n"
     if um:
         return text[: um.end()] + block + text[um.end() :], "constraint"
@@ -302,7 +306,12 @@ def _bump_uv_lock(
     pyproject.write_text(updated)
     try:
         proc = subprocess.run(
-            ["uv", "lock"], cwd=project_dir, capture_output=True, text=True, timeout=300
+            ["uv", "lock"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         pyproject.write_text(original)

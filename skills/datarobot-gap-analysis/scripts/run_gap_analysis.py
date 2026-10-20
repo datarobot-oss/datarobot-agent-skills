@@ -39,7 +39,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 os.environ.setdefault("GAP_DATA_DIR", str(_SCRIPTS_DIR))
 sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from gap_analysis.cli import main  # noqa: E402  (path must be set up first)
+from gap_analysis.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

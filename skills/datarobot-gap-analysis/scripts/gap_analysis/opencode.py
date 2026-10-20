@@ -10,13 +10,12 @@ from .settings import DEFAULT_MODEL, DEFAULT_WORKER_TIMEOUT
 
 ensure_skills_utils()
 
-from datarobot_skills_utils.opencode import (  # noqa: E402  (path must be set up first)
+from datarobot_skills_utils.opencode import (
     OpenCodeServer,
     UsageMeter,
     dr_available,
     run_worker,
 )
-
 
 __all__ = ["OpenCodeServer", "OpenCodeWorkerClient", "dr_available"]
 

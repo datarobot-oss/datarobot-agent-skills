@@ -54,7 +54,7 @@ _LOGIC_GLOBS = [
 def _matches(rel: str, glob: str) -> bool:
     """Glob match on the full path OR the basename, so '**/agent*.py' also hits a
     top-level 'agent.py' (fnmatch does not special-case '**')."""
-    base = glob[3:] if glob.startswith("**/") else glob
+    base = glob.removeprefix("**/")
     return fnmatch.fnmatch(rel, glob) or fnmatch.fnmatch(Path(rel).name, base)
 
 
@@ -79,7 +79,7 @@ def _gather_logic_files(
             continue
         try:
             text = p.read_text(errors="ignore")
-        except Exception:  # noqa: BLE001
+        except OSError:
             continue
         snippet = text[:budget]
         out.append((rel, snippet))
@@ -285,8 +285,10 @@ def _readme(spec: dict[str, Any], carried: list[str], missing: list[str]) -> str
         "- `prompts/system.md` — the externalized system prompt.",
         f"- `carryover/` — {len(carried)} business-logic file(s) copied verbatim.",
         "",
-        f"**Source framework:** {spec.get('framework') or 'unknown'} &nbsp;|&nbsp; "
-        f"**Tools:** {tools} &nbsp;|&nbsp; **Confidence:** {spec.get('confidence') or 'unknown'}",
+        (
+            f"**Source framework:** {spec.get('framework') or 'unknown'} &nbsp;|&nbsp; "
+            f"**Tools:** {tools} &nbsp;|&nbsp; **Confidence:** {spec.get('confidence') or 'unknown'}"
+        ),
         "",
         "## Next step — scaffold the af-components agent",
         "1. **Review and edit `agent_spec.md`.** This is the human checkpoint — confirm the",
