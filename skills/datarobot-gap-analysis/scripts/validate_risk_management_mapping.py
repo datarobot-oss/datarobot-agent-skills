@@ -6,8 +6,8 @@
 risk-management mitigation-method catalog.
 
 Run this periodically, not on every gap-analysis invocation, since it needs
-DATAROBOT_API_TOKEN/DATAROBOT_ENDPOINT and a DataRobot org with the (not yet
-GA) risk-management feature enabled:
+DATAROBOT_API_TOKEN/DATAROBOT_ENDPOINT and a DataRobot org with the Risk
+Management feature (Preview) enabled:
 
   uv run scripts/validate_risk_management_mapping.py
 

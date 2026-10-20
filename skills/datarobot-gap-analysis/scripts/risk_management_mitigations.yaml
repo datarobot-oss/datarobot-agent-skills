@@ -10,13 +10,12 @@
 # feature satisfies it, the remediation text shown in the report, what counts
 # as evidence in a repo (evidence), and which files to show the LLM
 # (files_glob; an empty list marks an organizational requirement that cannot
-# be assessed from code at all), and the platform's own applicability rules
-# (applicable_entity, applicable_target_types), copied from the risk-management
-# evaluator: the DataRobot entity a check is evaluated on, and the target types
-# it applies to (unset means every target type). The evaluator returns
-# not_applicable only for a target-type or model-type mismatch; a missing
-# deployment or custom model is "not set up" and counts against the compliance
-# score. Layer 4 mirrors that: it infers the target type this repo would deploy
+# be assessed from code at all), and each mitigation's applicability
+# (applicable_entity, applicable_target_types): the DataRobot entity a check
+# applies to, and the target types it covers (unset means every target type).
+# A check is not applicable only on a target-type or model-type mismatch; a
+# missing deployment or custom model is a gap, not an exemption. Layer 4
+# infers the target type this repo would deploy
 # as (AgenticWorkflow for an agent, TextGeneration for a plain LLM app, a
 # predictive type for a scoring model) and marks mismatched checks not
 # applicable; everything else is a gap until the code is behind a DataRobot

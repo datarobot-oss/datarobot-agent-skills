@@ -34,14 +34,12 @@ and says why; if no LLM client is configured (--no-llm, or no model creds),
 required mitigations are still fetched and reported, but as "required, not
 assessed" rather than confirmed gaps.
 
-The risk-management API is not yet publicly released as of this writing
-(feature-gated, and there is no client for it in the public `datarobot` SDK,
-checked directly against datarobot==3.18.0). This module calls it over
-plain HTTP with stdlib urllib, no new dependency, following the standard
+Layer 4 uses DataRobot Risk Management (Preview), which must be enabled for
+the org. The `datarobot` SDK has no client for it, so this module calls it
+over plain HTTP with stdlib urllib, no new dependency, following the standard
 DataRobot Public API v2 convention of mounting under whatever
-DATAROBOT_ENDPOINT already points at. Confirm paths against the live OpenAPI
-spec once the feature is GA; a not-yet-public API carries no compatibility
-guarantee.
+DATAROBOT_ENDPOINT already points at. The API may change while the feature is
+in Preview.
 """
 
 from __future__ import annotations
@@ -434,7 +432,7 @@ def applicability(
 ) -> str | None:
     """Why a mitigation does not apply to this repo, or None when it does.
 
-    Mirrors the platform evaluator: a check is not applicable only when the
+    Follows each mitigation's applicability: a check is not applicable only when the
     repo has no model or LLM path at all (nothing for the policy to govern) or
     when its target type is outside the check's applicable_target_types. A
     missing deployment never exempts a check; it is a gap closed by deploying

@@ -79,8 +79,7 @@ isn't deployed anywhere yet.
 Requirements and behavior:
 
 - Needs `DATAROBOT_API_TOKEN`/`DATAROBOT_ENDPOINT` and an org with the
-  risk-management feature enabled (not yet GA as of this writing; expect this to
-  be unavailable in most orgs today). If it isn't reachable, Layer 4 reports
+  Risk Management feature (Preview) enabled. If it isn't reachable, Layer 4 reports
   nothing and says why in Engine Notes. There is deliberately no local fallback
   checklist, an empty section rather than misleadingly generic reassurance.
 - Each required mitigation is judged by the LLM the same way Layer 2 judges its
@@ -127,12 +126,3 @@ groups the unsatisfied mitigations by what unblocks them: first the architectura
 step when the Pulumi program has no `datarobot.Deployment` or `CustomModel` to
 attach settings to, then Pulumi settings, then compliance tests in the LLM test
 suite, then console or API work.
-
-## Open question (not resolved by this skill)
-
-What format an org submits its own non-regulatory standards in, and whether those
-checks should be weighted above the baseline taxonomy, is a product decision
-still open on the mini-PRD. The policy-YAML mechanism above is the current
-answer; treat it as a reasonable default, not a settled one. (For regulatory
-standards specifically, the answer is now: author them as a DataRobot
-risk-management policy.)
