@@ -1,6 +1,6 @@
 ## Resume Design
 
-Resume **[1. Designing an AI Agent](../SKILL.md#1-designing-an-ai-agent)** on an existing `agent_spec.md` in `<target_dir>`. Read the spec, classify its state, start at the matching Design section, and **run that section and every section after it in order** — do not skip ahead to coding or template setup.
+Resume **[1. Designing an AI Agent](../SKILL.md#1-designing-an-ai-agent)** on an existing `agent_spec.yaml` in `<target_dir>`. Read the spec, classify its state, start at the matching Design section, and **run that section and every section after it in order** — do not skip ahead to coding or template setup.
 
 ---
 
@@ -18,7 +18,7 @@ Resume **[1. Designing an AI Agent](../SKILL.md#1-designing-an-ai-agent)** on an
 | Entry | Before resuming |
 |-------|-----------------|
 | **Design menu** — continue existing spec | Set `<design_to_code>` = false |
-| **Pre-coding** — Spec issues → edit spec | Set `<design_to_code>` = false; stop the [pre-coding checklist](pre-coding-checklist.md); do not edit `agent_spec.md` inline during pre-coding |
+| **Pre-coding** — Spec issues → edit spec | Set `<design_to_code>` = false; stop the [pre-coding checklist](pre-coding-checklist.md); do not edit `agent_spec.yaml` inline during pre-coding |
 
 After Design finishes (via Agent Simulation → Post-design next steps), coding may resume only when the user chooses **Code the agent** (set `<design_to_code>` = true and re-enter the [pre-coding checklist](pre-coding-checklist.md)).
 
@@ -41,13 +41,13 @@ Canonical definition used by [Bootstrap step 2](pre-coding-checklist.md#bootstra
 **`tools` rules:**
 
 - **Missing `tools` key** ≠ complete. Route to [Spec Display](../SKILL.md#spec-display) to add tools (or confirm none in Design).
-- **`tools: []`** is valid only after the user **explicitly confirms no tools are needed** — during Design or via pre-coding [Spec issues](pre-coding-checklist.md#spec-issues) choice 2. Write `tools: []` to `agent_spec.md` when that confirmation happens during pre-coding.
+- **`tools: []`** is valid only after the user **explicitly confirms no tools are needed** — during Design or via pre-coding [Spec issues](pre-coding-checklist.md#spec-issues) choice 2. Write `tools: []` to `agent_spec.yaml` when that confirmation happens during pre-coding.
 
 ---
 
 ### Classify spec state
 
-Read `<target_dir>/agent_spec.md` and evaluate **top to bottom**; use the **first matching row** in the [resume table](#resume-table). If multiple gaps exist, the first row still wins (earliest Design section).
+Read `<target_dir>/agent_spec.yaml` and evaluate **top to bottom**; use the **first matching row** in the [resume table](#resume-table). If multiple gaps exist, the first row still wins (earliest Design section).
 
 | Check | Treat as |
 |-------|----------|
@@ -63,7 +63,7 @@ Read `<target_dir>/agent_spec.md` and evaluate **top to bottom**; use the **firs
 
 ### Resume table
 
-| State of `agent_spec.md` | Start at | Sections that follow (in order) |
+| State of `agent_spec.yaml` | Start at | Sections that follow (in order) |
 |--------------------------|----------|----------------------------------|
 | Spec empty | [Clarification Phase](../SKILL.md#clarification-phase) | Model Selection → Frontend Check → Spec Display → Agent Simulation → Post-design next steps |
 | Empty or missing `system_prompt` | [Clarification Phase](../SKILL.md#clarification-phase) | Model Selection → Frontend Check → Spec Display → Agent Simulation → Post-design next steps |
@@ -75,7 +75,7 @@ Read `<target_dir>/agent_spec.md` and evaluate **top to bottom**; use the **firs
 
 **Section chain rules:**
 
-- **Frontend Check** — skip when `frontend.type` is already set in `agent_spec.md` (same as [SKILL.md](../SKILL.md#frontend-check)).
+- **Frontend Check** — skip when `frontend.type` is already set in `agent_spec.yaml` (same as [SKILL.md](../SKILL.md#frontend-check)).
 - **Agent Simulation** — always run after Spec Display on this path (dress rehearsal offer), unless the [Post-design review loop](#exceptions) applies.
 
 ### Spec Display → Agent Simulation (required transition)

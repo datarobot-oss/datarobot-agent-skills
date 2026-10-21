@@ -11,7 +11,7 @@ On this path the agent, its tools, its API and its UI run in one process on one 
 
 The user may not be technical. Do the technical steps yourself and explain what's happening in plain words. Don't ask them for ids, YAML or commands when you can find or run them yourself.
 
-Start from an implemented agent: a single Python project with no `infra/Pulumi.yaml`. `<target_dir>` is the directory that holds the agent code and, when there is one, `agent_spec.md`. Without a spec, work from the code.
+Start from an implemented agent: a single Python project with no `infra/Pulumi.yaml`. `<target_dir>` is the directory that holds the agent code and, when there is one, `agent_spec.yaml` or the legacy `agent_spec.md`. Prefer the YAML file when both exist. Without a spec, work from the code.
 
 ## 1. Choose the deploy path
 

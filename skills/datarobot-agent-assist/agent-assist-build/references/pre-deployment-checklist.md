@@ -29,7 +29,7 @@ Run this checklist when the user enters **[3. Deploying an AI Agent](../SKILL.md
    | Git repository with `origin` matching `REPO_URL` | Template is not initialized. Offer coding on this `<target_dir>` (deploy → coding handoff — same as above). |
    | User declines coding | Show the [welcome menu](../SKILL.md#on-activation). Stop. |
 
-   Do **not** check for `agent_spec.md` — it is not required for deployment.
+   Do **not** check for `agent_spec.yaml` — it is not required for deployment.
 
 4. **Validate dependencies** — read and follow [dependency-validation.md](dependency-validation.md) end to end.
 

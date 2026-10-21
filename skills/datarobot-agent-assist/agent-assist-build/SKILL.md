@@ -2,7 +2,7 @@
 name: datarobot-agent-assist-build
 description: >-
   Use when the user wants to design, build, code, or deploy an AI agent on DataRobot; mentions
-  agent_spec.md, dress rehearsal, the DataRobot agent template, LangGraph, CrewAI, LlamaIndex, NAT,
+  agent_spec.yaml, dress rehearsal, the DataRobot agent template, LangGraph, CrewAI, LlamaIndex, NAT,
   Base agents, MCP servers, backend APIs, custom frontends, or the DataRobot CLI.
 ---
 
@@ -12,7 +12,7 @@ This skill merges **agent design, coding, and deployment** with **interactive dr
 
 Assistance falls into three categories:
 
-1. **Designing an AI agent** → Clarify requirements, build `agent_spec.md`, optionally simulate the agent before coding
+1. **Designing an AI agent** → Clarify requirements, build `agent_spec.yaml`, optionally simulate the agent before coding
 2. **Coding an AI agent** → Adapt the DataRobot agent application template to the spec
 3. **Deploying an AI agent** → Follow `AGENTS.md` deployment instructions
 
@@ -29,7 +29,7 @@ Welcome! I help you design, code, and deploy AI agents (with optional dress-rehe
 
 What would you like to do?
   1. Design an AI agent     → Describe your idea
-  2. Code an AI agent       → Load and implement an existing agent_spec.md
+  2. Code an AI agent       → Load and implement an existing agent_spec.yaml
   3. Deploy an AI agent     → Deploy an implemented agent to DataRobot
 ```
 
@@ -84,12 +84,12 @@ If any helper script exits with a 401 / UNAUTHORIZED error: run `dr auth login` 
 
   **CRITICAL**: In case the script fails due to any reason, do **not** proceed. Instead, return the error message to the user and ask how they want to proceed.
 
-- Read and follow [llm-selection.md](references/llm-selection.md) to pick from the two sources (`gateway` and `deployed`) and to record the choice in `agent_spec.md`.
+- Read and follow [llm-selection.md](references/llm-selection.md) to pick from the two sources (`gateway` and `deployed`) and to record the choice in `agent_spec.yaml`.
 - If the user's desired model is unavailable, suggest starting with an available one and updating after implementation.
 
 ### Spec Display
 
-- **Always write the current spec to `agent_spec.md`** (YAML format) whenever showing it to the user.
+- **Always write the current spec to `agent_spec.yaml`** (YAML format) whenever showing it to the user.
 - Show the spec frequently and iteratively — even if incomplete or partial.
 - Do **not** summarize the spec in prose; display it as YAML in a code block.
 - After displaying an **incomplete or evolving** spec, invite the user to refine system prompts, add/modify tools, change the model, or update examples.
@@ -107,7 +107,7 @@ Then update the spec accordingly:
 
 ### What Would You Like To Do Next?
 
-**MANDATORY — NO EXCEPTIONS:** Once `agent_spec.md` contains `system_prompt`, at least one tool, and `frontend.type`, your ONLY permitted response is this exact 3-option menu. Do NOT ask about dress rehearsal alone. Do NOT offer refinement as the only alternative. Do NOT summarize the spec again. Do NOT ask a clarifying question. Display the menu and stop.
+**MANDATORY — NO EXCEPTIONS:** Once `agent_spec.yaml` contains `system_prompt`, at least one tool, and `frontend.type`, your ONLY permitted response is this exact 3-option menu. Do NOT ask about dress rehearsal alone. Do NOT offer refinement as the only alternative. Do NOT summarize the spec again. Do NOT ask a clarifying question. Display the menu and stop.
 
 ```
 What would you like to do next?
@@ -141,7 +141,7 @@ What would you like to do next?
 
 ## Dress Rehearsal
 
-Simulate an `agent_spec.md` interactively before writing any code. Responses go through the DataRobot LLM Gateway; the rehearsal script handles API calls, state, and output. You orchestrate the loop, handle out-of-character commands, and produce a shareable Markdown report at the end.
+Simulate an `agent_spec.yaml` interactively before writing any code. Responses go through the DataRobot LLM Gateway; the rehearsal script handles API calls, state, and output. You orchestrate the loop, handle out-of-character commands, and produce a shareable Markdown report at the end.
 
 **Engine location:** `<skill_scripts_dir>/rehearsal.py` (relative to repository root).
 
@@ -152,7 +152,7 @@ See [dress-rehearsal.md](references/dress-rehearsal.md) for the full workflow. S
 ### Step 1 — Initialize the session
 
 ```bash
-python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.md --target-dir <target_dir>
+python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.yaml --target-dir <target_dir>
 ```
 
 The script creates a session at `<target_dir>/.datarobot/rehearsal/<session_id>/` and prints `session=` and `output=` lines. Display the output file verbatim, then explain NOTE/DONE commands.
@@ -181,22 +181,22 @@ Append `## Suggested Changes` to `<target_dir>/rehearsal_report/rehearsal_report
 
 ### Before Coding Begins
 
-Verify `agent_spec.md` contains at minimum:
+Verify `agent_spec.yaml` contains at minimum:
 
 - `model` — either the `llm_default_model` value of a `gateway` entry (not the `id` or `api_model`) or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
 
-If `agent_spec.md` does not exist, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update the spec before continuing. Do not start coding against an incomplete spec.
+If `agent_spec.yaml` does not exist, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update the spec before continuing. Do not start coding against an incomplete spec.
 
 ### Pre-coding Checklist
 
-1. **Read `agent_spec.md`** — it must exist (see gate above).
+1. **Read `agent_spec.yaml`** — it must exist (see gate above).
 2. Check if `AGENTS.md` exists in the template directory (default: current working directory).
 3. If `AGENTS.md` does **not** exist, prepare the template with these steps in order. ALWAYS follow the steps in order and do not skip any, even if they seem redundant. This is critical for ensuring the template is properly set up and avoiding wasted effort coding on a broken foundation.
-   a. **Check the working directory** — if it contains files other than `agent_spec.md`, warn the user and ask them to clear it before proceeding.
-   b. **Move `agent_spec.md` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
+   a. **Check the working directory** — if it contains files other than `agent_spec.yaml`, warn the user and ask them to clear it before proceeding.
+   b. **Move `agent_spec.yaml` aside if present** — if the file exists in the working directory, move it to a temp location (e.g. `/tmp/agent_spec.yaml.bak`) before cloning so it isn't overwritten. Restore it after cloning completes.
    c. **Clone the template**: Run the helper script:
    ```
    python <skill_scripts_dir>/clone_template.py
@@ -223,7 +223,7 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
    e. **Validate the template**: Run `dr dependency check`. On non-zero exit:
       - If the error mentions "DataRobot CLI" version — run `dr self update --force`, then retry `dr dependency check` once. If it still fails, hard stop and return the output.
       - Any other error — hard stop and return the full output to the user.
-   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.md` as `--llm-model`; if absent, use the model selected during the design phase.
+   f. **Setup the template**: Run the helper script. Use the `model` field from `agent_spec.yaml` as `--llm-model`; if absent, use the model selected during the design phase.
    ```
    python <skill_scripts_dir>/setup_template.py \
      --llm-model <model-name> \
@@ -241,7 +241,7 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
    **CRITICAL**: In case any of the above scripts fail due to any reason, do **not** proceed with coding. Instead, return the error message to the user and ask how they want to proceed.
 
    g. **Re-read `AGENTS.md`** now that the template is ready.
-4. Recreate the TODO list based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
+4. Recreate the TODO list based on `agent_spec.yaml` — break down the implementation into discrete steps and add them to the TodoWrite tool.
 
 
 ### Coding Rules
@@ -249,10 +249,10 @@ If `agent_spec.md` does not exist, inform the user and offer to run the Design p
 - Implement by adapting the template code — do not write from scratch
 - Modify files only inside the current directory and its subdirectories
 - Do not view `.env` files (`.env.template` files are OK)
-- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.md`:
+- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.yaml`:
   1. Choose a `SCREAMING_SNAKE_CASE` env var name (e.g. `PERPLEXITY_API_KEY`).
   2. **Append** `VAR_NAME=` to `<target_dir>/.env` without reading the file.
-  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.md`, or committed code.
+  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.yaml`, or committed code.
 - Do not add code comments unless asked
 - Do not mock tool implementations unless they would be complex to implement
 - For tasks with 3+ steps, use the TodoWrite tool to manage your work
@@ -341,9 +341,9 @@ Valid `--framework` values: `langgraph`, `crewai`, `llamaindex`, `nat`, `base`
 
 ---
 
-## agent_spec.md Schema
+## agent_spec.yaml Schema
 
-Write specs in YAML to `agent_spec.md` in the working directory. Fields are optional when the spec is still evolving.
+Write specs in YAML to `agent_spec.yaml` in the working directory. Fields are optional when the spec is still evolving.
 
 ```yaml
 model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
@@ -402,7 +402,7 @@ Claude's built-in tools replace the plugin's custom Python tools:
 | `web_search` | WebSearch |
 | `get_web_page` | WebFetch |
 | `write_todos` / `read_todos` | TodoWrite |
-| `show_agent_spec` | Write to `agent_spec.md` + display as YAML |
+| `show_agent_spec` | Write to `agent_spec.yaml` + display as YAML |
 | `prepare_to_code` | Bash (`git clone` + `dr start`) |
 | `list_available_models` | WebFetch (DataRobot API) |
 | `code_research` | Agent (Explore subagent) |

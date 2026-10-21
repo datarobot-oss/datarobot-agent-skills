@@ -79,7 +79,7 @@ def is_deployed_llm_model(model: str) -> bool:
     canonicalizes to the ``datarobot/``-prefixed form, so both spellings match.
     Shared with setup_template.py and rehearsal.py, which both branch on it.
 
-    Case-insensitive on purpose. The value reaches here from ``agent_spec.md`` and
+    Case-insensitive on purpose. The value reaches here from ``agent_spec.yaml`` and
     from the rehearsal's spec extraction, both LLM-authored, so a capitalized
     spelling is a normal input rather than a malformed one. Matching exactly would
     let it past the guard in setup_template.py and into a late 'pulumi up' failure.
@@ -213,7 +213,7 @@ def _map_cli_entry(entry: dict[str, object]) -> LLMModel | None:
     if source == SOURCE_DEPLOYED:
         # A deployment is addressed only by its id, so an entry without one cannot be
         # selected or routed to. Dropping it here keeps an unusable choice out of
-        # agent_spec.md, matching what the REST mappers already do.
+        # agent_spec.yaml, matching what the REST mappers already do.
         if not deployment_id:
             return None
         # The two are the same value from the CLI. Falling back keeps the entry

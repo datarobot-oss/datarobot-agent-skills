@@ -22,17 +22,17 @@ Run this checklist when the user enters **[2. Coding an AI Agent](../SKILL.md#2-
 
    **Skip** when `<workspace_resolved>` is true and `<target_dir>` equals `<workspace_resolved_target_dir>`, or when `<design_to_code>` is true, or on deploy → coding handoff.
 
-2. **Confirm spec** — read `<target_dir>/agent_spec.md`.
+2. **Confirm spec** — read `<target_dir>/agent_spec.yaml`, falling back to `<target_dir>/agent_spec.md` only if the YAML file is absent. If both exist, use the YAML file. Any spec changes must be written to `agent_spec.yaml`.
 
    **Skip entirely** when `<design_to_code>` is true (design already produced the spec).
 
-   **Required** on deploy → coding handoff — pre-deployment does not check for `agent_spec.md`, but coding needs a [spec complete](resume-design.md#spec-complete) file before template setup (including `model` for step 9).
+   **Required** on deploy → coding handoff — pre-deployment does not check for `agent_spec.yaml`, but coding needs a [spec complete](resume-design.md#spec-complete) file before template setup (including `model` for step 9).
 
    **If the file does not exist**, do not assume Design is required — `<target_dir>` may be wrong.
 
    - If `<workspace_resolved>` is true and `<target_dir>` equals `<workspace_resolved_target_dir>` (workspace just set this path), ask (exact wording):
 
-     > No `agent_spec.md` found at `<target_dir>` (the path you chose earlier). What would you like to do?
+     > No `agent_spec.yaml` found at `<target_dir>` (the path you chose earlier). What would you like to do?
      > 1. **Run Design phase** — create a new spec
      > 2. **Try a different directory**
 
@@ -40,9 +40,9 @@ Run this checklist when the user enters **[2. Coding an AI Agent](../SKILL.md#2-
 
    - Otherwise (no recent workspace resolution for this path), ask (exact wording):
 
-     > No `agent_spec.md` found in `<target_dir>`. What would you like to do?
+     > No `agent_spec.yaml` found in `<target_dir>`. What would you like to do?
      > 1. **Run Design phase** — create a new spec
-     > 2. **Spec is elsewhere** — point to the directory that contains `agent_spec.md`
+     > 2. **Spec is elsewhere** — point to the directory that contains `agent_spec.yaml`
 
    Wait for the user's choice.
 
@@ -53,7 +53,7 @@ Run this checklist when the user enters **[2. Coding an AI Agent](../SKILL.md#2-
 
    **Validation procedure (required — do not skip):**
 
-   1. After reading `<target_dir>/agent_spec.md`, check each required field in order: `system_prompt`, `model`, `frontend.type`, `tools` (key present). If `model` is the `datarobot-deployed-llm` placeholder, `llm_deployment_id` is required too.
+   1. After reading `<target_dir>/agent_spec.yaml`, check each required field in order: `system_prompt`, `model`, `frontend.type`, `tools` (key present). If `model` is the `datarobot-deployed-llm` placeholder, `llm_deployment_id` is required too.
    2. **Tell the user the result** in your next message — pass or fail, and list any missing fields (e.g. *"Spec validation failed: missing `model`."* or *"Spec validation passed — all required fields are present."*).
    3. **If all fields pass** → continue to [Template setup](#template-setup) step 3.
    4. **If any field fails** → follow **[Spec issues](#spec-issues)** below. **Stop** — do not classify the workspace, run `ls`, clone, or start template setup until the spec is valid or the user has resolved the issue.
@@ -62,22 +62,22 @@ Run this checklist when the user enters **[2. Coding an AI Agent](../SKILL.md#2-
 
 ### Spec issues
 
-When step 2 finds a problem in `agent_spec.md`:
+When step 2 finds a problem in `agent_spec.yaml`:
 
 1. Explain the issue briefly (what is missing or invalid).
 
 2. **If the only gap is `tools`** (all other required fields are present), ask (exact wording):
 
-   > The `agent_spec.md` is missing a `tools` definition. Would you like to:
+   > The `agent_spec.yaml` is missing a `tools` definition. Would you like to:
    > 1. **Edit the spec in the Design phase**
    > 2. **Confirm no tools needed** — proceed to coding without tools
 
    - **Choice 1** (or edit / add tools / fix spec) → set `<design_to_code>` = false. Read and follow [resume-design.md](resume-design.md) through Agent Simulation and Post-design next steps — do not return to coding until the user chooses **Code the agent**. Stop the coding checklist.
-   - **Choice 2** (or "no tools" / "none needed") → write `tools: []` to `<target_dir>/agent_spec.md`, then treat `tools` as satisfied. Continue to Template setup step 3.
+   - **Choice 2** (or "no tools" / "none needed") → write `tools: []` to `<target_dir>/agent_spec.yaml`, then treat `tools` as satisfied. Continue to Template setup step 3.
 
    **Otherwise** (any other missing or invalid field), ask (exact wording):
 
-   > `agent_spec.md` needs changes before coding can continue. Would you like to edit the spec in the Design phase?
+   > `agent_spec.yaml` needs changes before coding can continue. Would you like to edit the spec in the Design phase?
 
    - **If yes** (or the user asks to add, fix, or update the spec) → set `<design_to_code>` = false. Read and follow [resume-design.md](resume-design.md) through Agent Simulation and Post-design next steps — do not return to coding until the user chooses **Code the agent**. Stop the coding checklist.
    - **If no** → do not proceed to template setup. Re-ask or return to the [welcome menu](../SKILL.md#on-activation).
@@ -86,7 +86,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
 ### Template setup
 
-**Prerequisite:** All [spec complete](resume-design.md#spec-complete) fields are present in `<target_dir>/agent_spec.md` — validated in Bootstrap step 2 (cold Code and deploy → coding handoff), or satisfied by same-session design (`<design_to_code>` is true; step 2 skipped). If step 2 reported missing fields, do **not** enter this section — handle [Spec issues](#spec-issues) first.
+**Prerequisite:** All [spec complete](resume-design.md#spec-complete) fields are present in `<target_dir>/agent_spec.yaml` — validated in Bootstrap step 2 (cold Code and deploy → coding handoff), or satisfied by same-session design (`<design_to_code>` is true; step 2 skipped). If step 2 reported missing fields, do **not** enter this section — handle [Spec issues](#spec-issues) first.
 
 3. **Read `REPO_URL`** from `REPO_URL` in `<skill_scripts_dir>/clone_template.py`. This is the only canonical template repository URL — use it for remote comparison and cloning. See [helper-scripts.md](helper-scripts.md) for script details.
 
@@ -95,12 +95,12 @@ When step 2 finds a problem in `agent_spec.md`:
 - **No separate clone approval** when classification is **Spec-only** (step 6) — the user already chose to code. Give a brief notice (1–2 sentences), then clone without waiting.
 - **Subdirectory confirmation required** when classification is **Everything else** (step 7). Choosing **Code the agent** from [Post-design next steps](../SKILL.md#post-design-next-steps), saying "implement", or `<design_to_code>` being true does **not** satisfy this gate — wait for an explicit reply to step 7b (or 7c if the subdirectory already exists).
 - **Destructive actions** (clearing an existing subdirectory) always require explicit confirmation in step 7c before proceeding.
-- **Before every clone**, state what will happen: target directory, that the DataRobot agent template will be cloned there, and (for step 7) that `agent_spec.md` will be moved. This notice does not require a reply in step 6; in step 7, the reply must come **before** the notice and clone.
+- **Before every clone**, state what will happen: target directory, that the DataRobot agent template will be cloned there, and (for step 7) that the recognized spec file(s) will be moved. This notice does not require a reply in step 6; in step 7, the reply must come **before** the notice and clone.
 
 4. **Classify `<target_dir>`** (evaluate in order; first match wins):
 
    **Design-phase artifacts (allowed in Spec-only):** dress rehearsal may leave these before coding — they do **not** count as a messy workspace:
-   - `agent_spec.md`, `.env`
+   - `agent_spec.yaml`, legacy `agent_spec.md`, `.env`
    - `.datarobot/rehearsal/` (session cache only)
    - `rehearsal_report/rehearsal_report.md` (and the `rehearsal_report/` directory that contains it)
 
@@ -124,7 +124,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
 6. **Spec-only** — clone and set up the template in `<target_dir>`:
 
-   a. **Move `agent_spec.md` aside** if present — move to a temp location (e.g. `/tmp/agent_spec.md.bak`) before cloning so it is not overwritten. Restore it after cloning completes. Leave design-phase rehearsal artifacts in place (`.datarobot/rehearsal/`, `rehearsal_report/`) — do not move or delete them.
+   a. **Move recognized spec files aside** if present — move `agent_spec.yaml` and/or the legacy `agent_spec.md` to temporary locations before cloning so they are not overwritten. Restore them to `<target_dir>` after cloning completes. Leave design-phase rehearsal artifacts in place (`.datarobot/rehearsal/`, `rehearsal_report/`) — do not move or delete them.
 
    b. **Notify, then clone** — tell the user (1–2 sentences, no wait): *"Your workspace is spec-only. I'll clone the DataRobot agent template into `<target_dir>` now."* Then run [clone_template.py](helper-scripts.md#clone_templatepy).
 
@@ -136,9 +136,9 @@ When step 2 finds a problem in `agent_spec.md`:
 
    a. Explain what was found in `<target_dir>`.
 
-   b. If `<design_messy_cwd>` is true, say: *"During design you were warned this directory has other files."* Then offer the default subdirectory `new-datarobot-agent` (or another name the user provides). Tell the user that `agent_spec.md` will be **moved** into that subdirectory (not copied). Ask the user to confirm or provide a different subdirectory name.
+   b. If `<design_messy_cwd>` is true, say: *"During design you were warned this directory has other files."* Then offer the default subdirectory `new-datarobot-agent` (or another name the user provides). Tell the user that any recognized spec file(s) will be **moved** into that subdirectory (not copied). Ask the user to confirm or provide a different subdirectory name.
 
-   Otherwise, offer to create the agent in a subdirectory (default name: `new-datarobot-agent`). Tell the user that `agent_spec.md` will be **moved** into that subdirectory (not copied) so there is a single project location. Ask the user to confirm or provide a different subdirectory name.
+   Otherwise, offer to create the agent in a subdirectory (default name: `new-datarobot-agent`). Tell the user that any recognized spec file(s) will be **moved** into that subdirectory (not copied) so there is a single project location. Ask the user to confirm or provide a different subdirectory name.
 
    Wait for the user's reply. Do **not** treat **Code the agent**, "implement", or `<design_to_code>` as confirmation here.
 
@@ -146,7 +146,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
    d. If the user agrees:
 
-      - **Move** (do not copy) `<target_dir>/agent_spec.md` into the subdirectory if it exists in the parent. The parent must not keep a duplicate — a stale cwd spec breaks future sessions.
+      - **Move** (do not copy) `<target_dir>/agent_spec.yaml` and/or `<target_dir>/agent_spec.md` into the subdirectory if present. The parent must not keep a duplicate — a stale cwd spec breaks future sessions. If both exist, keep both and use `agent_spec.yaml` as authoritative.
       - Clear the subdirectory contents if it already exists.
       - Set `<target_dir>` to the subdirectory (automatic update — do not ask the user to reset `<target_dir>`).
       - Tell the user (1–2 sentences): *"I'll clone the DataRobot agent template into `<target_dir>` now."* Then run clone (step 6b), framework selection (step 8), setup (step 9), and dependency check (step 10) in the new `<target_dir>`.
@@ -170,7 +170,7 @@ When step 2 finds a problem in `agent_spec.md`:
 
    Invalidate `<dependency_check_passed>` after this step.
 
-9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.md` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design). If the spec also carries `llm_deployment_id`, pass it as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it.
+9. **Setup** (skip if step 5b applied) — run [setup_template.py](helper-scripts.md#setup_templatepy). Use the `model` field from `agent_spec.yaml` as `--llm-model` (must be present — validated in Bootstrap step 2 for cold Code and deploy handoff, or produced by same-session design). If the spec also carries `llm_deployment_id`, pass it as `--llm-deployment-id`; it selects a DataRobot-deployed LLM, and the script refuses the deployed-LLM placeholder model without it.
 
    Invalidate `<dependency_check_passed>` after this step.
 
@@ -178,6 +178,6 @@ When step 2 finds a problem in `agent_spec.md`:
 
 11. **Re-read `<target_dir>/AGENTS.md`** now that the template is ready.
 
-12. **Recreate the TODO list** based on `agent_spec.md` — break down the implementation into discrete steps and add them to the TodoWrite tool.
+12. **Recreate the TODO list** based on `agent_spec.yaml` — break down the implementation into discrete steps and add them to the TodoWrite tool.
 
 **CRITICAL**: If any helper script fails, do **not** proceed with coding. Return the error message to the user and ask how they want to proceed.

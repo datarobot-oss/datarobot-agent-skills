@@ -16,6 +16,7 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ### Changed
 
+- `datarobot-agent-assist`: Specs are now written to `agent_spec.yaml`; existing `agent_spec.md` specs remain readable, with the YAML file preferred when both exist.
 - `repo`: Pinned the tools and actions the CI workflows use (yamlfmt, license-eye, the claude, gemini and codex CLIs, and every GitHub Action by commit SHA), locked the `uv` install with `--locked`, set the Python version in `.python-version`, and limited the lint and e2e workflows to read-only permissions. Added zizmor to `task lint` to audit the workflows. Ruff and mypy updates now come from Dependabot in their own PR, and Dependabot waits 7 days after a release.
 - `repo`: Configured pytest (`testpaths`, strict markers and config) so a bare `pytest` runs the integration tests, and made the pre-commit hook run ruff on staged Python files before the skill e2e step.
 

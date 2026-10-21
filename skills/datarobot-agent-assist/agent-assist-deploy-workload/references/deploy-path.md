@@ -5,7 +5,7 @@ Agent assist can deploy an agent two ways:
 - **Workload API.** For a project with no `infra/Pulumi.yaml`. The agent, its tools, its API and its UI run in one container, and `dr workload up` builds and deploys it. Follow [../SKILL.md](../SKILL.md).
 - **Custom application with Pulumi.** The agent template's own deploy. The agent, MCP server and web app are deployed separately. Follow [pre-deployment-checklist.md](../../agent-assist-build/references/pre-deployment-checklist.md).
 
-The Workload API is for single Python projects that don't use a Pulumi template. Read `agent_spec.md` (when there is one) and the code in `<target_dir>` and make the call yourself. Don't ask the user to choose between architectures, and don't ask them the questions below. Run the checks yourself.
+The Workload API is for single Python projects that don't use a Pulumi template. Read `agent_spec.yaml` when present, otherwise the legacy `agent_spec.md`, along with the code in `<target_dir>`, and make the call yourself. Don't ask the user to choose between architectures, and don't ask them the questions below. Run the checks yourself.
 
 ## First, check for a Pulumi template
 

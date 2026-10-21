@@ -204,8 +204,9 @@ exactly as the CLI returned it.
 
 ### Recommending
 
-Before presenting the list, check whether `agent_spec.md` exists at the
-project root. If it does, read it for context — the agent's purpose, task
+Before presenting the list, check whether `agent_spec.yaml` exists at the
+project root; if it does not, check for the legacy `agent_spec.md`. If either
+exists, read it for context — the agent's purpose, task
 complexity, and any stated cost or latency constraint — and use that to flag
 one entry as recommended. This mirrors the recommendation logic in the
 `datarobot-agent-assist` skill's `llm-selection.md`:
@@ -221,7 +222,7 @@ one entry as recommended. This mirrors the recommendation logic in the
 - **Still list every entry** per **Presenting choices** — mark the
   recommended row (e.g. append "(recommended)") rather than omitting the
   rest. Recommending never justifies narrowing the menu.
-- No `agent_spec.md`? Skip the read and recommend using only the
+- Neither spec filename? Skip the read and recommend using only the
   family-preference heuristics above.
 
 ### Credential keys

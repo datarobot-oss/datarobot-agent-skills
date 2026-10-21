@@ -86,7 +86,7 @@ def map_deployed_listing(list_llm_models: Any) -> dict[str, Any]:
 
 
 def is_valid_spec_model(model: str, list_llm_models: Any) -> bool:
-    """Whether ``model`` is an acceptable ``agent_spec.md`` value."""
+    """Whether ``model`` is an acceptable value in an agent spec."""
     value = model.strip()
     if not value:
         return False
@@ -131,7 +131,7 @@ def validate_spec_complete(spec: dict[str, Any], list_llm_models: Any) -> list[s
 
 
 def spec_fields_from_listing_entry(entry: dict[str, Any]) -> dict[str, str]:
-    """Fields an agent must write to agent_spec.md for a listing entry."""
+    """Fields an agent must write to agent_spec.yaml for a listing entry."""
     model = str(entry["llm_default_model"])
     if entry.get("source") == "deployed":
         deployment_id = str(entry["deployment_id"])

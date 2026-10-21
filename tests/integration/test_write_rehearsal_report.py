@@ -21,6 +21,7 @@ from write_rehearsal_report import (
     default_report_path,
     write_rehearsal_report,
 )
+from rehearsal import resolve_spec_path
 
 
 @pytest.fixture()
@@ -92,6 +93,20 @@ def rehearsal_session(tmp_path: Path) -> Path:
     (session_dir / "messages.json").write_text(json.dumps(messages), encoding="utf-8")
     (session_dir / "notes.json").write_text(json.dumps(notes), encoding="utf-8")
     return session_dir
+
+
+def test_resolve_spec_path_prefers_yaml_and_accepts_legacy_markdown(
+    tmp_path: Path,
+) -> None:
+    assert resolve_spec_path(None, tmp_path) == tmp_path / "agent_spec.yaml"
+
+    legacy_path = tmp_path / "agent_spec.md"
+    legacy_path.touch()
+    assert resolve_spec_path("agent_spec.yaml", tmp_path) == legacy_path
+
+    yaml_path = tmp_path / "agent_spec.yaml"
+    yaml_path.touch()
+    assert resolve_spec_path("agent_spec.md", tmp_path) == yaml_path
 
 
 def test_default_report_path() -> None:

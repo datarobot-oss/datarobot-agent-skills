@@ -1,6 +1,6 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Contract tests for how an agent should record LLM choices in agent_spec.md."""
+"""Contract tests for how an agent should record LLM choices in agent_spec.yaml."""
 
 from __future__ import annotations
 

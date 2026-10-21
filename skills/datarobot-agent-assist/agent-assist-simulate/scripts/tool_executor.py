@@ -24,7 +24,7 @@ _REEXEC_GUARD_ENV = "TOOL_EXECUTOR_REEXECED"
 def _reexec_into_tools_venv(tools_path: Path) -> None:
     """Re-run this script under the nearest ``.venv/bin/python3``.
 
-    Stops walking at ``agent_spec.md`` or ``.git`` so a parent repo venv is
+    Stops walking at an agent spec file or ``.git`` so a parent repo venv is
     not used. No-op when already running inside that venv, when none exists,
     or after one re-exec: a ``.venv`` whose interpreter reports another
     ``sys.prefix`` (for example, no ``pyvenv.cfg``) would otherwise loop.
@@ -44,7 +44,13 @@ def _reexec_into_tools_venv(tools_path: Path) -> None:
                     [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
                 )
             return
-        if (parent / "agent_spec.md").is_file() or (parent / ".git").exists():
+        if (
+            any(
+                (parent / filename).is_file()
+                for filename in ("agent_spec.yaml", "agent_spec.md")
+            )
+            or (parent / ".git").exists()
+        ):
             return
 
 

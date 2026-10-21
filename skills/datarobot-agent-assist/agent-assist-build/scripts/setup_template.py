@@ -505,7 +505,7 @@ def setup_and_run(
                 "only as a label and is not persisted by 'dr dotenv setup'."
             )
     elif is_deployed_llm_model(llm_default_model):
-        # The likelier slip, since agent_spec.md always carries `model` while
+        # The likelier slip, since agent_spec.yaml always carries `model` while
         # `llm_deployment_id` is the extra field that is easy to drop. Nothing
         # downstream catches it: without the id the template stays on its gateway
         # config, whose verify_llm checks the model against the gateway catalog and

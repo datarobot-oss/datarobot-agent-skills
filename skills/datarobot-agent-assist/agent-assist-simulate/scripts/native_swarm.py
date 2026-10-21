@@ -23,6 +23,7 @@ from artifacts import (
     merge_metrics,
     one_line,
     resolve_project_file,
+    resolve_spec_path,
     resolve_swarm_dir,
     resolve_under_root,
     scenario_id,
@@ -360,6 +361,7 @@ def run(
     timeout: int,
 ) -> SwarmResults:
     """Prepare, drive all scenarios in parallel, and aggregate results."""
+    spec_path = resolve_spec_path(spec_path)
     preparation = prepare(
         spec_path, criteria_path, config_path, runs_dir, implementation_paths
     )
@@ -445,7 +447,7 @@ def prepare(
     implementation_paths: list[Path] | None = None,
 ) -> SwarmPreparation:
     """Validate inputs and initialize one isolated run per confirmed scenario."""
-    resolved_spec = spec_path.resolve()
+    resolved_spec = resolve_spec_path(spec_path).resolve()
     if not resolved_spec.is_file():
         raise ValueError(f"agent spec does not exist: {resolved_spec}")
     project_root = resolved_spec.parent
@@ -517,7 +519,7 @@ def aggregate(
     output_path: Path,
 ) -> SwarmResults:
     """Validate complete criteria coverage and write ordered aggregate results."""
-    resolved_spec = spec_path.resolve()
+    resolved_spec = resolve_spec_path(spec_path).resolve()
     if not resolved_spec.is_file():
         raise ValueError(f"agent spec does not exist: {resolved_spec}")
     project_root = resolved_spec.parent

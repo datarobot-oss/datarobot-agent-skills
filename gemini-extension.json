@@ -51,7 +51,7 @@
     },
     {
       "name": "datarobot-agent-assist",
-      "description": "Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive model) to DataRobot; mentions agent_spec.md, dr-assist, dress rehearsal, or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base agent targeting DataRobot; or wants to add an MCP server, backend API, or React frontend to a DataRobot agent application.",
+      "description": "Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive model) to DataRobot; mentions agent_spec.yaml, dr-assist, dress rehearsal, or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base agent targeting DataRobot; or wants to add an MCP server, backend API, or React frontend to a DataRobot agent application.",
       "path": "skills/datarobot-agent-assist/SKILL.md"
     },
     {
