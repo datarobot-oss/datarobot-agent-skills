@@ -1,0 +1,45 @@
+# Copyright (c) 2026 DataRobot, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Publish to PyPI
+
+# Manual only for now: packages/datarobot-skills-utils lands with PR #99, which
+# also adds the `release: published` trigger. Until then a release-triggered run
+# would find nothing to build.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build from (default: the current branch)."
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          persist-credentials: false
+
+      # No cache in a publish job: a poisoned cache could reach the uploaded artifacts.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+
+      - name: Build
+        run: |
+          uv build packages/datarobot-skills-utils --out-dir dist
+          ls dist
+
+      # The package is versioned independently of the plugin, so most releases
+      # re-build a version that is already on PyPI; skip-existing makes that a no-op.
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
+        with:
+          packages-dir: dist
+          skip-existing: true
