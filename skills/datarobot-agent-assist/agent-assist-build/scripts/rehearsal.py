@@ -869,9 +869,9 @@ def resolve_spec_path(spec_path: str | Path | None, target_dir: Path) -> Path:
 
 
 def cmd_init(spec_path: str | None, session_dir: str, target_dir: Path) -> None:
-    spec_path = resolve_spec_path(spec_path, target_dir)
-    if not os.path.exists(spec_path):
-        print(f"Error: spec file not found: {spec_path}", file=sys.stderr)
+    resolved_spec_path = resolve_spec_path(spec_path, target_dir)
+    if not resolved_spec_path.exists():
+        print(f"Error: spec file not found: {resolved_spec_path}", file=sys.stderr)
         sys.exit(1)
 
     token, endpoint = get_credentials(target_dir)
@@ -888,7 +888,7 @@ def cmd_init(spec_path: str | None, session_dir: str, target_dir: Path) -> None:
     if sim_substituted:
         print_model_chosen(SIMULATION_MODEL, simulation_model)
 
-    with open(spec_path) as f:
+    with resolved_spec_path.open(encoding="utf-8") as f:
         content = f.read()
 
     progress("extracting spec...")
@@ -953,7 +953,7 @@ def cmd_init(spec_path: str | None, session_dir: str, target_dir: Path) -> None:
             {
                 "session_id": session_id,
                 "started_at": datetime.now(UTC).isoformat(),
-                "spec_path": str(Path(spec_path).resolve()),
+                "spec_path": str(resolved_spec_path.resolve()),
                 "requested_model": requested_model,
                 "requested_deployment_id": requested_deployment_id,
                 "model_substituted": model_substituted,
