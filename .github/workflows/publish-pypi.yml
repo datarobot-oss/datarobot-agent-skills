@@ -3,10 +3,9 @@
 ---
 name: Publish to PyPI
 
-# Manual only for now: packages/datarobot-skills-utils lands with PR #99, which
-# also adds the `release: published` trigger. Until then a release-triggered run
-# would find nothing to build.
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       ref:
@@ -14,7 +13,39 @@ on:
         required: false
 
 jobs:
+  # The package is versioned independently of the plugin, so most releases carry
+  # a version that is already on PyPI. Checking first, outside the protected
+  # environment, means only a new version asks a reviewer to approve the upload.
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - id: version
+        run: |
+          VERSION=$(sed -nE 's/^__version__ = "(.*)"/\1/p' packages/datarobot-skills-utils/src/datarobot_skills_utils/__init__.py)
+          if [ -z "$VERSION" ]; then
+            echo "Could not read __version__ from the package." >&2
+            exit 1
+          fi
+          if curl -sfo /dev/null "https://pypi.org/pypi/datarobot-skills-utils/${VERSION}/json"; then
+            echo "datarobot-skills-utils ${VERSION} is already on PyPI; nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "datarobot-skills-utils ${VERSION} is not on PyPI yet; publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -36,8 +67,8 @@ jobs:
           uv build packages/datarobot-skills-utils --out-dir dist
           ls dist
 
-      # The package is versioned independently of the plugin, so most releases
-      # re-build a version that is already on PyPI; skip-existing makes that a no-op.
+      # Kept as a safety net: if the check above misjudges, an existing version
+      # is skipped instead of failing the upload.
       - name: Publish
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
