@@ -44,7 +44,7 @@ While a rehearsal session is active:
 python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.yaml --target-dir <target_dir>
 ```
 
-If `agent_spec.yaml` does not exist and no path was provided, say so and stop.
+If neither `agent_spec.yaml` nor `agent_spec.md` exists at the target directory and no path was provided, say so and stop. The rehearsal script prefers `agent_spec.yaml` and falls back to `agent_spec.md` when given the YAML path.
 
 The script creates a session directory at `<target_dir>/.datarobot/rehearsal/<session_id>/` and prints two lines:
 ```

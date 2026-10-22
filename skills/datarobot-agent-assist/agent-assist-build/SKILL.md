@@ -181,14 +181,16 @@ Append `## Suggested Changes` to `<target_dir>/rehearsal_report/rehearsal_report
 
 ### Before Coding Begins
 
-Verify `agent_spec.yaml` contains at minimum:
+Read `agent_spec.yaml` when present; otherwise read the legacy `agent_spec.md`. If only the legacy file exists, copy its YAML content unchanged to `agent_spec.yaml` before coding and leave the legacy file unchanged. If both exist, use `agent_spec.yaml`.
+
+Verify the selected spec contains at minimum:
 
 - `model` — either the `llm_default_model` value of a `gateway` entry (not the `id` or `api_model`) or the `datarobot/datarobot-deployed-llm` placeholder paired with `llm_deployment_id`
 - `system_prompt` — non-empty
 - `tools` — at least one tool defined (or explicit confirmation from the user that no tools are needed)
 - `frontend.type` — set
 
-If `agent_spec.yaml` does not exist, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update the spec before continuing. Do not start coding against an incomplete spec.
+If neither spec file exists, inform the user and offer to run the Design phase (option 1) first. If any required field above is missing, surface the gap and update `agent_spec.yaml` before continuing. Do not start coding against an incomplete spec.
 
 ### Pre-coding Checklist
 

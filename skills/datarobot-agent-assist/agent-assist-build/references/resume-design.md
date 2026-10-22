@@ -1,6 +1,6 @@
 ## Resume Design
 
-Resume **[1. Designing an AI Agent](../SKILL.md#1-designing-an-ai-agent)** on an existing `agent_spec.yaml` in `<target_dir>`. Read the spec, classify its state, start at the matching Design section, and **run that section and every section after it in order** — do not skip ahead to coding or template setup.
+Resume **[1. Designing an AI Agent](../SKILL.md#1-designing-an-ai-agent)** on an existing `agent_spec.yaml` or legacy `agent_spec.md` in `<target_dir>`. Prefer YAML when both exist. If only the legacy file exists, read its complete YAML content and copy it unchanged to `agent_spec.yaml` before classifying or editing; leave the legacy file unchanged. Then classify the selected spec, start at the matching Design section, and **run that section and every section after it in order** — do not skip ahead to coding or template setup.
 
 ---
 
@@ -47,7 +47,7 @@ Canonical definition used by [Bootstrap step 2](pre-coding-checklist.md#bootstra
 
 ### Classify spec state
 
-Read `<target_dir>/agent_spec.yaml` and evaluate **top to bottom**; use the **first matching row** in the [resume table](#resume-table). If multiple gaps exist, the first row still wins (earliest Design section).
+Read `<target_dir>/agent_spec.yaml` after applying the legacy-file promotion rule above, and evaluate **top to bottom**; use the **first matching row** in the [resume table](#resume-table). If multiple gaps exist, the first row still wins (earliest Design section).
 
 | Check | Treat as |
 |-------|----------|

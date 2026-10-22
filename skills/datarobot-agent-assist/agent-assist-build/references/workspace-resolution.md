@@ -36,7 +36,7 @@ Use whenever the user must provide a directory containing `agent_spec.yaml` or t
 
 ### Decision summary
 
-| Menu | Spec in cwd? | Action |
+| Menu | `agent_spec.yaml` or legacy `agent_spec.md` in cwd? | Action |
 |------|---------------------------|--------|
 | **Design** | Yes | Set `<target_dir>` = cwd. Ask: continue this spec, or new agent in a subdirectory? |
 | **Design** | No | Ask: subdirectory (recommended) or current directory → set `<target_dir>` |
@@ -50,15 +50,17 @@ Option **3** (Deploy) skips this document — see [pre-deployment-checklist.md](
 ### Design — spec found in cwd
 
 1. Set `<target_dir>` to cwd.
-2. Notify: *"Continuing work on `./agent_spec.yaml` in `<target_dir>`."*
+2. Resolve the existing spec: use `./agent_spec.yaml` when present, otherwise use `./agent_spec.md`. If both exist, use YAML. Notify the user which file is being continued.
 3. Ask:
 
    > Continue editing this spec, or start a new agent in a subdirectory?
 
-   - **Continue editing** (or "edit" / "this spec") → read `<target_dir>/agent_spec.yaml`, then read and follow [resume-design.md](resume-design.md).
+   - **Continue editing** (or "edit" / "this spec") → read the selected existing file, then read and follow [resume-design.md](resume-design.md). If only the legacy Markdown file exists, preserve its complete YAML content in `<target_dir>/agent_spec.yaml` before making edits or displaying the spec; leave the legacy file unchanged.
    - **New agent** (or "new" / "subdirectory") → create/use subdirectory (default `new-datarobot-agent`), set `<target_dir>`, start Design from [Clarification Phase](../SKILL.md#clarification-phase).
 
 ### Design — no spec in cwd
+
+Use this path only when neither `./agent_spec.yaml` nor `./agent_spec.md` exists in cwd.
 
 Ask:
 

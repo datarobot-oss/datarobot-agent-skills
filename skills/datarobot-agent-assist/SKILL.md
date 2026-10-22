@@ -132,7 +132,7 @@ On success, set `<prerequisites_passed>` = true.
 
 ## 1. Designing an AI Agent
 
-When `<target_dir>/agent_spec.yaml` already exists, read and follow [resume-design.md](agent-assist-build/references/resume-design.md) after [workspace resolution](agent-assist-build/references/workspace-resolution.md) or when returning from [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues). For a **new** agent (no spec yet), start at [Clarification Phase](#clarification-phase).
+When either `<target_dir>/agent_spec.yaml` or the legacy `<target_dir>/agent_spec.md` exists, read and follow [resume-design.md](agent-assist-build/references/resume-design.md) after [workspace resolution](agent-assist-build/references/workspace-resolution.md) or when returning from [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues). Prefer the YAML file if both exist. Start at [Clarification Phase](#clarification-phase) only when neither file exists.
 
 ### Clarification Phase
 

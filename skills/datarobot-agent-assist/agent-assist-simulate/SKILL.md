@@ -53,8 +53,7 @@ session that did not complete Step 5 cleanup. Run `rm -rf .datarobot/swarm/` bef
 
 For every spec read, prefer `agent_spec.yaml` and fall back to `agent_spec.md` if the YAML file is absent. If both exist, use the YAML file. Write any spec updates only to `agent_spec.yaml`; pass the resolved existing spec path to simulation commands.
 
-1. Confirm `agent_spec.yaml` exists with a `system_prompt`. If not, route the user to
-   `agent-assist-build` and stop.
+1. Resolve the spec by preferring `agent_spec.yaml` and falling back to `agent_spec.md`. Confirm the selected file has a `system_prompt`. If neither file exists or the selected spec has no `system_prompt`, route the user to `agent-assist-build` and stop.
 2. Confirm implementation code exists (`agent.py`, `myagent.py`, `tools.py`, or `app.py`). If not, route to
    `agent-assist-build` and stop.
 
