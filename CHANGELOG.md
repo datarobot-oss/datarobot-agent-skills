@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-10-22
+
 ### Added
 
 - `datarobot-gap-analysis`: New skill. Scores an agent repository (a GitHub URL or local path, DataRobot-built or not) against a seven-pillar enterprise-readiness framework (Security, Identity, AI Governance, Reliability, Ops, IT Conformance, Regulatory & Policy) using deterministic scanners (secrets, CVEs, IaC, licenses, Dockerfiles, CI gates), LLM code review, policy conformance checks, and a regulatory layer sourced live from the org's DataRobot risk-management policy (EU AI Act by default), each gap resolved to numbered fix steps and a docs link. Recommends a Patch/Hybrid/Re-platform path onto DataRobot's agent template without changing the repo's existing framework unless asked. `--fix` applies safe fixes on a `gap-fixes/*` branch; `--verify` re-scores. Reports are Markdown and HTML.
