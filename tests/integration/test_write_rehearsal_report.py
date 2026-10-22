@@ -16,12 +16,12 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[2] / (
 REHEARSAL_SCRIPT = SCRIPTS_DIR / "rehearsal.py"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from rehearsal import resolve_spec_path
 from write_rehearsal_report import (
     _summarize_turns,
     default_report_path,
     write_rehearsal_report,
 )
-from rehearsal import resolve_spec_path
 
 
 @pytest.fixture()
