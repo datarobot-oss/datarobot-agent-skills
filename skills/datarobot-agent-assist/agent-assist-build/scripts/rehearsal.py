@@ -5,7 +5,7 @@
 """
 DataRobot Dress Rehearsal engine (datarobot-agent-assist skill)
 
-Init:  python3 rehearsal.py --init [--spec agent_spec.md] --target-dir <directory>
+Init:  python3 rehearsal.py --init [--spec agent_spec.yaml] --target-dir <directory>
          stdout: session=<session_dir>  output=<output_file>
 Turn:  python3 rehearsal.py --session <session_dir> [--target-dir <directory>] "user message"
          stdout: output=<output_file>
@@ -850,9 +850,28 @@ def _save_notes(session_dir: str, notes: list[dict[str, str]]) -> None:
 # ── commands ──────────────────────────────────────────────────────────────────
 
 
-def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
-    if not os.path.exists(spec_path):
-        print(f"Error: spec file not found: {spec_path}", file=sys.stderr)
+def resolve_spec_path(spec_path: str | Path | None, target_dir: Path) -> Path:
+    """Prefer agent_spec.yaml and accept agent_spec.md for existing projects."""
+    if spec_path is None:
+        path = target_dir / "agent_spec.yaml"
+    else:
+        path = Path(spec_path)
+    if spec_path is not None and not path.is_absolute() and not path.exists():
+        path = target_dir / path
+    if path.name in {"agent_spec.yaml", "agent_spec.md"}:
+        yaml_path = path.with_name("agent_spec.yaml")
+        markdown_path = path.with_name("agent_spec.md")
+        if yaml_path.is_file():
+            return yaml_path
+        if markdown_path.is_file():
+            return markdown_path
+    return path
+
+
+def cmd_init(spec_path: str | None, session_dir: str, target_dir: Path) -> None:
+    resolved_spec_path = resolve_spec_path(spec_path, target_dir)
+    if not resolved_spec_path.exists():
+        print(f"Error: spec file not found: {resolved_spec_path}", file=sys.stderr)
         sys.exit(1)
 
     token, endpoint = get_credentials(target_dir)
@@ -869,7 +888,7 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
     if sim_substituted:
         print_model_chosen(SIMULATION_MODEL, simulation_model)
 
-    with open(spec_path) as f:
+    with resolved_spec_path.open(encoding="utf-8") as f:
         content = f.read()
 
     progress("extracting spec...")
@@ -934,7 +953,7 @@ def cmd_init(spec_path: str, session_dir: str, target_dir: Path) -> None:
             {
                 "session_id": session_id,
                 "started_at": datetime.now(UTC).isoformat(),
-                "spec_path": str(Path(spec_path).resolve()),
+                "spec_path": str(resolved_spec_path.resolve()),
                 "requested_model": requested_model,
                 "requested_deployment_id": requested_deployment_id,
                 "model_substituted": model_substituted,
@@ -1165,7 +1184,11 @@ def cmd_report(
 def main() -> int:
     parser = argparse.ArgumentParser(description="DataRobot Dress Rehearsal")
     parser.add_argument("--init", action="store_true")
-    parser.add_argument("--spec", default="agent_spec.md")
+    parser.add_argument(
+        "--spec",
+        default=None,
+        help="Spec path (default: <target-dir>/agent_spec.yaml; falls back to agent_spec.md)",
+    )
     parser.add_argument(
         "--target-dir",
         default=None,

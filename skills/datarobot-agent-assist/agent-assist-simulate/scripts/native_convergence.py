@@ -20,6 +20,7 @@ from artifacts import (
     load_spec,
     one_line,
     resolve_project_file,
+    resolve_spec_path,
     resolve_swarm_dir,
     resolve_under_root,
     scenario_id,
@@ -66,7 +67,7 @@ def initialize(
     actual_model: str | None = None,
 ) -> dict[str, object]:
     """Create convergence state and return breach evidence for the harness."""
-    resolved_spec = spec_path.resolve()
+    resolved_spec = resolve_spec_path(spec_path).resolve()
     if not resolved_spec.is_file():
         raise ValueError(f"agent spec does not exist: {resolved_spec}")
     project_root = resolved_spec.parent
@@ -128,7 +129,7 @@ def advance(
     rerun_pairs: list[tuple[str, Path]],
 ) -> dict[str, object]:
     """Read completed reruns, update iteration counts, return updated status."""
-    resolved_spec = spec_path.resolve()
+    resolved_spec = resolve_spec_path(spec_path).resolve()
     if not resolved_spec.is_file():
         raise ValueError(f"agent spec does not exist: {resolved_spec}")
     project_root = resolved_spec.parent
@@ -196,7 +197,7 @@ def report(
     output_path: Path,
 ) -> NativeReportSummary:
     """Validate completed convergence and render the authoritative native report."""
-    resolved_spec = spec_path.resolve()
+    resolved_spec = resolve_spec_path(spec_path).resolve()
     if not resolved_spec.is_file():
         raise ValueError(f"agent spec does not exist: {resolved_spec}")
     project_root = resolved_spec.parent

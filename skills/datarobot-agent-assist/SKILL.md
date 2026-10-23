@@ -2,11 +2,11 @@
 name: datarobot-agent-assist
 description: >-
   Use when the user wants to design, build, code, simulate, or deploy an AI agent (not a predictive
-  model) to DataRobot; mentions agent_spec.md, dr-assist, datarobot-agent-assist, dress rehearsal,
+  model) to DataRobot; mentions agent_spec.yaml, dr-assist, datarobot-agent-assist, dress rehearsal,
   swarm simulation, or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base
   agent targeting DataRobot; wants to add an MCP server, backend API, or React frontend to a
   DataRobot agent application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom
-  application; or wants to harden, stress-test, or battle-test an agent. Covers the full workflow: agent design, agent_spec.md authoring, dress-rehearsal
+  application; or wants to harden, stress-test, or battle-test an agent. Covers the full workflow: agent design, agent_spec.yaml authoring, dress-rehearsal
   simulation via the DataRobot LLM Gateway, adversarial swarm simulation, template-based coding, and deployment.
 ---
 
@@ -40,7 +40,7 @@ Welcome! I help you design, code, battle-test, and deploy AI agents.
 
 What would you like to do?
   1. Design an AI agent     → Describe your idea (optional dress rehearsal before coding)
-  2. Code an AI agent       → Load and implement an existing agent_spec.md
+  2. Code an AI agent       → Load and implement an existing agent_spec.yaml
   3. Battle-test the agent  → Run adversarial swarm simulation on an implemented agent
   4. Deploy                 → Deploy an implemented agent to DataRobot
 ```
@@ -72,7 +72,7 @@ Track these for the conversation:
 - `<workspace_resolved>` — `false` until [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) completes for menu options **1** or **2**.
 - `<workspace_resolved_target_dir>` — the `<target_dir>` set when workspace resolution last completed.
 - `<design_to_code>` — `false` until the user chooses **Code the agent** from [Post-design next steps](#post-design-next-steps) in the same session after design.
-- `<design_messy_cwd>` — `false` until design runs in cwd with files other than `agent_spec.md` / `.env` (see [workspace-resolution](agent-assist-build/references/workspace-resolution.md)).
+- `<design_messy_cwd>` — `false` until design runs in cwd with files other than `agent_spec.yaml` / `.env` (see [workspace-resolution](agent-assist-build/references/workspace-resolution.md)).
 - `<dependency_check_passed>` — `false` until a passing `dr dependency check` in `<target_dir>`.
 - `<dependency_check_target_dir>` — the `<target_dir>` value when the last check passed.
 
@@ -82,7 +82,11 @@ Project credentials and config live **only** at `<target_dir>/.env` — never in
 
 - Complete [Workspace Resolution](agent-assist-build/references/workspace-resolution.md) before any step that needs credentials or creates a `.env` file.
 - Always pass `--target-dir <target_dir>` to helper scripts that read or create `.env` (`list_llm_models.py`, `rehearsal.py`, `setup_template.py`). Do **not** run `dr dotenv setup` in cwd.
-- Never put secret values in `agent_spec.md` or source code — only env var **names** belong in infra; values stay in `.env`.
+- Never put secret values in `agent_spec.yaml` or source code — only env var **names** belong in infra; values stay in `.env`.
+
+### Agent spec filename
+
+Always write new or updated specs to `<target_dir>/agent_spec.yaml`. When reading or locating a spec, check `agent_spec.yaml` first and fall back to the legacy `<target_dir>/agent_spec.md`; if both exist, `agent_spec.yaml` is authoritative. Do not write updates to the legacy file.
 
 ### Dependency check session rule
 
@@ -128,7 +132,7 @@ On success, set `<prerequisites_passed>` = true.
 
 ## 1. Designing an AI Agent
 
-When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design.md](agent-assist-build/references/resume-design.md) after [workspace resolution](agent-assist-build/references/workspace-resolution.md) or when returning from [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues). For a **new** agent (no spec yet), start at [Clarification Phase](#clarification-phase).
+When either `<target_dir>/agent_spec.yaml` or the legacy `<target_dir>/agent_spec.md` exists, read and follow [resume-design.md](agent-assist-build/references/resume-design.md) after [workspace resolution](agent-assist-build/references/workspace-resolution.md) or when returning from [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues). Prefer the YAML file if both exist. Start at [Clarification Phase](#clarification-phase) only when neither file exists.
 
 ### Clarification Phase
 
@@ -139,7 +143,7 @@ When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design
   - Whether those services require authentication (API key, OAuth2, bearer token, etc.)
   - Whether the user needs a custom frontend beyond the default chat UI
 
-- If the user mentions UI-related needs early ("dashboard", "visualization", "multi-page", "admin panel", "settings page"), capture it immediately in the `frontend` field and write `frontend.type` to `agent_spec.md` — do **not** defer or wait for [Frontend Check](#frontend-check).
+- If the user mentions UI-related needs early ("dashboard", "visualization", "multi-page", "admin panel", "settings page"), capture it immediately in the `frontend` field and write `frontend.type` to `agent_spec.yaml` — do **not** defer or wait for [Frontend Check](#frontend-check).
 
 ### Model Selection
 
@@ -158,20 +162,20 @@ When `<target_dir>/agent_spec.md` already exists, read and follow [resume-design
 
 ### Frontend Check
 
-Skip this section if `frontend.type` is already captured — either written to `<target_dir>/agent_spec.md`, or held in working memory from [Clarification Phase](#clarification-phase) before the first draft exists.
+Skip this section if `frontend.type` is already captured — either written to `<target_dir>/agent_spec.yaml`, or held in working memory from [Clarification Phase](#clarification-phase) before the first draft exists.
 
 Before the first spec draft, if `frontend.type` is not yet set, **always ask**:
 
 > "The template includes a default chat UI — is that sufficient, or would you like a custom frontend such as a dashboard, data visualization, or multi-page app?"
 
-Then set `frontend` in the spec (write to `<target_dir>/agent_spec.md` when the file exists, or hold the value for the first draft in [Spec Display](#spec-display)):
+Then set `frontend` in the spec (write to `<target_dir>/agent_spec.yaml` when the file exists, or hold the value for the first draft in [Spec Display](#spec-display)):
 - Default UI → `frontend.type: "chat"`
 - Custom UI → `frontend.type: "multi-page"` or `"custom"` with `pages` and optional `requirements`
 
 ### Spec Display
 
 - Before the first draft, read [agent-assist-build/references/agent-spec-schema.md](agent-assist-build/references/agent-spec-schema.md).
-- **Always write the current spec to `<target_dir>/agent_spec.md`** (YAML format) whenever showing it to the user. The first draft must include `frontend.type` from [Frontend Check](#frontend-check) (or clarification).
+- **Always write the current spec to `<target_dir>/agent_spec.yaml`** (YAML format) whenever showing it to the user. The first draft must include `frontend.type` from [Frontend Check](#frontend-check) (or clarification).
 - Show the spec frequently and iteratively — even if incomplete or partial.
 - Do **not** summarize the spec in prose; display it as YAML in a code block.
 - After displaying, invite the user to refine system prompts, tools, model, or examples. Do **not** ask about dress rehearsal, coding, template setup, or "moving on" in the same turn, and do **not** offer "proceed to coding" as an alternative to refinement (including on [Resume Design](agent-assist-build/references/resume-design.md) after pre-coding [Spec issues](agent-assist-build/references/pre-coding-checklist.md#spec-issues)).
@@ -188,8 +192,8 @@ Then follow dress-rehearsal.md for the user's reply (yes → rehearsal; no → [
 After the user declines the initial rehearsal prompt — or **after** a dress rehearsal session ends **and** `<target_dir>/rehearsal_report/rehearsal_report.md` has been written — present this menu (exact wording):
 
 > What would you like to do next?
-> 1. **Code the agent** — start implementation from `agent_spec.md`
-> 2. **Review / edit spec** — refine `agent_spec.md`
+> 1. **Code the agent** — start implementation from `agent_spec.yaml`
+> 2. **Review / edit spec** — refine `agent_spec.yaml`
 > 3. **Run dress rehearsal** — simulate the agent before coding
 > 4. **Review rehearsal report** — open `rehearsal_report/rehearsal_report.md`
 
@@ -198,7 +202,7 @@ Wait for their choice. **Do not** assume a default or proceed without a reply.
 | Choice | Action |
 |--------|--------|
 | 1 or "code" / "implement" | Set `<design_to_code>` = true. Follow **[2. Coding an AI Agent](#2-coding-an-ai-agent)** — read and follow [pre-coding-checklist.md](agent-assist-build/references/pre-coding-checklist.md). This does **not** authorize cloning or subdirectory creation; if the workspace is not spec-only, complete [pre-coding step 7](agent-assist-build/references/pre-coding-checklist.md) and wait for explicit confirmation first. |
-| 2 or "review" / "edit spec" | Display `<target_dir>/agent_spec.md` as YAML, invite changes, update the file, then show this menu again |
+| 2 or "review" / "edit spec" | Display `<target_dir>/agent_spec.yaml` as YAML, invite changes, update the file, then show this menu again |
 | 3 or "rehearsal" / "simulate" | Follow **[Dress Rehearsal](#dress-rehearsal)** |
 | 4 or "review report" / "rehearsal report" | If `<target_dir>/rehearsal_report/rehearsal_report.md` exists, read it and present a structured summary (metadata, notes, conversation highlights, suggested changes). If missing, say no report exists yet and offer option 3. Then show this menu again. |
 
@@ -225,10 +229,10 @@ Read and follow [agent-assist-build/references/pre-coding-checklist.md](agent-as
 - Implement by adapting the template code — do not write from scratch
 - Modify files only inside `<target_dir>` and its subdirectories
 - Do not view `.env` files (`.env.template` files are OK)
-- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.md`:
+- **Tool credentials** — when implementing a tool with `auth_spec` in `agent_spec.yaml`:
   1. Choose a `SCREAMING_SNAKE_CASE` env var name (e.g. `PERPLEXITY_API_KEY`).
   2. **Append** `VAR_NAME=` to `<target_dir>/.env` without reading the file.
-  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.md`, or committed code.
+  3. Ask the user to paste the secret into `<target_dir>/.env` in their editor — never in chat, `agent_spec.yaml`, or committed code.
 - Do not add code comments unless asked
 - Do not mock tool implementations unless they would be complex to implement
 - For tasks with 3+ steps, use the TodoWrite tool to manage your work
@@ -275,9 +279,9 @@ Helper-script failures during pre-coding are governed by the **CRITICAL** rule i
 
 ---
 
-## agent_spec.md
+## agent_spec.yaml
 
-Write specs as YAML to `<target_dir>/agent_spec.md`. Fields are optional while the spec is evolving.
+Write specs as YAML to `<target_dir>/agent_spec.yaml`. Fields are optional while the spec is evolving.
 
 Field definitions: [agent-assist-build/references/agent-spec-schema.md](agent-assist-build/references/agent-spec-schema.md). Complete examples: [agent-assist-build/references/agent-spec-examples.md](agent-assist-build/references/agent-spec-examples.md).
 

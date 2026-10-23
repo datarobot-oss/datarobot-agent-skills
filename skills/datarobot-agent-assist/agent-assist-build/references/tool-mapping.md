@@ -14,7 +14,7 @@ Reference for migrating from the DataRobot Agent Assist plugin to this Claude sk
 | `web_search` | WebSearch |
 | `get_web_page` | WebFetch |
 | `write_todos` / `read_todos` | TodoWrite |
-| `show_agent_spec` | Write to `<target_dir>/agent_spec.md` + display as YAML |
+| `show_agent_spec` | Write to `<target_dir>/agent_spec.yaml` + display as YAML |
 | `prepare_to_code` | Bash (`git clone` + `dr start`) |
 | `list_available_models` | WebFetch (DataRobot API) |
 | `code_research` | Agent (Explore subagent) |

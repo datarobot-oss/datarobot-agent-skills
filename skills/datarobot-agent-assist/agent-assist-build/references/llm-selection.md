@@ -5,7 +5,7 @@
 - `gateway` — a model in the DataRobot LLM Gateway catalog. Selected by its `llm_default_model`.
 - `deployed` — an existing DataRobot text-generation deployment. Selected by its `deployment_id`.
 
-**Copy `llm_default_model` verbatim.** It is the only field that goes into `agent_spec.md` and `.env`. A `gateway` entry also carries an `id` (the catalog's `llmId`, e.g. `azure-openai-gpt-5`) and an `api_model` (e.g. `azure/gpt-5-2025-08-07`); neither works as a model name. The gateway rejects the `id` outright, and `api_model` is missing the `datarobot/` prefix that routes the request to DataRobot rather than straight to the provider. `setup_template.py` refuses an `id` rather than letting it reach `.env`. On a `deployed` entry, `id` is the deployment id instead, and it is what you want: see below.
+**Copy `llm_default_model` verbatim.** It is the only field that goes into `agent_spec.yaml` and `.env`. A `gateway` entry also carries an `id` (the catalog's `llmId`, e.g. `azure-openai-gpt-5`) and an `api_model` (e.g. `azure/gpt-5-2025-08-07`); neither works as a model name. The gateway rejects the `id` outright, and `api_model` is missing the `datarobot/` prefix that routes the request to DataRobot rather than straight to the provider. `setup_template.py` refuses an `id` rather than letting it reach `.env`. On a `deployed` entry, `id` is the deployment id instead, and it is what you want: see below.
 
 ### Recommending
 
@@ -14,7 +14,7 @@
 - **If there is no `gateway` entry at all**, the LLM Gateway is disabled or empty on this instance. That is the normal shape of an on-prem install, not an error. Recommend a `deployed` entry instead, name it by its `name` (the deployment label), and tell the user that is what you are doing and why.
 - Only show the full catalog when the user explicitly asks to browse.
 
-### Recording a deployed LLM in `agent_spec.md`
+### Recording a deployed LLM in `agent_spec.yaml`
 
 Every deployment reports the same `llm_default_model`, the placeholder `datarobot/datarobot-deployed-llm`. It identifies the *source*, never one deployment. So a deployed choice is a pair, and both fields are required:
 

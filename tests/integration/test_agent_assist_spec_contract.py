@@ -1,6 +1,6 @@
 # Copyright (c) 2026 DataRobot, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Contract tests for agent_spec.md completeness and model shape."""
+"""Contract tests for agent spec completeness and model shape."""
 
 from __future__ import annotations
 

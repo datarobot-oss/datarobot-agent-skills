@@ -1,4 +1,4 @@
-# agent_spec.md Examples
+# agent_spec.yaml Examples
 
 Field definitions and structure: [agent-spec-schema.md](agent-spec-schema.md).
 

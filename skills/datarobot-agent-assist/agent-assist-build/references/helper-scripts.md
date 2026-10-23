@@ -91,7 +91,7 @@ Dress rehearsal engine — see [dress-rehearsal.md](dress-rehearsal.md).
 ```bash
 # Initialize (creates session under <target_dir>/.datarobot/rehearsal/<session_id>/)
 python <skill_scripts_dir>/rehearsal.py --init \
-  --spec <target_dir>/agent_spec.md \
+  --spec <target_dir>/agent_spec.yaml \
   --target-dir <target_dir>
 
 # Turn

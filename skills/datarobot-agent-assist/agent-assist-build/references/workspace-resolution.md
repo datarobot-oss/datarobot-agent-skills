@@ -6,7 +6,9 @@ For menu option **2**, set `<design_to_code>` = false (cold Code entry). **Post-
 
 **Default subdirectory name:** `new-datarobot-agent`
 
-**After resolution:** all design/code work uses `<target_dir>` — specs at `<target_dir>/agent_spec.md`, project `.env` at `<target_dir>/.env`, and helper scripts with `--target-dir <target_dir>` (including `list_llm_models.py`, `rehearsal.py`, and `setup_template.py`). Never create or run `dr dotenv setup` in cwd when `<target_dir>` is a subdirectory.
+**Spec filename policy:** Always save new or updated specs as `<target_dir>/agent_spec.yaml`. For every read or existence check, prefer `agent_spec.yaml` and fall back to the legacy `agent_spec.md`; if both exist, use the YAML file. Read a legacy spec as input, but write any changes to `agent_spec.yaml` and do not modify the legacy file.
+
+**After resolution:** all design/code work uses `<target_dir>` — specs at `<target_dir>/agent_spec.yaml`, project `.env` at `<target_dir>/.env`, and helper scripts with `--target-dir <target_dir>` (including `list_llm_models.py`, `rehearsal.py`, and `setup_template.py`). Never create or run `dr dotenv setup` in cwd when `<target_dir>` is a subdirectory.
 
 **On completion** (any path below that sets `<target_dir>`): set `<workspace_resolved>` = true and `<workspace_resolved_target_dir>` = `<target_dir>`.
 
@@ -14,17 +16,17 @@ For menu option **2**, set `<design_to_code>` = false (cold Code entry). **Post-
 
 ### Path resolution
 
-Use whenever the user must provide a directory that contains `agent_spec.md` (Code entry, or pre-coding Bootstrap step 2 recovery). Referenced from [pre-coding-checklist.md](pre-coding-checklist.md).
+Use whenever the user must provide a directory containing `agent_spec.yaml` or the legacy `agent_spec.md` (Code entry, or pre-coding Bootstrap step 2 recovery). Referenced from [pre-coding-checklist.md](pre-coding-checklist.md).
 
 1. Ask:
 
-   > Which directory contains your `agent_spec.md`?
+   > Which directory contains your agent spec (`agent_spec.yaml` or the legacy `agent_spec.md`)?
 
-2. Do not scan subdirectories automatically. If `./new-datarobot-agent/agent_spec.md` exists, you may mention it as a suggestion — do not set `<target_dir>` without the user's answer.
+2. Do not scan subdirectories automatically. If `./new-datarobot-agent/agent_spec.yaml` exists, you may mention it as a suggestion — do not set `<target_dir>` without the user's answer.
 
-3. Resolve the user's path (relative paths from cwd). If they give a **file path** (e.g. `./my-agent/agent_spec.md`), use its **parent directory** as the project root.
+3. Resolve the user's path (relative paths from cwd). If they give a **file path** (e.g. `./my-agent/agent_spec.yaml` or `./my-agent/agent_spec.md`), use its **parent directory** as the project root.
 
-4. The path must be an **existing directory** containing `agent_spec.md`. If the directory does not exist or has no `agent_spec.md`, ask again.
+4. The path must be an **existing directory** containing either recognized spec filename. If the directory does not exist or contains neither, ask again.
 
 5. If the user's answer is ambiguous (e.g. "in a subfolder" without a path), ask for the exact directory — do not scan the filesystem to discover specs.
 
@@ -34,7 +36,7 @@ Use whenever the user must provide a directory that contains `agent_spec.md` (Co
 
 ### Decision summary
 
-| Menu | `./agent_spec.md` in cwd? | Action |
+| Menu | `agent_spec.yaml` or legacy `agent_spec.md` in cwd? | Action |
 |------|---------------------------|--------|
 | **Design** | Yes | Set `<target_dir>` = cwd. Ask: continue this spec, or new agent in a subdirectory? |
 | **Design** | No | Ask: subdirectory (recommended) or current directory → set `<target_dir>` |
@@ -48,15 +50,17 @@ Option **3** (Deploy) skips this document — see [pre-deployment-checklist.md](
 ### Design — spec found in cwd
 
 1. Set `<target_dir>` to cwd.
-2. Notify: *"Continuing work on `./agent_spec.md` in `<target_dir>`."*
+2. Resolve the existing spec: use `./agent_spec.yaml` when present, otherwise use `./agent_spec.md`. If both exist, use YAML. Notify the user which file is being continued.
 3. Ask:
 
    > Continue editing this spec, or start a new agent in a subdirectory?
 
-   - **Continue editing** (or "edit" / "this spec") → read `<target_dir>/agent_spec.md`, then read and follow [resume-design.md](resume-design.md).
+   - **Continue editing** (or "edit" / "this spec") → read the selected existing file, then read and follow [resume-design.md](resume-design.md). If only the legacy Markdown file exists, preserve its complete YAML content in `<target_dir>/agent_spec.yaml` before making edits or displaying the spec; leave the legacy file unchanged.
    - **New agent** (or "new" / "subdirectory") → create/use subdirectory (default `new-datarobot-agent`), set `<target_dir>`, start Design from [Clarification Phase](../SKILL.md#clarification-phase).
 
 ### Design — no spec in cwd
+
+Use this path only when neither `./agent_spec.yaml` nor `./agent_spec.md` exists in cwd.
 
 Ask:
 
@@ -66,14 +70,14 @@ Ask:
 
 **Subdirectory chosen:**
 
-- Exists with `agent_spec.md` → notify, set `<target_dir>`, read the spec, then read and follow [resume-design.md](resume-design.md).
-- Exists without `agent_spec.md` → set `<target_dir>`, start Design from [Clarification Phase](../SKILL.md#clarification-phase).
+- Contains either recognized spec filename → notify, set `<target_dir>`, read the preferred spec, then read and follow [resume-design.md](resume-design.md).
+- Contains neither recognized spec filename → set `<target_dir>`, start Design from [Clarification Phase](../SKILL.md#clarification-phase).
 - Does not exist → create it, set `<target_dir>`, start Design from [Clarification Phase](../SKILL.md#clarification-phase).
 
 **Current directory chosen:**
 
 - Set `<target_dir>` = cwd.
-- If paths other than design-phase artifacts are present, set `<design_messy_cwd>` = true and warn. **Allowed without triggering messy cwd:** `agent_spec.md`, `.env`, `.datarobot/rehearsal/` (dress-rehearsal session cache), and `rehearsal_report/rehearsal_report.md`. Any other file or directory (including `.datarobot/answers/`, source code, or unrelated folders) counts as messy.
+- If paths other than design-phase artifacts are present, set `<design_messy_cwd>` = true and warn. **Allowed without triggering messy cwd:** `agent_spec.yaml`, legacy `agent_spec.md`, `.env`, `.datarobot/rehearsal/` (dress-rehearsal session cache), and `rehearsal_report/rehearsal_report.md`. Any other file or directory (including `.datarobot/answers/`, source code, or unrelated folders) counts as messy.
 - If `<design_messy_cwd>` applies:
 
   > Other files are present. Design can continue here, but coding will require a clean workspace — likely a subdirectory. Files in this directory may be ignored for implementation.
@@ -82,17 +86,17 @@ Ask:
 
 ### Code — spec found in cwd
 
-`./agent_spec.md` exists in cwd, but that alone does not mean cwd is the project root. Ask (exact wording):
+`agent_spec.yaml` or the legacy `agent_spec.md` exists in cwd, but that alone does not mean cwd is the project root. Prefer the YAML file if both exist. Ask (exact wording):
 
-> `./agent_spec.md` is in the current directory. Is this your project root?
+> An agent spec is in the current directory. Is this your project root?
 > 1. **Yes** — use the current directory as the project root
 > 2. **No** — the agent is in a different directory
 
 Wait for the user's reply.
 
-- **Choice 1** (or "yes" / "here" / "cwd") → set `<target_dir>` = cwd. Notify: *"Continuing work on `./agent_spec.md` in `<target_dir>`."* Proceed to coding.
+- **Choice 1** (or "yes" / "here" / "cwd") → set `<target_dir>` = cwd. Notify: *"Continuing work on `./agent_spec.yaml` in `<target_dir>`."* Proceed to coding.
 
-- **Choice 2** (or "no" / "subdirectory" / "elsewhere" / "different directory") → follow [Path resolution](#path-resolution). Notify: *"Continuing work on `agent_spec.md` in `<target_dir>`."* Proceed to coding.
+- **Choice 2** (or "no" / "subdirectory" / "elsewhere" / "different directory") → follow [Path resolution](#path-resolution). Notify: *"Continuing work on `agent_spec.yaml` in `<target_dir>`."* Proceed to coding.
 
 ### Code — no spec in cwd
 
@@ -100,10 +104,10 @@ The workspace question below **is** Path resolution step 1. After the user answe
 
 Ask:
 
-> Which project directory contains your `agent_spec.md`?
+> Which project directory contains your `agent_spec.yaml`?
 
-If the user is unsure, remind them the spec may be in a subdirectory (e.g. `./new-datarobot-agent`). If `./new-datarobot-agent/agent_spec.md` exists, you may mention it as a suggestion — do not set `<target_dir>` without the user's answer.
+If the user is unsure, remind them the spec may be in a subdirectory (e.g. `./new-datarobot-agent`). If `./new-datarobot-agent/agent_spec.yaml` exists, you may mention it as a suggestion — do not set `<target_dir>` without the user's answer.
 
 Apply Path resolution steps 2–6 to validate and set `<target_dir>`, then set `<workspace_resolved>` and `<workspace_resolved_target_dir>`.
 
-If no `agent_spec.md` exists at that path, [pre-coding Bootstrap step 2](pre-coding-checklist.md) offers Design or a single directory correction — it will not repeat the workspace directory question verbatim.
+If neither recognized spec filename exists at that path, [pre-coding Bootstrap step 2](pre-coding-checklist.md) offers Design or a single directory correction — it will not repeat the workspace directory question verbatim.

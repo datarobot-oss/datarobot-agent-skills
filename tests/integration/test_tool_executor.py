@@ -160,8 +160,8 @@ def test_tool_executor_replaces_fixture_worker_in_full_pipeline(
         encoding="utf-8",
     )
 
-    # Write agent_spec.md with is_readonly: true on the tool.
-    spec_path = tmp_path / "agent_spec.md"
+    # Write agent_spec.yaml with is_readonly: true on the tool.
+    spec_path = tmp_path / "agent_spec.yaml"
     spec_path.write_text(
         yaml.safe_dump(
             {
@@ -311,7 +311,7 @@ def test_tool_executor_reexecs_into_venv_found_in_a_parent_directory(
     assert result.returncode == FAKE_VENV_EXIT_CODE
 
 
-@pytest.mark.parametrize("marker", ["agent_spec.md", ".git"])
+@pytest.mark.parametrize("marker", ["agent_spec.yaml", "agent_spec.md", ".git"])
 def test_tool_executor_ignores_parent_venv_behind_a_project_marker(
     tmp_path: Path, input_package: Path, marker: str
 ) -> None:

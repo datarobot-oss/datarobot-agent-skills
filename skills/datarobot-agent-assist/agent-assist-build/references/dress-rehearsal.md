@@ -2,7 +2,7 @@
 
 ### What it is
 
-Dress rehearsal simulates your `agent_spec.md` **before any code is written**. Think of it as a preview performance:
+Dress rehearsal simulates your `agent_spec.yaml` **before any code is written**. Think of it as a preview performance:
 
 | Aspect | Dress rehearsal | After coding |
 |--------|-----------------|--------------|
@@ -41,10 +41,10 @@ While a rehearsal session is active:
 ### Step 1 — Initialize the session
 
 ```bash
-python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.md --target-dir <target_dir>
+python <skill_scripts_dir>/rehearsal.py --init --spec <target_dir>/agent_spec.yaml --target-dir <target_dir>
 ```
 
-If `agent_spec.md` does not exist and no path was provided, say so and stop.
+If neither `agent_spec.yaml` nor `agent_spec.md` exists at the target directory and no path was provided, say so and stop. The rehearsal script prefers `agent_spec.yaml` and falls back to `agent_spec.md` when given the YAML path.
 
 The script creates a session directory at `<target_dir>/.datarobot/rehearsal/<session_id>/` and prints two lines:
 ```
@@ -151,6 +151,6 @@ Tell the user (2–3 sentences max):
 - What was tested and how the agent performed overall
 - That the full report is saved at `<target_dir>/rehearsal_report/rehearsal_report.md` and can be shared with QA, product, and data science
 
-Then offer to implement any changes to `agent_spec.md`. If you apply spec changes, append a `## Spec Updates Applied` section to the report listing each change in bullet form (what changed and why — not a unified diff).
+Then offer to implement any changes to `agent_spec.yaml`. If you apply spec changes, append a `## Spec Updates Applied` section to the report listing each change in bullet form (what changed and why — not a unified diff).
 
 After applying changes (or if none are needed), go to **[Post-design next steps](../SKILL.md#post-design-next-steps)**.

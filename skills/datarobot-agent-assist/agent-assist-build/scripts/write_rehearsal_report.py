@@ -230,7 +230,7 @@ def write_rehearsal_report(
         messages = json.load(handle)
 
     target_dir = Path(str(config.get("target_dir") or ".")).resolve()
-    spec_path = str(config.get("spec_path") or "agent_spec.md")
+    spec_path = str(config.get("spec_path") or "agent_spec.yaml")
     started_at = str(config.get("started_at") or "unknown")
     ended_at = datetime.now(UTC).isoformat()
     config["ended_at"] = ended_at

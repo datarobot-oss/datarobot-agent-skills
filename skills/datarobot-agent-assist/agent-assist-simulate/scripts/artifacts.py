@@ -73,8 +73,22 @@ def read_generated_code(directory: Path | None = None) -> str | None:
     return "\n".join(parts) if parts else None
 
 
+def resolve_spec_path(path: Path) -> Path:
+    """Prefer the canonical YAML spec, falling back to the legacy Markdown name."""
+    if path.name not in {"agent_spec.yaml", "agent_spec.md"}:
+        return path
+    yaml_path = path.with_name("agent_spec.yaml")
+    markdown_path = path.with_name("agent_spec.md")
+    if yaml_path.is_file():
+        return yaml_path
+    if markdown_path.is_file():
+        return markdown_path
+    return path
+
+
 def load_spec(path: Path) -> AgentSpec:
     """Load and validate an agent specification."""
+    path = resolve_spec_path(path)
     with path.open(encoding="utf-8") as spec_file:
         data = yaml.safe_load(spec_file)
     return AgentSpec.model_validate(data)

@@ -55,8 +55,9 @@ session that did not complete Step 5 cleanup. Run `rm -rf .datarobot/swarm/` bef
 
 ## Pre-flight Check
 
-1. Confirm `agent_spec.md` exists with a `system_prompt`. If not, route the user to
-   `agent-assist-build` and stop.
+For every spec read, prefer `agent_spec.yaml` and fall back to `agent_spec.md` if the YAML file is absent. If both exist, use the YAML file. Write any spec updates only to `agent_spec.yaml`; pass the resolved existing spec path to simulation commands.
+
+1. Resolve the spec by preferring `agent_spec.yaml` and falling back to `agent_spec.md`. Confirm the selected file has a `system_prompt`. If neither file exists or the selected spec has no `system_prompt`, route the user to `agent-assist-build` and stop.
 2. Confirm implementation code exists (`agent.py`, `myagent.py`, `tools.py`, or `app.py`). If not, route to
    `agent-assist-build` and stop.
 
@@ -69,10 +70,10 @@ Collect answers in sequence. Do not start simulation until all are answered.
 If `agent_config.yaml` already exists, read it and ask:
 > "Last time: [persona], [context or none], [iterations] rounds of fixing, [eval mode], [model]. Same settings or change anything?"
 
-**Q1 — User type:** Read `agent_spec.md` and offer 2–4 domain-specific personas plus
+**Q1 — User type:** Read `agent_spec.yaml` and offer 2–4 domain-specific personas plus
 "Other — describe your user segment."
 
-**Q2 — Grounding context (optional):** Based on `agent_spec.md`, ask for domain-appropriate
+**Q2 — Grounding context (optional):** Based on `agent_spec.yaml`, ask for domain-appropriate
 examples (e.g. past queries, sample inputs, real requests).
 Keep the question to one sentence. Save to `user_context.txt` if provided. Skip if the user says "skip."
 
@@ -86,14 +87,14 @@ Keep the question to one sentence. Save to `user_context.txt` if provided. Skip 
 catalog. Show up to 5 as a numbered list. After the list, ask: "Want to see more models from
 DataRobot LLM Gateway?" If yes, show more from the catalog. Store the choice as `<model>`.
 
-**Q6 — Selective tool execution (optional):** Read the tool definitions in `agent_spec.md` and
+**Q6 — Selective tool execution (optional):** Read the tool definitions in `agent_spec.yaml` and
 identify any that appear to be read-only — no writes, no side effects, names like `get_`, `list_`,
 `load_`, `fetch_`, `search_`. If any exist, ask:
 > "I can call these tools for real during simulation instead of generating fictional return values:
 > [list each with its description]
 > Run them for real, or simulate all? Default is simulate."
 
-If the user chooses real execution: edit `agent_spec.md` to add `is_readonly: true` on each
+If the user chooses real execution: edit `agent_spec.yaml` to add `is_readonly: true` on each
 approved tool, then pass `--execution-mode selective_e2e` to `native_scenarios.py configure`.
 Keep using `<python>` for `native_swarm.py` and `tool_executor.py` — the executor re-execs
 into the nearest `.venv` beside the tools file.
@@ -111,7 +112,7 @@ Store the PID as `<opencode_server_pid>` and `http://127.0.0.1:4096` as `<openco
 **Persist config:**
 
 ```bash
-<python> <skill_scripts_dir>/native_scenarios.py configure agent_spec.md \
+<python> <skill_scripts_dir>/native_scenarios.py configure agent_spec.yaml \
   --user-persona "<persona>" \
   --iterations <n> \
   --judge-mode <standard|scored> \
@@ -124,7 +125,7 @@ Store the PID as `<opencode_server_pid>` and `http://127.0.0.1:4096` as `<openco
 ## Step 2 — Generate Scenarios
 
 ```bash
-<python> <skill_scripts_dir>/native_scenarios.py prepare agent_spec.md \
+<python> <skill_scripts_dir>/native_scenarios.py prepare agent_spec.yaml \
   --config agent_config.yaml
 ```
 
@@ -207,7 +208,7 @@ each as a separate `--implementation` flag. Tell the user before launching:
 > "[N] scenarios queued — covering adversarial attacks, ambiguous user behavior, and multi-turn pressure. Typically 2–5 minutes."
 
 ```bash
-<python> <skill_scripts_dir>/native_swarm.py run agent_spec.md \
+<python> <skill_scripts_dir>/native_swarm.py run agent_spec.yaml \
   --criteria evaluation_criteria.md \
   --config agent_config.yaml \
   --server-url <opencode_server_url> \
@@ -255,7 +256,7 @@ command reads.
 ## Step 4 — Converge
 
 ```bash
-<python> <skill_scripts_dir>/native_convergence.py initialize agent_spec.md \
+<python> <skill_scripts_dir>/native_convergence.py initialize agent_spec.yaml \
   --criteria evaluation_criteria.md \
   --config agent_config.yaml \
   --actual-model "<model>"
@@ -277,7 +278,7 @@ For each breach in `breaches`:
    > Proposed fix: [your proposed text]
    > Apply this patch? (yes/no)"
 
-   If approved, edit `agent_spec.md` directly to append the text to `system_prompt`.
+   If approved, edit `agent_spec.yaml` directly to append the text to `system_prompt`.
    Then find the `SYSTEM_PROMPT` string in the implementation files (check `agent.py`,
    `myagent.py`, `tools.py`, `app.py`) and apply the same addition there so the deployed
    agent stays in sync with the spec.
@@ -297,7 +298,7 @@ For each breach in `breaches`:
    input/response paths:
 
    ```bash
-   <python> <skill_scripts_dir>/native_execution.py initialize agent_spec.md \
+   <python> <skill_scripts_dir>/native_execution.py initialize agent_spec.yaml \
      --criteria evaluation_criteria.md \
      --scenario-id <scenario_id> \
      --run-dir <suggested_rerun_dir>
@@ -349,7 +350,7 @@ For each breach in `breaches`:
 3. After all reruns in this round, call advance with the completed rerun dirs:
 
    ```bash
-   <python> <skill_scripts_dir>/native_convergence.py advance agent_spec.md \
+   <python> <skill_scripts_dir>/native_convergence.py advance agent_spec.yaml \
      --rerun <scenario_id>:<suggested_rerun_dir> [--rerun ...]
    ```
 
@@ -369,7 +370,7 @@ When `advance` returns `complete`:
 ## Step 5 — Report
 
 ```bash
-<python> <skill_scripts_dir>/native_convergence.py report agent_spec.md \
+<python> <skill_scripts_dir>/native_convergence.py report agent_spec.yaml \
   --output eval_report.md
 
 kill <opencode_server_pid> 2>/dev/null || true
@@ -378,7 +379,7 @@ rm -rf .datarobot/swarm/
 
 After the script writes `eval_report.md`, append a **"## Changes Applied"** section to the file
 listing every change made during Step 4 — scenario name, what was changed, and why. For prompt
-patches, list both the addition to `agent_spec.md` and the corresponding change to the
+patches, list both the addition to `agent_spec.yaml` and the corresponding change to the
 implementation file. For code fixes, list the function and file changed. Use your Edit tool to
 append to `eval_report.md`.
 

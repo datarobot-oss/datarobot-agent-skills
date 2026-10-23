@@ -1,6 +1,6 @@
-## agent_spec.md Schema
+## agent_spec.yaml Schema
 
-Write specs in YAML to `<target_dir>/agent_spec.md`. Fields are optional when the spec is still evolving.
+Write new or updated specs in YAML to `<target_dir>/agent_spec.yaml`. For reads, prefer this file and fall back to the legacy `<target_dir>/agent_spec.md`; if both exist, use the YAML file. Fields are optional when the spec is still evolving.
 
 ```yaml
 model: "datarobot/azure/gpt-5-2025-08-07"   # the listing's llm_default_model, verbatim
