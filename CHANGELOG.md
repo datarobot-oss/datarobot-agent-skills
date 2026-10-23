@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-10-23
+
 ### Changed
 
 - `datarobot-agent-assist`: Specs are now written to `agent_spec.yaml`; existing `agent_spec.md` specs remain readable, with the YAML file preferred when both exist.
