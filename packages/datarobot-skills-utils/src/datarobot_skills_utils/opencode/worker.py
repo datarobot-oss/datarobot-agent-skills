@@ -80,7 +80,8 @@ def build_run_command(
 @dataclass(frozen=True)
 class RunCall:
     """One `dr opencode run` subprocess, as arguments to subprocess.run:
-    `argv`, then `input=stdin`, `cwd=cwd` and `env=env`."""
+    `argv`, then `input=stdin`, `cwd=cwd` and `env=env`, with
+    `encoding="utf-8"` so the prompt on stdin doesn't depend on the locale."""
 
     argv: list[str]
     stdin: str | None = None
@@ -166,6 +167,10 @@ def run_worker(
                 input=call.stdin,
                 capture_output=True,
                 text=True,
+                # opencode reads and writes UTF-8; the locale default (cp1252
+                # on Windows) would garble or reject a non-ASCII prompt.
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout,
                 cwd=call.cwd,
                 env=call.env,

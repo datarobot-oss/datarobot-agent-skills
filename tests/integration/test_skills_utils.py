@@ -709,6 +709,8 @@ def test_run_worker_2x_sends_stdin_and_password_and_reads_usage(monkeypatch):
 
     assert seen["cmd"] == [*RUN_PREFIX, "--server", "http://x"]
     assert seen["input"] == f"{WORKER_PREAMBLE}Do it."
+    # The prompt travels on stdin: UTF-8 whatever the locale (cp1252 on Windows).
+    assert seen.get("encoding") == "utf-8"
     assert seen["cwd"] == "/tmp/work"
     env = seen["env"]
     assert isinstance(env, dict)
