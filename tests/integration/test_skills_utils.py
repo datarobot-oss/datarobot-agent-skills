@@ -3,9 +3,14 @@
 
 """Unit tests for the shared datarobot-skills-utils package (pure functions)."""
 
+import base64
+import http.server
 import json
 import sys
+import threading
 from pathlib import Path
+from subprocess import CompletedProcess, Popen
+from typing import ClassVar
 
 import pytest
 
@@ -21,11 +26,42 @@ sys.path.insert(
 
 from datarobot_skills_utils.opencode import (
     WORKER_PREAMBLE,
+    OpenCodeVersion,
+    build_run_call,
     build_run_command,
     parse_events,
     sanitize_message,
     strip_code_fences,
 )
+from datarobot_skills_utils.opencode import server as opencode_server
+from datarobot_skills_utils.opencode import version as opencode_version_module
+from datarobot_skills_utils.opencode import worker as opencode_worker
+from datarobot_skills_utils.opencode.events import session_id, stream_error
+from datarobot_skills_utils.opencode.version import parse_version
+
+V1 = OpenCodeVersion((1, 17, 11), "1.17.11")
+V2 = OpenCodeVersion((2, 1, 3), "opencode v2.1.3")
+PASSWORD = "test-server-password"
+RUN_PREFIX = [
+    "dr",
+    "--skip-plugin-update-check",
+    "--plugin-discovery-timeout",
+    "30s",
+    "opencode",
+    "run",
+    "--format",
+    "json",
+    "--model",
+    "m",
+]
+
+
+@pytest.fixture(autouse=True)
+def _opencode_1x(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the detected opencode to 1.x so no test runs the real `dr`; the
+    2.x tests override it."""
+    monkeypatch.setattr(opencode_worker, "opencode_version", lambda: V1)
+    monkeypatch.setattr(opencode_server, "opencode_version", lambda: V1)
 
 
 def _event(kind: str, part: dict) -> str:
@@ -344,3 +380,409 @@ def test_parse_events_names_an_output_cut_at_the_token_limit():
         ValueError, match="cut at its max output tokens.*5179 output tokens, 3013"
     ):
         parse_events(stream)
+
+
+# Real `dr opencode run --format json` output from opencode 2.1.3, IDs replaced.
+# `dr` prints a banner line of its own first, and 2.x ended both streams before
+# any step_finish event.
+STREAM_2X = (
+    "\N{ELECTRIC PLUG} Running plugin: opencode\n"
+    '{"type":"step_start","timestamp":1793114244856,"sessionID":"ses_test","part":{"id":"prt_1","sessionID":"ses_test","messageID":"msg_test","type":"step-start","snapshot":"4b825dc642cb6eb9a060e54bf8d69288fbee4904"}}\n'
+    '{"type":"text","timestamp":1793114245529,"sessionID":"ses_test","part":{"id":"prt_2","sessionID":"ses_test","messageID":"msg_test","type":"text","text":"```json\\n{\\"answer\\": 391, \\"why\\": \\"17 * 23\\"}\\n```","time":{"start":1793114245354,"end":1793114245529}}}\n'
+)
+ERROR_2X = (
+    "\N{ELECTRIC PLUG} Running plugin: opencode\n"
+    '{"type":"error","timestamp":1793114240082,"sessionID":"ses_test","error":{"type":"provider.no-route","message":"Model unavailable: datarobot/anthropic/claude-sonnet-4-6"}}\n'
+)
+# opencode 1.17.11 writes the same envelope (cli/cmd/run.ts, emit()), closes
+# each step with step_finish, and shapes errors as {name, data: {message}}.
+STREAM_1X = "\n".join(
+    json.dumps(event)
+    for event in [
+        {"type": "step_start", "timestamp": 1, "sessionID": "ses_test", "part": {}},
+        {
+            "type": "text",
+            "timestamp": 2,
+            "sessionID": "ses_test",
+            "part": {"type": "text", "text": "ok", "time": {"start": 1, "end": 2}},
+        },
+        {
+            "type": "step_finish",
+            "timestamp": 3,
+            "sessionID": "ses_test",
+            "part": {
+                "type": "step-finish",
+                "reason": "stop",
+                "cost": 0,
+                "tokens": {
+                    "input": 12449,
+                    "output": 4,
+                    "reasoning": 0,
+                    "cache": {"read": 0, "write": 0},
+                },
+            },
+        },
+    ]
+)
+# A real assistant message from an opencode 2.1.3 server's
+# GET /api/session/<id>/message?type=assistant, IDs replaced and the
+# provider's own response IDs left out.
+MESSAGES_2X = {
+    "data": [
+        {
+            "agent": "build",
+            "content": [{"type": "text", "text": "ok"}],
+            "cost": 0,
+            "finish": "stop",
+            "id": "msg_test",
+            "model": {
+                "id": "anthropic/claude-sonnet-4-6",
+                "providerID": "datarobot-responses",
+                "variant": "default",
+            },
+            "snapshot": {
+                "start": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+                "end": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+                "files": [],
+            },
+            "time": {
+                "created": 1793115343941,
+                "streamed": 1793115346116,
+                "completed": 1793115346125,
+            },
+            "tokens": {
+                "input": 12449,
+                "output": 4,
+                "reasoning": 0,
+                "cache": {"read": 0, "write": 0},
+            },
+            "type": "assistant",
+        }
+    ],
+    "cursor": {},
+}
+USAGE = {
+    "input_tokens": 12449,
+    "output_tokens": 4,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": 0,
+    "cost": 0.0,
+}
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("1.17.11\n", (1, 17, 11)),
+        ("\N{ELECTRIC PLUG} Running plugin: opencode\n1.17.11\n", (1, 17, 11)),
+        ("\N{ELECTRIC PLUG} Running plugin: opencode\nopencode v2.1.3\n", (2, 1, 3)),
+        ("opencode v2.1.3-beta.1", (2, 1, 3)),
+        ("v3.0.0", (3, 0, 0)),
+        ("", None),
+        ("garbage\n", None),
+        ("1.17\n", None),
+        ('dr 0.1.14\nError: unknown command "opencode"\n', None),
+    ],
+)
+def test_parse_version_reads_both_formats_and_rejects_garbage(output, expected):
+    assert parse_version(output) == expected
+
+
+def test_opencode_version_asks_dr_once_per_process(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        stdout = "\N{ELECTRIC PLUG} Running plugin: opencode\nopencode v2.1.3\n"
+        return CompletedProcess(cmd, 0, stdout=stdout, stderr="Fetching... Done.\n")
+
+    detect = opencode_version_module.opencode_version
+    detect.cache_clear()
+    monkeypatch.setattr(opencode_version_module.subprocess, "run", fake_run)
+    try:
+        first, second = detect(), detect()
+    finally:
+        detect.cache_clear()
+
+    assert calls == [[*RUN_PREFIX[:5], "--version"]]
+    assert first is second and first.major == 2
+    assert first.describe() == "opencode 2.1.3"
+
+
+def test_unreadable_opencode_version_keeps_1x_and_says_what_to_do(monkeypatch):
+    def missing(cmd, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "dr")
+
+    def unknown_format(cmd, **kwargs):
+        stdout = "\N{ELECTRIC PLUG} Running plugin: opencode\nOpenCode build 7\n"
+        return CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+
+    detect = opencode_version_module.opencode_version
+    found = []
+    for fake in (missing, unknown_format):
+        detect.cache_clear()
+        monkeypatch.setattr(opencode_version_module.subprocess, "run", fake)
+        try:
+            found.append(detect())
+        finally:
+            detect.cache_clear()
+
+    for version in found:
+        assert version.release is None and version.major == 1
+        assert "dr opencode --version" in version.describe()
+        assert "opencode 1.x and 2.x" in version.describe()
+    assert "FileNotFoundError" in found[0].output
+    assert found[1].output == "OpenCode build 7"
+
+
+def test_build_run_command_for_1x_is_unchanged():
+    assert build_run_command("msg", "m", server_url="http://x", major=1) == [
+        *RUN_PREFIX,
+        "--attach",
+        "http://x",
+        "--pure",
+        "msg",
+    ]
+    assert build_run_command("msg", "m", isolated_dir="/tmp/x", major=1) == [
+        *RUN_PREFIX,
+        "--dir",
+        "/tmp/x",
+        "--pure",
+        "msg",
+    ]
+    assert build_run_command("msg", "m", major=1) == [*RUN_PREFIX, "--pure", "msg"]
+    # The detected version is used by default (pinned to 1.x in these tests).
+    assert build_run_command("msg", "m", server_url="http://x") == (
+        build_run_command("msg", "m", server_url="http://x", major=1)
+    )
+
+
+def test_build_run_command_for_2x_uses_server_or_standalone():
+    assert build_run_command("msg", "m", server_url="http://x", major=2) == [
+        *RUN_PREFIX,
+        "--server",
+        "http://x",
+        "msg",
+    ]
+    for kwargs in ({"isolated_dir": "/tmp/x"}, {}):
+        assert build_run_command("msg", "m", major=2, **kwargs) == [
+            *RUN_PREFIX,
+            "--standalone",
+            "msg",
+        ], "a 2.x run without --server would use the user's background server"
+
+
+def test_build_run_call_for_2x_sets_directory_password_and_stdin():
+    base_env = {"PATH": "/bin"}
+    call = build_run_call(
+        "msg",
+        "m",
+        server_url="http://x",
+        cwd="/tmp/work",
+        env=base_env,
+        password=PASSWORD,
+        major=2,
+    )
+    assert call.argv == [*RUN_PREFIX, "--server", "http://x"]
+    assert call.stdin == "msg" and call.cwd == "/tmp/work"
+    assert call.env == {
+        "PATH": "/bin",
+        "PWD": "/tmp/work",
+        "OPENCODE_PASSWORD": PASSWORD,
+    }
+    assert base_env == {"PATH": "/bin"}, "the caller's mapping is copied"
+    assert PASSWORD not in repr(call)
+
+    standalone = build_run_call(
+        "msg", "m", isolated_dir="/tmp/iso", cwd="/tmp/other", env=base_env, major=2
+    )
+    assert standalone.argv == [*RUN_PREFIX, "--standalone"]
+    assert standalone.cwd == "/tmp/iso"
+    assert standalone.env == {"PATH": "/bin", "PWD": "/tmp/iso"}
+
+
+def test_build_run_call_for_1x_passes_cwd_and_env_through():
+    call = build_run_call(
+        "msg", "m", server_url="http://x", cwd="/tmp/work", password=PASSWORD, major=1
+    )
+    assert call.argv == build_run_command("msg", "m", server_url="http://x", major=1)
+    assert call.stdin is None and call.cwd == "/tmp/work" and call.env is None
+
+    env = {"A": "1"}
+    isolated = build_run_call("msg", "m", isolated_dir="/tmp/x", env=env, major=1)
+    assert isolated.cwd is None and isolated.env == env
+
+
+def test_parse_events_reads_1x_and_2x_streams():
+    text, meta = parse_events(STREAM_2X)
+    assert strip_code_fences(text) == '{"answer": 391, "why": "17 * 23"}'
+    assert meta["input_tokens"] == 0, "2.x left step_finish out of this stream"
+    assert session_id(STREAM_2X) == "ses_test"
+
+    text, meta = parse_events(STREAM_1X)
+    assert text == "ok"
+    assert meta == USAGE, "1.x step_finish parts and 2.x messages sum alike"
+    assert session_id(STREAM_1X) == "ses_test"
+
+
+def test_parse_events_reports_opencode_error_events():
+    with pytest.raises(
+        ValueError,
+        match="opencode reported an error: Model unavailable: datarobot/anthropic",
+    ):
+        parse_events(ERROR_2X)
+
+    error_1x = {"name": "APIError", "data": {"message": "Bad Request"}}
+    named_only = {"name": "UnknownError", "data": {}}
+    stream = "\n".join(
+        json.dumps({"type": "error", "sessionID": "ses_test", "error": error})
+        for error in (error_1x, named_only)
+    )
+    assert stream_error(stream) == "Bad Request; UnknownError"
+    assert stream_error(STREAM_2X) == ""
+
+
+class _MessagesHandler(http.server.BaseHTTPRequestHandler):
+    """Answers like an opencode 2.x server: basic auth or 401."""
+
+    paths: ClassVar[list[str]] = []
+
+    def do_GET(self) -> None:
+        self.paths.append(self.path)
+        token = base64.b64encode(f"opencode:{PASSWORD}".encode()).decode()
+        if self.headers.get("Authorization") != f"Basic {token}":
+            self.send_response(401)
+            self.end_headers()
+            return
+        body = json.dumps(MESSAGES_2X).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        pass
+
+
+def test_session_usage_reads_a_2x_server_with_its_password():
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _MessagesHandler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{httpd.server_address[1]}"
+    _MessagesHandler.paths.clear()
+    try:
+        usage = opencode_server.session_usage(url, "ses_test", PASSWORD)
+        refused = opencode_server.session_usage(url, "ses_test", "wrong")
+        unknown = opencode_server.session_usage(url, None, PASSWORD)
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+    assert usage == USAGE
+    assert refused is None and unknown is None, "usage is optional: no raise"
+    assert _MessagesHandler.paths[0] == (
+        "/api/session/ses_test/message?type=assistant&limit=200"
+    )
+
+
+def test_run_worker_2x_sends_stdin_and_password_and_reads_usage(monkeypatch):
+    monkeypatch.setattr(opencode_worker, "opencode_version", lambda: V2)
+    seen: dict[str, object] = {}
+    asked = []
+
+    def fake_run(cmd, **kwargs):
+        seen.update(kwargs, cmd=cmd)
+        return CompletedProcess(cmd, 0, stdout=STREAM_2X, stderr="")
+
+    def fake_usage(url, session, password):
+        asked.append((url, session, password))
+        return dict(USAGE)
+
+    monkeypatch.setattr(opencode_worker.subprocess, "run", fake_run)
+    monkeypatch.setattr(opencode_worker, "session_usage", fake_usage)
+
+    text, meta = opencode_worker.run_worker(
+        "Do it.", "m", server_url="http://x", cwd="/tmp/work", password=PASSWORD
+    )
+
+    assert seen["cmd"] == [*RUN_PREFIX, "--server", "http://x"]
+    assert seen["input"] == f"{WORKER_PREAMBLE}Do it."
+    assert seen["cwd"] == "/tmp/work"
+    env = seen["env"]
+    assert isinstance(env, dict)
+    assert env["PWD"] == "/tmp/work" and env["OPENCODE_PASSWORD"] == PASSWORD
+    assert asked == [("http://x", "ses_test", PASSWORD)]
+    assert text.startswith("```json") and meta == USAGE
+
+
+def test_run_worker_failure_names_opencodes_error_and_version(monkeypatch):
+    monkeypatch.setattr(opencode_worker, "opencode_version", lambda: V2)
+
+    def fake_run(cmd, **kwargs):
+        stderr = "Fetching models... Done.\nerror: opencode exited: exit status 1\n"
+        return CompletedProcess(cmd, 1, stdout=ERROR_2X, stderr=stderr)
+
+    monkeypatch.setattr(opencode_worker.subprocess, "run", fake_run)
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"exited 1: Model unavailable: \S+ \(opencode 2\.1\.3\)",
+    ):
+        opencode_worker.run_worker("Say hi.", "m", server_url="http://x")
+
+
+def _serve_stand_in(monkeypatch):
+    """Run `sleep` in place of `dr opencode serve` and record what it got."""
+    seen: dict[str, object] = {}
+    probes = []
+
+    def fake_popen(cmd, **kwargs):
+        if cmd[:3] != ["dr", "opencode", "serve"]:
+            return Popen(cmd, **kwargs)
+        seen.update(kwargs, cmd=cmd)
+        return Popen(["sleep", "30"], **kwargs)
+
+    def fake_get(url, password=None, timeout=10):
+        probes.append((url, password))
+        return b"{}"
+
+    monkeypatch.setattr(opencode_server.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(opencode_server, "_get", fake_get)
+    return seen, probes
+
+
+def test_server_for_2x_sets_a_password_and_probes_the_api(monkeypatch):
+    monkeypatch.setattr(opencode_server, "opencode_version", lambda: V2)
+    seen, probes = _serve_stand_in(monkeypatch)
+    srv = opencode_server.OpenCodeServer()
+    try:
+        url = srv.start()
+        password, workdir = srv.password, srv.workdir
+    finally:
+        srv.stop()
+
+    assert seen["cmd"][:4] == ["dr", "opencode", "serve", "--port"]
+    env = seen["env"]
+    assert isinstance(env, dict) and password
+    assert env["OPENCODE_PASSWORD"] == password
+    assert env["PWD"] == workdir == seen["cwd"]
+    assert probes == [(f"{url}/api/info", password)]
+    assert srv.password is None and srv.url is None
+
+
+def test_server_for_1x_keeps_its_command_env_and_health_route(monkeypatch):
+    seen, probes = _serve_stand_in(monkeypatch)
+    srv = opencode_server.OpenCodeServer()
+    try:
+        url = srv.start()
+        password = srv.password
+    finally:
+        srv.stop()
+
+    cmd = seen["cmd"]
+    assert isinstance(cmd, list)
+    assert cmd == ["dr", "opencode", "serve", "--port", cmd[4]]
+    assert seen["env"] is srv.env and password is None
+    assert probes == [(f"{url}/global/health", None)]

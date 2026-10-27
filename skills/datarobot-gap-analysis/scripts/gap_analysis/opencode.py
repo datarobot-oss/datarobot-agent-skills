@@ -21,12 +21,12 @@ __all__ = ["OpenCodeServer", "OpenCodeWorkerClient", "dr_available"]
 
 
 class OpenCodeWorkerClient:
-    """LLMClient backed by `dr opencode run --attach <server>` subprocesses.
+    """LLMClient backed by `dr opencode run` subprocesses attached to a server.
 
     Each complete() call is its own session on the shared server, so calls
     are independent and safe to issue from multiple threads. `cwd` should be
-    a directory without opencode project context (the server's workdir); see
-    OpenCodeServer.
+    a directory without opencode project context (the server's workdir) and
+    `password` the server's own (opencode 2.x); see OpenCodeServer.
     """
 
     def __init__(
@@ -36,11 +36,13 @@ class OpenCodeWorkerClient:
         cwd: str | None = None,
         reasoning_effort: str | None = None,
         timeout: int = DEFAULT_WORKER_TIMEOUT,
+        password: str | None = None,
     ):
         self.server_url = server_url
         self.model = model
         self.cwd = cwd
         self.timeout = timeout
+        self.password = password
         self.usage = UsageMeter(self.model, reasoning_effort)
 
     def complete(self, system: str, user: str) -> str:
@@ -50,6 +52,7 @@ class OpenCodeWorkerClient:
             server_url=self.server_url,
             cwd=self.cwd,
             timeout=self.timeout,
+            password=self.password,
         )
         self.usage.record(meta)
         return text

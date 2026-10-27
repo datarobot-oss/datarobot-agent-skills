@@ -14,6 +14,8 @@ runtime, used by the DataRobot agent skills in
 - The [DataRobot CLI](https://github.com/datarobot-oss/cli) (`dr`) on your `PATH`, logged in
   with `dr auth login`. Every LLM call goes through `dr opencode`, so the CLI's login and
   model access apply.
+- opencode 1.x or 2.x, whichever `dr opencode` runs. `run_worker` and `OpenCodeServer`
+  read `dr opencode --version` once per process and build their commands for that version.
 
 ## Installation
 
@@ -46,6 +48,7 @@ with OpenCodeServer(models=[model], reasoning="max") as server:
         model,
         server_url=server.url,
         cwd=server.workdir,
+        password=server.password,  # set for opencode 2.x, None for 1.x
     )
     usage.record(meta)
 
@@ -59,12 +62,20 @@ Everything is exported from `datarobot_skills_utils.opencode`.
 
 - `OpenCodeServer(models=(), reasoning=None)`: a private `dr opencode serve` on a free
   localhost port, in an isolated temporary working directory. Use it as a context manager;
-  `url` and `workdir` are set while it runs. Passing `models` and `reasoning` (`"max"`,
-  `"off"`, or a specific effort) sets the reasoning effort and output-token limits for those
-  models without editing your `opencode.json`.
-- `run_worker(message, model, server_url=None, cwd=None, timeout=120, attempts=2, ...)`: one
-  `dr opencode run` completion, attached to a server or run standalone. Returns
-  `(text, token_meta)`, and retries an empty response.
+  `url` and `workdir` are set while it runs, and with opencode 2.x so is `password`, a
+  random password the server requires from every client. Passing `models` and `reasoning`
+  (`"max"`, `"off"`, or a specific effort) sets the reasoning effort and output-token limits
+  for those models without editing your `opencode.json`.
+- `run_worker(message, model, server_url=None, cwd=None, timeout=120, attempts=2, ...,
+  password=None)`: one `dr opencode run` completion, attached to a server or run standalone.
+  Returns `(text, token_meta)`, and retries an empty response. Pass the server's `workdir` as
+  `cwd` and its `password`: opencode 2.x takes a session's directory from the worker.
+- `build_run_call(message, model, server_url=None, isolated_dir=None, cwd=None, ...,
+  major=1)`: the argv, stdin, working directory and environment of one `dr opencode run`, for
+  callers that run the subprocess themselves. `build_run_command(...)` returns only the argv.
+  Both build the opencode 1.x commands unless given `major=opencode_version().major`, so they
+  never start a process themselves.
+- `opencode_version()`: the opencode version `dr opencode` reports, read once per process.
 - `UsageMeter(model, reasoning_effort=None)`: thread-safe token and cost accounting across a
   run. Set `phase` before a batch, call `record(meta)` after each call, and read totals with
   `snapshot()`.

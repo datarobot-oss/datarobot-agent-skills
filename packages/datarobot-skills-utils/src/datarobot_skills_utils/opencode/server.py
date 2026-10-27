@@ -5,7 +5,11 @@
 
 from __future__ import annotations
 
+import base64
+import http.client
+import json
 import os
+import secrets
 import shutil
 import signal
 import socket
@@ -13,17 +17,49 @@ import subprocess
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterable
 from typing import IO, Self
 
+from .events import usage_meta
 from .reasoning import worker_env
+from .version import opencode_version
 
 _SERVE_STARTUP_SECONDS = 30
 
 
 def dr_available() -> bool:
     return shutil.which("dr") is not None
+
+
+def _get(url: str, password: str | None = None, timeout: float = 10) -> bytes:
+    """GET `url`, with the basic auth an opencode server expects when it has a
+    password (the user name is always `opencode`)."""
+    request = urllib.request.Request(url)
+    if password:
+        token = base64.b64encode(f"opencode:{password}".encode()).decode("ascii")
+        request.add_header("Authorization", f"Basic {token}")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        body: bytes = response.read()
+        return body
+
+
+def session_usage(
+    server_url: str, session: str | None, password: str | None, timeout: float = 10
+) -> dict[str, object] | None:
+    """Token meta of one session on an opencode 2.x server, summed over its
+    assistant messages, or None when it cannot be read (usage is optional)."""
+    if not session:
+        return None
+    path = urllib.parse.quote(session, safe="")
+    url = f"{server_url}/api/session/{path}/message?type=assistant&limit=200"
+    try:
+        body = json.loads(_get(url, password, timeout))
+    except (http.client.HTTPException, OSError, ValueError):
+        return None
+    messages = body.get("data") if isinstance(body, dict) else None
+    return usage_meta(messages) if isinstance(messages, list) else None
 
 
 def _free_port() -> int:
@@ -93,7 +129,11 @@ class OpenCodeServer:
     Runs in an empty, git-initialized temp directory: attached sessions take
     their project context from the server's cwd (the caller's cwd would leak
     its AGENTS.md/opencode config into every worker), and opencode's git
-    snapshotting silently kills sessions in a git-less directory.
+    snapshotting silently kills sessions in a git-less directory. With
+    opencode 2.x the server also gets a random `password`, which workers
+    attaching to it must pass to run_worker; opencode 2.x workers should also
+    run with `cwd=workdir`, since 2.x takes a session's directory from the
+    worker, not the server.
     """
 
     def __init__(
@@ -103,6 +143,7 @@ class OpenCodeServer:
         self._stderr: IO[str] | None = None
         self.workdir: str | None = None
         self.url: str | None = None
+        self.password: str | None = None
         # Attached sessions inherit the server's config, so reasoning effort
         # for the models workers will use is injected into the server env.
         self.env, self.efforts = worker_env(models, reasoning)
@@ -113,6 +154,15 @@ class OpenCodeServer:
         subprocess.run(
             ["git", "init", "-q", self.workdir], check=False, capture_output=True
         )
+        version = opencode_version()
+        env, health = self.env, "/global/health"
+        if version.major >= 2:
+            # 2.x always guards its API with a password and makes one up (and
+            # prints it) when the environment has none, so set our own.
+            self.password = secrets.token_urlsafe(32)
+            env = {**self.env, "OPENCODE_PASSWORD": self.password, "PWD": self.workdir}
+            # 2.x answers /global/health with its web app before the API is up.
+            health = "/api/info"
         # Nothing reads the server's stderr for the rest of the run, so a pipe
         # would eventually fill and block the child; a file never does.
         self._stderr = tempfile.TemporaryFile(  # noqa: SIM115 - lives until stop() closes it
@@ -127,7 +177,7 @@ class OpenCodeServer:
             text=True,
             cwd=self.workdir,
             start_new_session=True,
-            env=self.env,
+            env=env,
         )
         url = f"http://127.0.0.1:{port}"
         deadline = time.monotonic() + _SERVE_STARTUP_SECONDS
@@ -136,16 +186,20 @@ class OpenCodeServer:
                 returncode = self._proc.returncode
                 detail = self._stderr_tail()
                 self.stop()
-                raise RuntimeError(f"dr opencode serve exited {returncode}: {detail}")
+                raise RuntimeError(
+                    f"dr opencode serve exited {returncode}: {detail} "
+                    f"({version.describe()})"
+                )
             try:
-                with urllib.request.urlopen(f"{url}/global/health", timeout=2):
-                    self.url = url
-                    return url
-            except (urllib.error.URLError, TimeoutError, OSError):
+                _get(f"{url}{health}", self.password, timeout=2)
+                self.url = url
+                return url
+            except (http.client.HTTPException, OSError):
                 time.sleep(0.25)
         self.stop()
         raise RuntimeError(
-            f"dr opencode serve did not become healthy within {_SERVE_STARTUP_SECONDS}s"
+            f"dr opencode serve did not become healthy within {_SERVE_STARTUP_SECONDS}s "
+            f"({version.describe()})"
         )
 
     def _stderr_tail(self, limit: int = 500) -> str:
@@ -168,6 +222,7 @@ class OpenCodeServer:
             shutil.rmtree(self.workdir, ignore_errors=True)
             self.workdir = None
         self.url = None
+        self.password = None
 
     def __enter__(self) -> Self:
         self.start()

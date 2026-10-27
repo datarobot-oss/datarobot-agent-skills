@@ -108,6 +108,7 @@ def _make_llm_client(settings: Settings) -> OpenCodeWorkerClient | None:
         cwd=server.workdir,
         reasoning_effort=effort,
         timeout=settings.worker_timeout,
+        password=server.password,
     )
     effort_note = (
         f"reasoning effort {effort}"
