@@ -14,6 +14,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-10-29
+
 ### Fixed
 
 - `datarobot-gap-analysis`: LLM checks (Layers 2 and 4) also run when `dr opencode` uses opencode 2.x, and the report's token usage is filled in there too (datarobot-skills-utils 0.1.1).
