@@ -29,6 +29,7 @@
     "packages/"
   ],
   "dependencies": {
-    "@opencode-ai/plugin": "1.19.3"
+    "@opencode-ai/plugin": "1.19.3",
+    "effect": "4.0.0-beta.83"
   }
 }
