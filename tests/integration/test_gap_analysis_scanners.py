@@ -50,6 +50,7 @@ from gap_analysis.inventory import (
 )
 from gap_analysis.llm import brief_error, parse_json
 from gap_analysis.models import AnalysisResult, ConditionSkip, Finding, Severity
+from gap_analysis.opencode import pick_model
 from gap_analysis.posture import migration_advice
 from gap_analysis.remediate import (
     _locked_version,
@@ -78,6 +79,14 @@ from gap_analysis.taxonomy import Taxonomy
 @pytest.fixture(scope="module")
 def taxonomy() -> Taxonomy:
     return Taxonomy.load(SCRIPTS / "taxonomy.yaml")
+
+
+@pytest.fixture(autouse=True)
+def dr_models(monkeypatch) -> list[str]:
+    """The listing `dr opencode models` returns; edit it to change what runs see."""
+    models = ["datarobot/anthropic/claude-sonnet-4-6"]
+    monkeypatch.setattr("gap_analysis.cli.list_models", lambda: models)
+    return models
 
 
 def _write(root: Path, rel: str, text: str = "") -> None:
@@ -2152,6 +2161,33 @@ def test_exit_code_keeps_a_sibling_finding_the_fix_did_not_apply(
     )
 
 
+def test_settings_pick_the_default_model_from_the_dr_listing(
+    monkeypatch, dr_models
+) -> None:
+    from types import SimpleNamespace
+
+    from gap_analysis.cli import settings_from_args
+
+    monkeypatch.delenv("GAP_LLM_MODEL", raising=False)
+    monkeypatch.delenv("GAP_DISABLE_LLM", raising=False)
+    dr_models[:] = ["datarobot-responses/anthropic/claude-sonnet-4-6"]
+    args = SimpleNamespace(
+        no_llm=False,
+        model=None,
+        effort=None,
+        no_verify=False,
+        workers=None,
+        llm_timeout=None,
+        offline=False,
+    )
+    assert settings_from_args(args).model == dr_models[0]
+
+    dr_models.clear()
+    assert settings_from_args(args).model == "datarobot/anthropic/claude-sonnet-4-6", (
+        "no listing (no dr) keeps the default model"
+    )
+
+
 def test_settings_resolve_flags_over_env(monkeypatch) -> None:
     from types import SimpleNamespace
 
@@ -2781,3 +2817,54 @@ def test_process_teardown_falls_back_where_there_are_no_process_groups(
     assert server._own_group(proc) is None
     server.terminate_process_tree(proc, timeout=2)
     assert proc.poll() is not None, "the direct child is still stopped"
+
+
+@pytest.mark.parametrize(
+    ("listing", "expected"),
+    [
+        (
+            (
+                "datarobot-responses/anthropic/claude-sonnet-4-6\n"
+                "datarobot/anthropic/claude-sonnet-5\n"
+            ),
+            "datarobot-responses/anthropic/claude-sonnet-4-6",
+        ),
+        (
+            (
+                "datarobot/anthropic/claude-sonnet-5\n"
+                "datarobot-responses/anthropic/claude-sonnet-4-5-20250929\n"
+            ),
+            "datarobot/anthropic/claude-sonnet-5",
+        ),
+        (
+            (
+                "datarobot/anthropic/claude-opus-4-7\n"
+                "datarobot-responses/anthropic/claude-sonnet-5-5\n"
+            ),
+            "datarobot-responses/anthropic/claude-sonnet-5-5",
+        ),
+        (
+            (
+                "bedrock/anthropic.claude-sonnet-4-6\n"
+                "google/claude-sonnet-4-6\n"
+                "datarobot/azure/gpt-5\n"
+            ),
+            "datarobot/anthropic/claude-sonnet-4-6",
+        ),
+        (
+            "datarobot/anthropic/claude-opus-4-7\ndatarobot/azure/gpt-5\n",
+            "datarobot/anthropic/claude-sonnet-4-6",
+        ),
+        ("", "datarobot/anthropic/claude-sonnet-4-6"),
+    ],
+    ids=[
+        "default-listed",
+        "default-missing-first-sonnet",
+        "default-missing-newer-sonnet",
+        "sonnet-only-outside-datarobot",
+        "no-sonnet",
+        "empty-listing",
+    ],
+)
+def test_pick_model_reads_the_listing(listing, expected):
+    assert pick_model(listing.splitlines()) == expected

@@ -16,6 +16,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ### Fixed
 
+- `datarobot-gap-analysis`: LLM checks (Layers 2 and 4) also run when `dr opencode` uses opencode 2.x, and the report's token usage is filled in there too (datarobot-skills-utils 0.1.1).
+- `packages/datarobot-skills-utils`: 0.1.1's `run_worker` and `OpenCodeServer` ask `dr opencode --version` once per process and, for opencode 2.x, runs workers with `--server` or `--standalone` instead of `--attach`, `--dir` and `--pure`, sends the prompt on stdin, protects the private server with a generated password and checks its `/api/info` route, reads token usage from the server when the event stream leaves it out, and reports opencode's own error message when a call fails. Commands for opencode 1.x are unchanged.
 - `.opencode-plugin`: export a default plugin definition (`id`, `server` and `effect`) so the plugin loads in OpenCode 2.x and still loads in 1.x.
 
 ## [1.29.0] - 2026-10-23

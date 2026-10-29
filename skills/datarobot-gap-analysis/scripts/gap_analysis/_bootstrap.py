@@ -19,7 +19,7 @@ from pathlib import Path
 # Exact pin: an unpinned install would take whatever is newest on PyPI. Keep in
 # step with `__version__` in the package's __init__.py, its single version
 # source (a test enforces it).
-SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils==0.1.0"
+SKILLS_UTILS_REQUIREMENT = "datarobot-skills-utils==0.1.1"
 
 INSTALL_HINT = (
     "datarobot-skills-utils not found: run `python3 -m pip install "

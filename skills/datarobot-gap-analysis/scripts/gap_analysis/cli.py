@@ -20,11 +20,17 @@ from typing import Any
 from .engine import analyze, fix
 from .ingest import clone_repo
 from .models import AnalysisResult
-from .opencode import OpenCodeServer, OpenCodeWorkerClient, dr_available
+from .opencode import (
+    OpenCodeServer,
+    OpenCodeWorkerClient,
+    dr_available,
+    list_models,
+    pick_model,
+)
 from .policy import load_policy
 from .report import render_report, usage_summary
 from .report_html import render_html
-from .settings import Settings
+from .settings import DEFAULT_MODEL, Settings
 
 _T0 = time.monotonic()
 
@@ -108,6 +114,7 @@ def _make_llm_client(settings: Settings) -> OpenCodeWorkerClient | None:
         cwd=server.workdir,
         reasoning_effort=effort,
         timeout=settings.worker_timeout,
+        password=server.password,
     )
     effort_note = (
         f"reasoning effort {effort}"
@@ -125,9 +132,13 @@ def _make_llm_client(settings: Settings) -> OpenCodeWorkerClient | None:
 def settings_from_args(args: argparse.Namespace) -> Settings:
     """Every run option in one object: flags win, GAP_* variables are the defaults."""
     base = Settings.from_env()
+    use_llm = base.use_llm and not args.no_llm
+    model = args.model or base.model
+    if use_llm and model == DEFAULT_MODEL:
+        model = pick_model(list_models())
     return base.with_(
-        use_llm=base.use_llm and not args.no_llm,
-        model=args.model or base.model,
+        use_llm=use_llm,
+        model=model,
         effort=args.effort or base.effort,
         verify=base.verify and not args.no_verify,
         workers=args.workers if args.workers is not None else base.workers,
