@@ -1,3 +1,4 @@
+import type { Plugin } from "@opencode-ai/plugin"
 import { Effect } from "effect"
 import { cpSync, existsSync, mkdirSync, readdirSync } from "fs"
 import { homedir } from "os"
@@ -51,20 +52,23 @@ function installThemes(configDir: string): number {
   return themes.length
 }
 
-// OpenCode 2.x: default export with an id and an effect (log lines go to OpenCode's own log).
+function install(): string {
+  const configDir = getConfigDir()
+  const skillsInstalled = installSkills(configDir)
+  installPackages(configDir)
+  const themesInstalled = installThemes(configDir)
+  return `Installed ${skillsInstalled} skills${themesInstalled > 0 ? ` and ${themesInstalled} DataRobot theme(s)` : ""}`
+}
+
+// One default export for both OpenCode generations: 1.x reads `server`, 2.x reads `id` + `effect`
+// and ignores the rest.
 export default {
   id: "opencode-datarobot-skills",
-  effect: () =>
-    Effect.gen(function* () {
-      const configDir = getConfigDir()
-      const skillsInstalled = installSkills(configDir)
-      installPackages(configDir)
-      const themesInstalled = installThemes(configDir)
-
-      if (skillsInstalled > 0 || themesInstalled > 0) {
-        yield* Effect.logInfo(
-          `Installed ${skillsInstalled} skills${themesInstalled > 0 ? ` and ${themesInstalled} DataRobot theme(s)` : ""}`,
-        )
-      }
-    }),
+  server: (async ({ client }) => {
+    await client.app.log({
+      body: { service: "opencode-datarobot-skills", level: "info", message: install() },
+    })
+    return {}
+  }) satisfies Plugin,
+  effect: () => Effect.sync(install).pipe(Effect.flatMap((message) => Effect.logInfo(message))),
 }

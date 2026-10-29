@@ -16,7 +16,7 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ### Fixed
 
-- `.opencode-plugin`: export a default `{ id, setup }` plugin definition so the plugin loads in OpenCode 2.x.
+- `.opencode-plugin`: export a default plugin definition (`id`, `server` and `effect`) so the plugin loads in OpenCode 2.x and still loads in 1.x.
 
 ## [1.29.0] - 2026-10-23
 
