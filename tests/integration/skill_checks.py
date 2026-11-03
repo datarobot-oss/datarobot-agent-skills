@@ -4,7 +4,7 @@
 """Deterministic checks on skill markdown, code samples and scripts.
 
 Everything here runs offline and without an LLM, so it can gate a skill before
-the paid evaluation (the LLM judge in tests/e2e or `claude plugin eval`).
+the paid evaluation (`claude plugin eval`).
 """
 
 from __future__ import annotations

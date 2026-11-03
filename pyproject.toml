@@ -23,13 +23,6 @@ integration = [
     "httpx>=0.27",
     "pydantic>=2.0",
 ]
-e2e = [
-    "datarobot-agent-tester @ git+https://github.com/datarobot-oss/datarobot-agent-tester@a6b67a15862c27cc0af46abf97d47a96fdf92809",
-    "python-dotenv>=1.2.2",
-    "pytest",
-    "pytest-asyncio",
-]
-
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests/integration"]
