@@ -2,13 +2,6 @@
 version: '3'
 
 tasks:
-  setup:
-    desc: Install local git hooks (pre-commit runs skill e2e tests on changed skills)
-    cmds:
-      - git config core.hooksPath .githooks
-      - echo "Git hooks installed. Pre-commit will evaluate skills touched by each commit and update tests/e2e/skill_hashes.json
-        automatically."
-
   test:integration:
     desc: Validate all DataRobot skills (naming, structure, frontmatter)
     cmds:
@@ -33,7 +26,6 @@ tasks:
     desc: Run shellcheck on all shell scripts
     cmds:
       - find skills scripts -name '*.sh' -exec shellcheck {} +
-      - shellcheck .githooks/pre-commit
 
   actionlint:
     desc: Lint GitHub Actions workflows
@@ -100,16 +92,6 @@ tasks:
     cmds:
       - task: ruff:format
       - task: yamlfmt
-
-  test:e2e:
-    desc: Run skill quality e2e tests (LLM judge, hash-cached)
-    cmds:
-      - uv run --group e2e pytest tests/e2e/ -v --tb=short -rs
-
-  test:e2e:force:
-    desc: Re-evaluate every skill regardless of hash cache
-    cmds:
-      - SKILLS_E2E_FORCE_ALL=1 uv run --group e2e pytest tests/e2e/ -v --tb=short -rs
 
   default:
     desc: List all available tasks

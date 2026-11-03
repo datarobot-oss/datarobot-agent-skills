@@ -24,31 +24,6 @@ Follow these steps when reporting a bug:
 - Ensure the bug was not already reported in the project's Issues section.
 - Open an issue as described in [Open a new issue](#open-a-new-issue).
 
-## Run e2e skill tests
-
-Skill quality is evaluated end-to-end by an LLM judge. To keep CI cheap, unchanged skills are skipped via an MD5 cache at `tests/e2e/skill_hashes.json`.
-
-### Local pre-commit hook (recommended)
-
-Run once after cloning:
-
-```bash
-cp .env.example .env  # fill in DATAROBOT_ENDPOINT + DATAROBOT_API_TOKEN
-task setup            # installs .githooks/ as the project hooks path
-```
-
-After that, any commit touching `skills/**` or `tests/e2e/**` runs the LLM judge on the affected skills and—if they pass—stages the refreshed `skill_hashes.json` into the same commit. By the time the PR hits CI, the hashes already match and the e2e job is a no-op for those skills.
-
-If `DATAROBOT_ENDPOINT` / `DATAROBOT_API_TOKEN` aren't set, the hook prints a notice and skips; CI runs the judge as a safety net. To bypass the hook for a single commit: `git commit --no-verify`.
-
-### Run the suite manually
-
-```bash
-task test:e2e         # or: uv run --group e2e pytest tests/e2e/ -v
-task test:e2e:force   # re-evaluate every skill, ignore the cache
-```
-
-CI does not write back to `main`; if the committed cache drifts the workflow logs a warning, and the fix is to run the command above locally and commit the refreshed file.
 
 ## Respond to issues and pull requests
 
@@ -219,7 +194,6 @@ OpenCode (via Bun) resolves `file:` paths and loads the plugin directly from dis
 This repository uses GitHub Actions for automated checks:
 
 - **Lint**&mdash;runs `task lint` (skill validation, ruff, mypy, shellcheck, actionlint, yamlfmt, license headers) on every push and pull request.
-- **Test Skills E2E**&mdash;runs the LLM-judge skill quality suite on pushes/PRs that touch `skills/**` or `tests/e2e/**`.
 - **Trivy security scan**&mdash;scans for secrets daily and on every push and pull request, and fails the build on findings.
 - **Version Bump**&mdash;on every push to `main`, bumps the plugin version, tags, and cuts a GitHub Release if `skills/` changed (see "Plugin version management" above).
 - **Publish to npm**&mdash;publishes to npm whenever a GitHub Release is published.

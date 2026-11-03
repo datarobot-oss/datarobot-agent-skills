@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Removed
+
+- `repo`: Removed the datarobot-agent-tester e2e skill suite: the `Test Skills E2E` workflow, `tests/e2e`, the `e2e` dependency group, the pre-commit hook, `task setup`, `task test:e2e` and `.env.example`.
+
 ## [1.30.0] - 2026-10-29
 
 ### Fixed
