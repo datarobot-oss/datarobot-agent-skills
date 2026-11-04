@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -278,11 +278,11 @@ integration = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.30.5"
+version = "0.31.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/06/c5/cd96edf2c79528c340c3f84160d9efc9c40e23d6928e3630e7f8588d399a/datarobot_genai-0.30.5.tar.gz", hash = "sha256:b7b1d71d3bd0a994ef02663850da1143e35bbdda22b2330ea8e771e78ffddd55", size = 593396, upload-time = "2026-10-20T20:03:43.157Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/f4/a60f03be83691b473f2cd4ba0107d9b40d09adec1c693cdaa215ffe62eec/datarobot_genai-0.31.2.tar.gz", hash = "sha256:4563b86f97d6345e77e315eedc82d5fc74e0a1408b59ecf7f205070d68cc1399", size = 595940, upload-time = "2026-10-28T12:44:23.612Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/ed/bdf4ef0fa1bfbe086b5e5852368db5c45a8678998ac9ceb95b95037bf181/datarobot_genai-0.30.5-py3-none-any.whl", hash = "sha256:ff933d20c60b34494031970bfbed6a707d4da2635f28c7cf3ef1649ea45469cc", size = 831646, upload-time = "2026-10-20T20:03:41.031Z" },
+    { url = "https://files.pythonhosted.org/packages/94/24/ed18254801085bbe5b9b7ccc897f13d9c6f2fc9d31b50756c153b592517a/datarobot_genai-0.31.2-py3-none-any.whl", hash = "sha256:d583812bafb48dc7e47a6bf8817712b2ff455c3e6343d23c27adf3b0e1507d87", size = 834489, upload-time = "2026-10-28T12:44:21.399Z" },
 ]
 
 [[package]]
@@ -808,7 +808,7 @@ wheels = [
 
 [[package]]
 name = "pytest"
-version = "9.1.1"
+version = "9.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
@@ -817,9 +817,9 @@ dependencies = [
     { name = "pluggy" },
     { name = "pygments" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/42/bb4641652e58dedeac2ec51abc1f8cae4fee4ec63899a0999016229a0f2a/pytest-9.2.0.tar.gz", hash = "sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b", size = 1797555, upload-time = "2026-10-27T21:30:20.728Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
+    { url = "https://files.pythonhosted.org/packages/51/39/1f5d8c8877a0fa327db959c19341d4be61660de1ab6b7391f9eb805bcd67/pytest-9.2.0-py3-none-any.whl", hash = "sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588", size = 411776, upload-time = "2026-10-27T21:30:19.131Z" },
 ]
 
 [[package]]
