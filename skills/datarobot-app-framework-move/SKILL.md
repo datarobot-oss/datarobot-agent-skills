@@ -44,10 +44,12 @@ Read the exit code and the last message before you rerun anything.
 | Result | Meaning | Do |
 | --- | --- | --- |
 | Exit 4, `holds this container` | Another run, or a killed one, holds the lease. Nothing ran | Wait for the lease to expire (30 minutes at most). Use `--force` only after you confirm nobody else is deploying |
-| Exit 4, `container advanced` or `another writer claimed` | Pulumi ran, and a teammate pushed first. The result is only on this machine | Do not rerun. Keep `.dr-sync-backup/` and ask for help |
+| Exit 4, `container advanced` or `another writer claimed` | Pulumi ran, and a teammate pushed first. The result is only on this machine | Do not rerun. Copy the whole `$STATE_DIR`, including `.dr-sync-backup/`, to a folder outside it, then ask for help |
 | Exit 7 | Pulumi failed. The state is pushed | Fix the error and run again |
 | Exit 6 | The pull did not finish. Nothing ran | Run again |
-| Exit 130 or 255 | Interrupted | Rerun only after the output says `the tree was pushed as it stood`. Otherwise keep `.dr-sync-backup/` and ask for help |
+| Exit 130 or 255 | Interrupted | Rerun only after the output says `the tree was pushed as it stood`. Otherwise copy the whole `$STATE_DIR` to a folder outside it, then ask for help |
+
+After a rejected or interrupted push, the latest state is in `$STATE_DIR`, and `.dr-sync-backup/` does not exist until the next run moves it there. The next run replaces `$STATE_DIR` with the head, so the copy above is the only safe record of what Pulumi created.
 
 A warning that names `.dr-sync-backup/` means local state differed from the head. If the last run on this machine did not push, that folder can hold the only record of resources Pulumi created. Keep it, and do not deploy again until someone merges it back.
 
