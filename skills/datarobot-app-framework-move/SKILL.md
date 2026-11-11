@@ -13,9 +13,10 @@ Pulumi keeps its local `file://` backend. `dr-sync run` keeps that directory dur
 
 Ask the user for:
 
-- The target install's API endpoint and an API key. Never print the key or write it to a file.
-- The stack passphrase. Never commit it.
+- The target install's API endpoint.
 - Whether the user's laptop reaches the target API, and whether the install reaches the internet.
+
+Never ask for the API key or the stack passphrase in chat, because chat history keeps them. Ask the user to confirm that `DATAROBOT_API_TOKEN` and `PULUMI_CONFIG_PASSPHRASE` are set in their terminal. If they are not, have the user enter them with the guide's silent `read -rs` prompts. Never print the values or write them to a file.
 
 The plugin is `dr-sync` (the `dr` plugin `sync`) v0.3.1 or later. Earlier versions lose the push when `dr` cancels a run on Ctrl-C.
 
