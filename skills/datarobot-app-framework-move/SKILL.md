@@ -48,6 +48,7 @@ Read the exit code and the last message before you rerun anything.
 | Exit 7 | Pulumi failed. The state is pushed | Fix the error and run again |
 | Exit 6 | The pull did not finish. Nothing ran | Run again |
 | Exit 130 or 255 | Interrupted | Rerun only after the output says `the tree was pushed as it stood`. Otherwise copy the whole `$STATE_DIR` to a folder outside it, then ask for help |
+| Any other exit, such as 3 (API or auth failure) | Unknown. If the command started and a successful push is not confirmed, the result may be only on this machine | Do not rerun. Copy the whole `$STATE_DIR`, including `.dr-sync-backup/`, to a folder outside it, then ask for help |
 
 After a rejected or interrupted push, the latest state is in `$STATE_DIR`, and `.dr-sync-backup/` does not exist until the next run moves it there. The next run replaces `$STATE_DIR` with the head, so the copy above is the only safe record of what Pulumi created.
 
