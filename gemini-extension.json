@@ -45,6 +45,11 @@
       "path": "skills/datarobot-app-framework-cicd/SKILL.md"
     },
     {
+      "name": "datarobot-app-framework-move",
+      "description": "Tools and guidance for moving a DataRobot Custom Application between installs, including installs with no internet, with Pulumi state kept in a Files container",
+      "path": "skills/datarobot-app-framework-move/SKILL.md"
+    },
+    {
       "name": "datarobot-external-agent-monitoring",
       "description": "Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring, observability, and governance",
       "path": "skills/datarobot-external-agent-monitoring/SKILL.md"

@@ -126,6 +126,18 @@
       ]
     },
     {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:app-framework-move",
+      "displayName": "datarobot-app-framework-move",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-app-framework-move/SKILL.md",
+      "description": "Move a DataRobot Custom Application between installs, including installs with no internet, with Pulumi state kept in a Files container.",
+      "representativeQueries": [
+        "move a custom application to another DataRobot install",
+        "deploy my app to an air-gapped DataRobot install",
+        "share Pulumi state between engineers deploying to DataRobot"
+      ]
+    },
+    {
       "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:external-agent-monitoring",
       "displayName": "datarobot-external-agent-monitoring",
       "type": "application/ai-skill",

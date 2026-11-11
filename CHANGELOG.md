@@ -14,6 +14,10 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-app-framework-move`: Added a skill to move a Custom Application between DataRobot installs with Pulumi state kept in a Files container, including installs with no internet and recovery after an interrupted deploy.
+
 ### Removed
 
 - `repo`: Removed the datarobot-agent-tester e2e skill suite: the `Test Skills E2E` workflow, `tests/e2e`, the `e2e` dependency group, the pre-commit hook, `task setup`, `task test:e2e` and `.env.example`.
