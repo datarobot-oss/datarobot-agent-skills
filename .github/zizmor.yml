@@ -3,11 +3,14 @@
 rules:
   dangerous-triggers:
     ignore:
-      # The org-wide review router reacts to comments on purpose.
+      # The org-wide review router reacts to comments on purpose. Its replay
+      # workflow runs on workflow_run from the default branch and checks out no PR code.
       - review-router.yml
+      - review-router-replay.yml
   secrets-inherit:
     ignore:
       - review-router.yml
+      - review-router-replay.yml
   unpinned-uses:
     config:
       policies:

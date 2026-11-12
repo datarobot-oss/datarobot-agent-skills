@@ -1,0 +1,29 @@
+---
+name: Review Router replay
+
+# GitHub withholds secrets from the review and comment runs of a fork PR, so the Review Router
+# workflow skips them. This workflow starts when one of those runs completes. A `workflow_run`
+# always runs the file on the default branch, with secrets, so it sends the DMs and removes the
+# labels the skipped run missed. It never checks out or runs PR code.
+
+on:
+  workflow_run:
+    workflows: ["Review Router"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# One replay at a time. Each replay covers every open fork PR, so a skipped pending run loses nothing.
+concurrency:
+  group: review-router-replay
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    if: >-
+      contains(fromJSON('["pull_request_review", "pull_request_review_comment", "issue_comment"]'), github.event.workflow_run.event)
+      && (github.event.workflow_run.event == 'issue_comment' || github.event.workflow_run.head_repository.full_name != github.repository)
+    uses: datarobot-oss/.github/.github/workflows/review-router.yml@main
+    secrets: inherit
