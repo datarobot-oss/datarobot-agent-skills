@@ -6,7 +6,7 @@ description: >-
   swarm simulation, or the DataRobot agent template; wants to scaffold a LangGraph, CrewAI, LlamaIndex, NAT, or Base
   agent targeting DataRobot; wants to add an MCP server, backend API, or React frontend to a
   DataRobot agent application; or uses the DataRobot CLI (dr) to build or deploy an agentic custom
-  application; or wants to harden, stress-test, or battle-test an agent. Covers the full workflow: agent design, agent_spec.yaml authoring, dress-rehearsal
+  application; or wants to stress-test an agent. Covers the full workflow: agent design, agent_spec.yaml authoring, dress-rehearsal
   simulation via the DataRobot LLM Gateway, adversarial swarm simulation, template-based coding, and deployment.
 ---
 
@@ -249,13 +249,13 @@ Read and follow [agent-assist-build/references/pre-coding-checklist.md](agent-as
 2. Display the command in a code block.
 3. Tell the user: "Run this command in a **new terminal** in `<target_dir>` to test the agent locally."
 4. Do **not** run the command yourself.
-5. Present next steps: revise the implementation, battle-test the agent (option 3), or deploy to DataRobot (option 4).
+5. Present next steps: revise the implementation, battle-test (option 3), harden (`datarobot-agent-harden`), or deploy (option 4).
 
 ---
 
 ## 3. Battle-testing an AI Agent
 
-Read `agent-assist-simulate/SKILL.md` and jump directly to **Pre-flight Check** — skip its On Activation menu. Also trigger directly when the user says "simulate my agent", "run swarm", "adversarial testing", "harden my agent", or "test my agent".
+Read `agent-assist-simulate/SKILL.md` and jump directly to **Pre-flight Check** — skip its On Activation menu. Also trigger directly when the user says "simulate my agent", "run swarm", "adversarial testing", or "test my agent". "Harden my agent" → datarobot-agent-harden.
 
 Swarm requires an implemented agent; if none exists, explain and offer option 2. If code exists and no option is chosen, proactively offer: "I can also battle-test your agent before deploying — want to run swarm simulation?"
 

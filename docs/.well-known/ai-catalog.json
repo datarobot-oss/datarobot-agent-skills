@@ -186,6 +186,18 @@
       ]
     },
     {
+      "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:agent-harden",
+      "displayName": "datarobot-agent-harden",
+      "type": "application/ai-skill",
+      "url": "https://github.com/datarobot-oss/datarobot-agent-skills/blob/main/skills/datarobot-agent-harden/SKILL.md",
+      "description": "Harden an implemented agent before production: run adversarial swarm simulation and an enterprise-readiness gap analysis in one pass, apply the approved fixes from both, and return one readiness verdict.",
+      "representativeQueries": [
+        "harden my agent",
+        "is my agent production ready",
+        "run swarm simulation and gap analysis on my agent"
+      ]
+    },
+    {
       "identifier": "urn:air:github.com:datarobot-oss:datarobot-agent-skills:connectivity-datastore-sql",
       "displayName": "datarobot-connectivity-datastore-sql",
       "type": "application/ai-skill",

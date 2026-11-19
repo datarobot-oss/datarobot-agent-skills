@@ -80,6 +80,11 @@
       "path": "skills/datarobot-gap-analysis/SKILL.md"
     },
     {
+      "name": "datarobot-agent-harden",
+      "description": "Harden an implemented agent before production: run swarm simulation and gap analysis in one pass, apply the approved fixes from both on one branch, and return one readiness verdict with links to both reports",
+      "path": "skills/datarobot-agent-harden/SKILL.md"
+    },
+    {
       "name": "datarobot-connectivity-datastore-sql",
       "description": "Query, explore, and update databases through DataRobot data connections with stored credentials — list connections, browse tables, preview rows, run SQL, and run approved DML/DDL on Snowflake, Databricks, BigQuery, SAP Datasphere, Trino, and other connected databases",
       "path": "skills/datarobot-connectivity-datastore-sql/SKILL.md"

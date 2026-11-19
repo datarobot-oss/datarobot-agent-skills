@@ -29,6 +29,7 @@
 
 # Skills owned by Agent Ecosystem
 /skills/datarobot-gap-analysis/ @datarobot/agent-ecosystem
+/skills/datarobot-agent-harden/ @datarobot/agent-ecosystem
 
 # Individual Contributor skills
 /skills/datarobot-discover/ @datarobot-oss/agent-skills-maintainers

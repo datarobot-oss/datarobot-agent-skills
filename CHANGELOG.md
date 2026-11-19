@@ -14,6 +14,14 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-agent-harden`: New skill. Runs swarm simulation (`agent-assist-simulate`) and then gap analysis (`datarobot-gap-analysis`) on one agent, presents the fixes from both as one list with a single approval step, applies the approved ones on one local branch, saves swarm breaches to `user_datasets/` as regression cases, and gives one readiness verdict with links to each skill's own report.
+
+### Changed
+
+- `datarobot-agent-assist`: "harden my agent" and production-readiness requests now go to `datarobot-agent-harden`, and the after-coding next steps offer it; battle-test requests still run swarm simulation alone.
+
 ### Removed
 
 - `repo`: Removed the datarobot-agent-tester e2e skill suite: the `Test Skills E2E` workflow, `tests/e2e`, the `e2e` dependency group, the pre-commit hook, `task setup`, `task test:e2e` and `.env.example`.
