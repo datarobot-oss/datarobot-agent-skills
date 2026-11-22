@@ -54,6 +54,17 @@ def _fix_label(f: Finding) -> str:
     return f"{base} · {risk}" if risk else base
 
 
+DISCLAIMER = (
+    "_Secret values are never shown. DataRobot risk-management "
+    "findings are advisory and not legal advice._"
+)
+
+
+def _h(level: int, text: str, offset: int = 0) -> str:
+    """A heading line, pushed down `offset` levels (capped at H6)."""
+    return f"{'#' * min(level + offset, 6)} {text}"
+
+
 def _loc(f: Finding) -> str:
     if not f.file:
         return "_(repo-wide)_"
@@ -65,13 +76,26 @@ def render_report(
     repo: str = "",
     policy: dict[str, Any] | None = None,
     findings_path: str = "",
+    heading_offset: int = 0,
+    standalone: bool = True,
+    fix_commands: bool = True,
 ) -> str:
+    """Render the result as Markdown.
+
+    For embedding in another report: `heading_offset` pushes every heading down
+    that many levels; `standalone=False` leaves out the title, repository line,
+    LLM usage and footer (the caller shows `DISCLAIMER` itself); and
+    `fix_commands=False` leaves out the `--fix` commands and agent-prompt hints,
+    for a caller that applies fixes its own way.
+    """
+    off = heading_offset
     counts = result.counts()
     total = len(result.findings)
     lines: list[str] = []
-    lines.append("# Enterprise-Readiness Gap Report")
-    if repo:
-        lines.append(f"\n**Repository:** {repo}")
+    if standalone:
+        lines.append(_h(1, "Enterprise-Readiness Gap Report", off))
+        if repo:
+            lines.append(f"\n**Repository:** {repo}")
     inv = result.inventory
     if inv:
         langs = ", ".join(
@@ -87,7 +111,7 @@ def render_report(
             lines.append(stack)
 
     # Summary line
-    lines.append("\n## Summary\n")
+    lines.append(f"\n{_h(2, 'Summary', off)}\n")
     lines.append(
         f"**{total} gaps** — "
         + " · ".join(
@@ -98,20 +122,20 @@ def render_report(
 
     fixable = sum(1 for f in result.findings if f.fix_type in ("auto", "assisted"))
     auto = sum(1 for f in result.findings if f.fix_type == "auto")
-    lines.append(
-        f"\n{fixable} of {total} are fixable ({auto} automatically). "
-        f"Run with `--fix` to remediate on a `gap-fixes/*` branch."
-    )
+    fix_line = f"\n{fixable} of {total} are fixable ({auto} automatically)."
+    if fix_commands:
+        fix_line += " Run with `--fix` to remediate on a `gap-fixes/*` branch."
+    lines.append(fix_line)
 
     lines.append("\n**Coverage of this run**\n")
-    lines.extend(f"- {c}" for c in coverage_lines(result))
+    lines.extend(f"- {c}" for c in coverage_lines(result, usage_section=standalone))
 
     # Remediation posture — patch in place vs. re-platform onto af-components
     if result.posture:
-        lines.append(_posture_section(result.posture))
+        lines.append(_posture_section(result.posture, off))
 
     # Findings grouped by pillar, ordered by severity within
-    lines.append("\n## Findings\n")
+    lines.append(f"\n{_h(2, 'Findings', off)}\n")
     by_pillar: dict[str, list[Finding]] = {}
     for f in result.by_severity():
         by_pillar.setdefault(f.pillar, []).append(f)
@@ -120,7 +144,7 @@ def render_report(
         lines.append("_No gaps detected._")
     # Regulatory (POL) findings render inside the Layer 4 section below.
     for pillar in [p for p in PILLARS if p in by_pillar and p != "POL"]:
-        lines.append(f"\n### {PILLARS[pillar]} ({pillar})\n")
+        lines.append(f"\n{_h(3, f'{PILLARS[pillar]} ({pillar})', off)}\n")
         for f in by_pillar[pillar]:
             conf = "" if f.confidence == "high" else f" _(confidence: {f.confidence})_"
             lines.append(
@@ -134,6 +158,8 @@ def render_report(
             if f.verification:
                 lines.append(f"  - **Verification:** {f.verification}")
             lines.extend(_fix_details(f))
+            if not fix_commands:
+                continue
             if f.fix_type == "auto":
                 lines.append(
                     f"  - **Apply:** `--fix --select {f.condition_id} --from "
@@ -146,30 +172,29 @@ def render_report(
                 )
 
     # Conformance scorecard (Layer 3)
-    lines.append("\n## IT Conformance Scorecard\n")
+    lines.append(f"\n{_h(2, 'IT Conformance Scorecard', off)}\n")
     lines.append(_conformance_table(result, policy or {}))
 
     # DataRobot risk-management coverage (Layer 4)
-    lines.append("\n## DataRobot Risk-Management Coverage\n")
+    lines.append(f"\n{_h(2, 'DataRobot Risk-Management Coverage', off)}\n")
     lines.append(_regulatory_section(result))
 
     # Skips & notes
     if result.skipped:
-        lines.append("\n## Not Evaluated (skipped)\n")
+        lines.append(f"\n{_h(2, 'Not Evaluated (skipped)', off)}\n")
         for s in result.skipped:
             lines.append(f"- **{s.condition_id}**: {_clip(s.reason)}")
     if result.notes:
-        lines.append("\n## Engine Notes\n")
+        lines.append(f"\n{_h(2, 'Engine Notes', off)}\n")
         for n in result.notes:
             lines.append(f"- {n}")
+    if not standalone:
+        return "\n".join(lines)
     if result.usage.get("total", {}).get("calls"):
-        lines.append("\n## LLM Gateway Usage\n")
+        lines.append(f"\n{_h(2, 'LLM Gateway Usage', off)}\n")
         lines.append(_usage_table(result.usage))
 
-    lines.append(
-        "\n---\n_Secret values are never shown. DataRobot risk-management "
-        "findings are advisory and not legal advice._"
-    )
+    lines.append(f"\n---\n{DISCLAIMER}")
     return "\n".join(lines)
 
 
@@ -180,12 +205,12 @@ _POSTURE_BADGE = {
 }
 
 
-def _posture_section(posture: dict[str, Any]) -> str:
+def _posture_section(posture: dict[str, Any], heading_offset: int = 0) -> str:
     rec = posture.get("recommendation", "PATCH")
     badge = _POSTURE_BADGE.get(rec, rec)
     pct = round(posture.get("score", 0.0) * 100)
     out = [
-        "\n## Remediation Posture\n",
+        f"\n{_h(2, 'Remediation Posture', heading_offset)}\n",
         (
             f"**Recommendation: {badge}** &nbsp;|&nbsp; "
             f"structural risk: {pct}% &nbsp;|&nbsp; "
@@ -208,9 +233,12 @@ _LAYER4_SKIP_PREFIX = "Layer 4 (DataRobot risk-management) skipped"
 _APPROVAL_CAVEAT = "treated as approved"
 
 
-def coverage_lines(result: AnalysisResult) -> list[str]:
+def coverage_lines(result: AnalysisResult, usage_section: bool = True) -> list[str]:
     """What this run did and did not check, one line per layer, so a reader
-    sees the caveats before the findings rather than after them."""
+    sees the caveats before the findings rather than after them.
+
+    `usage_section=False` drops the pointer to the LLM Gateway Usage section,
+    for a report that leaves that section out."""
     notes = result.notes
     out: list[str] = []
     missing = [
@@ -255,7 +283,11 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
         out.append("Layer 1 (secret scan): " + l1[len("Layer 1: ") :])
     summary = usage_summary(result.usage)
     if summary:
-        out.append("LLM Gateway usage: " + summary + ", see LLM Gateway Usage")
+        out.append(
+            "LLM Gateway usage: "
+            + summary
+            + (", see LLM Gateway Usage" if usage_section else "")
+        )
     approval = next((n for n in notes if _APPROVAL_CAVEAT in n), None)
     out.append(
         "Layer 3 (conformance): ran"

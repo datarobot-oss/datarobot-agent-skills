@@ -6,8 +6,17 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+
+# Version of the gap-findings.json layout (AnalysisResult.to_dict). Bump it when a
+# field is renamed or removed; other skills (datarobot-agent-harden) read this file.
+FINDINGS_SCHEMA_VERSION = 1
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 class Severity(str, Enum):
@@ -126,9 +135,13 @@ class AnalysisResult:
     # LLM Gateway token usage for this run, per phase and in total (see
     # datarobot_skills_utils.opencode.UsageMeter); empty when no LLM ran.
     usage: dict[str, Any] = field(default_factory=dict)
+    # When this analysis ran (UTC, ISO 8601); kept as-is across --from reloads.
+    generated_at: str = field(default_factory=_now)
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": FINDINGS_SCHEMA_VERSION,
+            "generated_at": self.generated_at,
             "findings": [f.to_dict() for f in self.findings],
             "skipped": [asdict(s) for s in self.skipped],
             "notes": list(self.notes),
@@ -141,6 +154,12 @@ class AnalysisResult:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> AnalysisResult:
+        version = d.get("schema_version", FINDINGS_SCHEMA_VERSION)
+        if version > FINDINGS_SCHEMA_VERSION:
+            raise ValueError(
+                f"findings schema_version {version} is newer than this "
+                f"gap-analysis supports ({FINDINGS_SCHEMA_VERSION})"
+            )
         result = cls()
         result.findings = [Finding.from_dict(f) for f in d.get("findings", [])]
         result.skipped = [ConditionSkip(**s) for s in d.get("skipped", [])]
@@ -150,6 +169,7 @@ class AnalysisResult:
         result.iac = d.get("iac") or {}
         result.usage = d.get("usage") or {}
         result.inventory = d.get("inventory") or {}
+        result.generated_at = d.get("generated_at") or result.generated_at
         return result
 
     def by_severity(self) -> list[Finding]:
