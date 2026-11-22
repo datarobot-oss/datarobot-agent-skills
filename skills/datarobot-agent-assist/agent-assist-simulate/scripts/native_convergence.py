@@ -30,6 +30,7 @@ from native_execution import RESULT_FILENAME, NativeRunState
 from native_execution import STATE_FILENAME as RUN_STATE_FILENAME
 from pydantic import ValidationError
 from swarm_contracts import (
+    ChangeLog,
     NativeReportSummary,
     Scenario,
     ScenarioResult,
@@ -195,8 +196,14 @@ def report(
     spec_path: Path,
     convergence_dir: Path,
     output_path: Path,
+    json_path: Path | None = None,
+    changes_path: Path | None = None,
 ) -> NativeReportSummary:
-    """Validate completed convergence and render the authoritative native report."""
+    """Validate completed convergence and render the authoritative native report.
+
+    `json_path` also writes the report data as JSON (evidence only, no transcripts).
+    `changes_path` is a ChangeLog JSON file rendered as "## Changes Applied".
+    """
     resolved_spec = resolve_spec_path(spec_path).resolve()
     if not resolved_spec.is_file():
         raise ValueError(f"agent spec does not exist: {resolved_spec}")
@@ -205,6 +212,17 @@ def report(
         project_root, convergence_dir, "convergence directory"
     )
     resolved_output = resolve_under_root(project_root, output_path, "evaluation report")
+    resolved_json = (
+        resolve_under_root(project_root, json_path, "evaluation results")
+        if json_path is not None
+        else None
+    )
+    changes = None
+    if changes_path is not None:
+        resolved_changes = resolve_project_file(
+            project_root, changes_path, "change log"
+        )
+        changes = ChangeLog.model_validate(load_json(resolved_changes)).changes
     state = NativeConvergenceState.model_validate(
         load_json(resolved_convergence_dir / STATE_FILENAME)
     )
@@ -212,7 +230,16 @@ def report(
         raise ValueError("convergence state belongs to a different agent spec")
     if state.status != "complete":
         raise ValueError(f"convergence is not complete: {state.status}")
-    return write_native_report(state, resolved_output)
+    if changes is not None:
+        known = {result.scenario.scenario_id for result in state.latest_results}
+        unknown = sorted({c.scenario_id for c in changes} - known)
+        if unknown:
+            raise ValueError(
+                f"change log names unknown scenarios: {', '.join(unknown)}"
+            )
+    return write_native_report(
+        state, resolved_output, json_path=resolved_json, changes=changes
+    )
 
 
 def _status_payload(
@@ -317,6 +344,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=resolve_swarm_dir() / "convergence",
     )
     report_parser.add_argument("--output", type=Path, default=Path("eval_report.md"))
+    report_parser.add_argument(
+        "--json-out",
+        type=Path,
+        help="also write the report data as JSON (evidence only, no transcripts)",
+    )
+    report_parser.add_argument(
+        "--changes",
+        type=Path,
+        help="ChangeLog JSON of fixes applied in Step 4, rendered as Changes Applied",
+    )
     return parser
 
 
@@ -350,7 +387,13 @@ def main(argv: list[str] | None = None) -> int:
             rerun_pairs = _parse_reruns(args.reruns)
             result = advance(args.spec, args.convergence_dir, rerun_pairs)
         else:
-            result = report(args.spec, args.convergence_dir, args.output)
+            result = report(
+                args.spec,
+                args.convergence_dir,
+                args.output,
+                json_path=args.json_out,
+                changes_path=args.changes,
+            )
         if isinstance(result, NativeReportSummary):
             print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False))
         else:

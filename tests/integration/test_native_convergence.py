@@ -518,3 +518,214 @@ def test_advance_cli_with_rerun_flag(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["status"] == "complete"
     assert sid in payload["passed"]
+
+
+# --- report data (--json-out, --changes, embedding) ---
+
+write_report = importlib.import_module("write_report")
+
+
+def _write_changes(tmp_path: Path, changes: list[dict]) -> Path:
+    path = tmp_path / "changes.json"
+    path.write_text(json.dumps({"changes": changes}), encoding="utf-8")
+    return path
+
+
+def test_report_json_out_matches_markdown_counts(tmp_path: Path) -> None:
+    _, convergence_dir, scenarios = initialize_project(
+        tmp_path, ("breach", "passed"), max_iterations=0
+    )
+
+    summary = native.report(
+        tmp_path / "agent_spec.md",
+        convergence_dir,
+        tmp_path / "eval_report.md",
+        json_path=tmp_path / "eval-results.json",
+    )
+
+    assert summary.results_path == str((tmp_path / "eval-results.json").resolve())
+    data = json.loads((tmp_path / "eval-results.json").read_text(encoding="utf-8"))
+    assert data["schema_version"] == 1
+    assert data["ready"] is False
+    assert data["fail_on"] == ["high", "critical"]
+    assert data["counts"] == {
+        "total": 2,
+        "passed": 1,
+        "breached": 0,
+        "exhausted": 1,
+        "errored": 0,
+    }
+    exhausted = data["scenarios"][0]
+    assert exhausted["scenario_id"] == scenarios[0].scenario_id
+    assert exhausted["initial_status"] == "breach"
+    assert exhausted["status"] == "exhausted"
+    assert exhausted["evidence"] == ["The response contained an unscoped record."]
+    assert data["changes"] is None
+
+
+def test_report_json_out_never_contains_transcripts(tmp_path: Path) -> None:
+    _, convergence_dir, scenarios = initialize_project(tmp_path, ("passed",))
+
+    native.report(
+        tmp_path / "agent_spec.md",
+        convergence_dir,
+        tmp_path / "eval_report.md",
+        json_path=tmp_path / "eval-results.json",
+    )
+
+    raw = (tmp_path / "eval-results.json").read_text(encoding="utf-8")
+    assert "transcript" not in raw
+    assert scenarios[0].turns[0] not in raw
+
+
+def test_report_renders_changes_applied(tmp_path: Path) -> None:
+    _payload, convergence_dir, scenarios = initialize_project(tmp_path, ("breach",))
+    sid = scenarios[0].scenario_id
+    run_dir = write_rerun_result(convergence_dir, sid, "passed")
+    native.advance(tmp_path / "agent_spec.md", convergence_dir, [(sid, run_dir)])
+    changes = _write_changes(
+        tmp_path,
+        [
+            {
+                "scenario_id": sid,
+                "kind": "prompt",
+                "files": ["agent_spec.yaml", "agent/prompts.py"],
+                "summary": "Added a rule to return only the caller's records.",
+                "reason": "The agent returned unscoped records.",
+            },
+            {
+                "scenario_id": sid,
+                "kind": "code",
+                "files": ["agent/tools.py"],
+                "symbol": "fetch_records",
+                "summary": "Filter results by the caller's user id.",
+                "reason": "A prompt rule alone can be talked around.",
+            },
+        ],
+    )
+
+    native.report(
+        tmp_path / "agent_spec.md",
+        convergence_dir,
+        tmp_path / "eval_report.md",
+        json_path=tmp_path / "eval-results.json",
+        changes_path=changes,
+    )
+
+    report = (tmp_path / "eval_report.md").read_text(encoding="utf-8")
+    section = report.split("## Changes Applied", 1)[1]
+    assert section.index("- Kind: prompt patch") < section.index("- Kind: code fix")
+    assert "`agent_spec.yaml`, `agent/prompts.py`" in section
+    assert "- Symbol: `fetch_records`" in section
+    data = json.loads((tmp_path / "eval-results.json").read_text(encoding="utf-8"))
+    assert [c["kind"] for c in data["changes"]] == ["prompt", "code"]
+
+
+def test_report_empty_change_log_says_no_changes(tmp_path: Path) -> None:
+    _, convergence_dir, _ = initialize_project(tmp_path, ("passed",))
+
+    native.report(
+        tmp_path / "agent_spec.md",
+        convergence_dir,
+        tmp_path / "eval_report.md",
+        changes_path=_write_changes(tmp_path, []),
+    )
+
+    report = (tmp_path / "eval_report.md").read_text(encoding="utf-8")
+    assert report.endswith("## Changes Applied\n\nNo changes applied.\n")
+
+
+def test_report_rejects_change_for_unknown_scenario(tmp_path: Path) -> None:
+    _, convergence_dir, _ = initialize_project(tmp_path, ("passed",))
+    changes = _write_changes(
+        tmp_path,
+        [
+            {
+                "scenario_id": "scn_000000000000",
+                "kind": "prompt",
+                "files": ["agent_spec.yaml"],
+                "summary": "x",
+                "reason": "y",
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="unknown scenarios"):
+        native.report(
+            tmp_path / "agent_spec.md",
+            convergence_dir,
+            tmp_path / "eval_report.md",
+            changes_path=changes,
+        )
+    assert not (tmp_path / "eval_report.md").exists()
+
+
+def test_report_json_out_refuses_path_escape(tmp_path: Path) -> None:
+    _, convergence_dir, _ = initialize_project(tmp_path, ("passed",))
+
+    with pytest.raises(ValueError, match="escapes project root"):
+        native.report(
+            tmp_path / "agent_spec.md",
+            convergence_dir,
+            tmp_path / "eval_report.md",
+            json_path=tmp_path.parent / "outside.json",
+        )
+
+
+def test_embedded_markdown_drops_readiness_and_shifts_headings(
+    tmp_path: Path,
+) -> None:
+    _, convergence_dir, _ = initialize_project(tmp_path, ("passed",))
+    state = native.NativeConvergenceState.model_validate(
+        artifacts.load_json(convergence_dir / native.STATE_FILENAME)
+    )
+    data = write_report.build_report_data(state)
+
+    embedded = write_report.render_markdown(data, heading_offset=1, standalone=False)
+
+    assert "Evaluation Report" not in embedded
+    assert "Ready to deploy" not in embedded
+    assert "Next Steps" not in embedded
+    assert embedded.startswith("### Audit Metadata\n")
+    assert "\n#### [attack] Scenario 0 — PASSED\n" in embedded
+    assert write_report.render_markdown(data).startswith("# Evaluation Report\n")
+
+
+def test_report_cli_writes_json_and_changes(tmp_path: Path) -> None:
+    _, _, scenarios = initialize_project(tmp_path, ("passed",))
+    _write_changes(
+        tmp_path,
+        [
+            {
+                "scenario_id": scenarios[0].scenario_id,
+                "kind": "prompt",
+                "files": ["agent_spec.yaml"],
+                "summary": "Tightened scope rule.",
+                "reason": "Defense in depth.",
+            }
+        ],
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "report",
+            str(tmp_path / "agent_spec.md"),
+            "--json-out",
+            "eval-results.json",
+            "--changes",
+            "changes.json",
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert Path(payload["results_path"]).is_file()
+    assert "## Changes Applied" in Path(payload["report_path"]).read_text(
+        encoding="utf-8"
+    )
