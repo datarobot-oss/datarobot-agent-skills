@@ -60,11 +60,6 @@ DISCLAIMER = (
 )
 
 
-def _h(level: int, text: str, offset: int = 0) -> str:
-    """A heading line, pushed down `offset` levels (capped at H6)."""
-    return f"{'#' * min(level + offset, 6)} {text}"
-
-
 def _loc(f: Finding) -> str:
     if not f.file:
         return "_(repo-wide)_"
@@ -72,13 +67,13 @@ def _loc(f: Finding) -> str:
 
 
 def render_report(
-    result: AnalysisResult,
-    repo: str = "",
-    policy: dict[str, Any] | None = None,
-    findings_path: str = "",
-    heading_offset: int = 0,
-    standalone: bool = True,
-    fix_commands: bool = True,
+        result: AnalysisResult,
+        repo: str = "",
+        policy: dict[str, Any] | None = None,
+        findings_path: str = "",
+        heading_offset: int = 0,
+        standalone: bool = True,
+        fix_commands: bool = True,
 ) -> str:
     """Render the result as Markdown.
 
@@ -88,12 +83,11 @@ def render_report(
     `fix_commands=False` leaves out the `--fix` commands and agent-prompt hints,
     for a caller that applies fixes its own way.
     """
-    off = heading_offset
     counts = result.counts()
     total = len(result.findings)
     lines: list[str] = []
     if standalone:
-        lines.append(_h(1, "Enterprise-Readiness Gap Report", off))
+        lines.append("# Enterprise-Readiness Gap Report")
         if repo:
             lines.append(f"\n**Repository:** {repo}")
     inv = result.inventory
@@ -111,7 +105,7 @@ def render_report(
             lines.append(stack)
 
     # Summary line
-    lines.append(f"\n{_h(2, 'Summary', off)}\n")
+    lines.append("\n## Summary\n")
     lines.append(
         f"**{total} gaps** — "
         + " · ".join(
@@ -132,10 +126,10 @@ def render_report(
 
     # Remediation posture — patch in place vs. re-platform onto af-components
     if result.posture:
-        lines.append(_posture_section(result.posture, off))
+        lines.append(_posture_section(result.posture))
 
     # Findings grouped by pillar, ordered by severity within
-    lines.append(f"\n{_h(2, 'Findings', off)}\n")
+    lines.append("\n## Findings\n")
     by_pillar: dict[str, list[Finding]] = {}
     for f in result.by_severity():
         by_pillar.setdefault(f.pillar, []).append(f)
@@ -144,7 +138,7 @@ def render_report(
         lines.append("_No gaps detected._")
     # Regulatory (POL) findings render inside the Layer 4 section below.
     for pillar in [p for p in PILLARS if p in by_pillar and p != "POL"]:
-        lines.append(f"\n{_h(3, f'{PILLARS[pillar]} ({pillar})', off)}\n")
+        lines.append(f"\n### {PILLARS[pillar]} ({pillar})\n")
         for f in by_pillar[pillar]:
             conf = "" if f.confidence == "high" else f" _(confidence: {f.confidence})_"
             lines.append(
@@ -172,29 +166,32 @@ def render_report(
                 )
 
     # Conformance scorecard (Layer 3)
-    lines.append(f"\n{_h(2, 'IT Conformance Scorecard', off)}\n")
+    lines.append("\n## IT Conformance Scorecard\n")
     lines.append(_conformance_table(result, policy or {}))
 
     # DataRobot risk-management coverage (Layer 4)
-    lines.append(f"\n{_h(2, 'DataRobot Risk-Management Coverage', off)}\n")
+    lines.append("\n## DataRobot Risk-Management Coverage\n")
     lines.append(_regulatory_section(result))
 
     # Skips & notes
     if result.skipped:
-        lines.append(f"\n{_h(2, 'Not Evaluated (skipped)', off)}\n")
+        lines.append("\n## Not Evaluated (skipped)\n")
         for s in result.skipped:
             lines.append(f"- **{s.condition_id}**: {_clip(s.reason)}")
     if result.notes:
-        lines.append(f"\n{_h(2, 'Engine Notes', off)}\n")
+        lines.append("\n## Engine Notes\n")
         for n in result.notes:
             lines.append(f"- {n}")
-    if not standalone:
-        return "\n".join(lines)
-    if result.usage.get("total", {}).get("calls"):
-        lines.append(f"\n{_h(2, 'LLM Gateway Usage', off)}\n")
-        lines.append(_usage_table(result.usage))
+    if standalone:
+        if result.usage.get("total", {}).get("calls"):
+            lines.append("\n## LLM Gateway Usage\n")
+            lines.append(_usage_table(result.usage))
+        lines.append(f"\n---\n{DISCLAIMER}")
 
-    lines.append(f"\n---\n{DISCLAIMER}")
+    if heading_offset:
+        prefix = "#" * heading_offset
+        lines = [prefix + line if line.startswith("#") else line for line in lines]
+
     return "\n".join(lines)
 
 
@@ -205,12 +202,12 @@ _POSTURE_BADGE = {
 }
 
 
-def _posture_section(posture: dict[str, Any], heading_offset: int = 0) -> str:
+def _posture_section(posture: dict[str, Any]) -> str:
     rec = posture.get("recommendation", "PATCH")
     badge = _POSTURE_BADGE.get(rec, rec)
     pct = round(posture.get("score", 0.0) * 100)
     out = [
-        f"\n{_h(2, 'Remediation Posture', heading_offset)}\n",
+        "\n## Remediation Posture\n",
         (
             f"**Recommendation: {badge}** &nbsp;|&nbsp; "
             f"structural risk: {pct}% &nbsp;|&nbsp; "
@@ -263,7 +260,7 @@ def coverage_lines(result: AnalysisResult, usage_section: bool = True) -> list[s
     elif l2:
         out.append(
             "Layer 2 (LLM reasoning): ran; "
-            + l2[len("Layer 2: ") :].split(" (--no-verify")[0]
+            + l2[len("Layer 2: "):].split(" (--no-verify")[0]
         )
     else:
         out.append("Layer 2 (LLM reasoning): ran")
@@ -280,7 +277,7 @@ def coverage_lines(result: AnalysisResult, usage_section: bool = True) -> list[s
         None,
     )
     if l1:
-        out.append("Layer 1 (secret scan): " + l1[len("Layer 1: ") :])
+        out.append("Layer 1 (secret scan): " + l1[len("Layer 1: "):])
     summary = usage_summary(result.usage)
     if summary:
         out.append(
@@ -307,7 +304,7 @@ def coverage_lines(result: AnalysisResult, usage_section: bool = True) -> list[s
         out.append(
             "Layer 4 (risk management): NOT ASSESSED; "
             + (
-                skip[len(_LAYER4_SKIP_PREFIX) + 2 :]
+                skip[len(_LAYER4_SKIP_PREFIX) + 2:]
                 if skip
                 else "no policy pack enabled"
             )
@@ -354,8 +351,8 @@ def _usage_table(usage: dict[str, Any]) -> str:
     )
     out = [
         head + ". Tokens are as reported by the DataRobot LLM Gateway per call. Cached "
-        "tokens are already inside Input and reasoning tokens inside Output; those "
-        "columns break the totals down, they do not add to them.",
+               "tokens are already inside Input and reasoning tokens inside Output; those "
+               "columns break the totals down, they do not add to them.",
         "",
         "| Phase | Calls | Input | of which cached | Output | of which reasoning |",
         "|---|---:|---:|---:|---:|---:|",

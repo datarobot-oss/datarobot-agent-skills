@@ -103,17 +103,14 @@ def render_markdown(
     `heading_offset` pushes every heading down that many levels.
     """
 
-    def h(level: int, text: str) -> str:
-        return f"{'#' * min(level + heading_offset, 6)} {text}"
-
     model_name = data.actual_model or "unknown (not exposed by harness)"
     counts = data.counts
 
     lines: list[str] = []
     if standalone:
-        lines += [h(1, "Evaluation Report"), ""]
+        lines += ["# Evaluation Report", ""]
     lines += [
-        h(2, "Audit Metadata"),
+        "## Audit Metadata",
         f"- Configuration schema version: {data.config_schema_version}",
         f"- Coverage mode: {data.coverage_mode}",
         f"- Evaluation mode: {data.evaluation_mode}",
@@ -124,7 +121,7 @@ def render_markdown(
         f"- Report generated: {data.generated_at}",
         f"- Actual harness model: {model_name}",
         "",
-        h(2, "Summary"),
+        "## Summary",
     ]
     if standalone:
         lines.append(f"- Ready to deploy: {'yes' if data.ready else 'no'}")
@@ -135,7 +132,7 @@ def render_markdown(
         f"- Exhausted: {counts.exhausted}",
         f"- Errored: {counts.errored}",
         "",
-        h(2, "Coverage"),
+        "## Coverage",
         (
             "Tool behavior was simulated by independent fixture providers; "
             "no real external tools were executed."
@@ -143,16 +140,13 @@ def render_markdown(
             else "Approved selective read-only execution was requested for this run."
         ),
         "",
-        h(2, "Final Results by Scenario"),
+        "## Final Results by Scenario",
         "",
     ]
 
     for outcome in data.scenarios:
         lines += [
-            h(
-                3,
-                f"[{outcome.track}] {outcome.name} — {outcome.status.upper()}",
-            ),
+            f"### [{outcome.track}] {outcome.name} — {outcome.status.upper()}",
             f"- Scenario ID: `{outcome.scenario_id}`",
             f"- Capability targeted: {outcome.capability_targeted or 'N/A'}",
             f"- Initial status: {outcome.initial_status}",
@@ -177,7 +171,7 @@ def render_markdown(
                 )
         lines.append("")
 
-    lines += [h(2, "Non-Blocking Scored Findings"), ""]
+    lines += ["## Non-Blocking Scored Findings", ""]
     scored_findings = [
         outcome
         for outcome in data.scenarios
@@ -186,7 +180,7 @@ def render_markdown(
     if scored_findings:
         for outcome in scored_findings:
             lines += [
-                h(3, outcome.name),
+                f"### {outcome.name}",
                 f"- Severity: {outcome.severity}",
                 f"- Reason: {outcome.evaluation_reason or '(none supplied)'}",
             ]
@@ -195,7 +189,7 @@ def render_markdown(
     else:
         lines += ["No non-blocking scored findings.", ""]
 
-    lines += [h(2, "Failures and Coverage Gaps"), ""]
+    lines += ["## Failures and Coverage Gaps", ""]
     errored = [outcome for outcome in data.scenarios if outcome.status == "error"]
     unresolved = [
         outcome
@@ -221,7 +215,7 @@ def render_markdown(
     lines.append("")
 
     if standalone:
-        lines += [h(2, "Next Steps"), ""]
+        lines += ["## Next Steps", ""]
         if data.ready:
             lines += [
                 (
@@ -240,20 +234,24 @@ def render_markdown(
             ]
 
     if data.changes is not None:
-        lines += _changes_section(data, h)
+        lines += _changes_section(data)
+
+    if heading_offset:
+        prefix = "#" * heading_offset
+        lines = [prefix + line if line.startswith("#") else line for line in lines]
 
     return "\n".join(lines)
 
 
-def _changes_section(data: EvalReportData, h: Any) -> list[str]:
+def _changes_section(data: EvalReportData) -> list[str]:
     names = {outcome.scenario_id: outcome.name for outcome in data.scenarios}
-    lines = [h(2, "Changes Applied"), ""]
+    lines = ["## Changes Applied", ""]
     if not data.changes:
         return lines + ["No changes applied.", ""]
     for change in data.changes:
         name = names.get(change.scenario_id, "unknown scenario")
         lines += [
-            h(3, f"{name} (`{change.scenario_id}`)"),
+            f"### {name} (`{change.scenario_id}`)",
             f"- Kind: {'prompt patch' if change.kind == 'prompt' else 'code fix'}",
             "- Files: " + ", ".join(f"`{path}`" for path in change.files),
         ]
