@@ -21,6 +21,8 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 ### Changed
 
 - `datarobot-agent-assist`: "harden my agent" and production-readiness requests now go to `datarobot-agent-harden`, and the after-coding next steps offer it; battle-test requests still run swarm simulation alone.
+- `datarobot-agent-assist`: Swarm simulation's `native_convergence.py report` gains `--json-out`, which writes `eval-results.json` (per-scenario outcomes and evidence, no transcripts), and `--changes`, which renders the "Changes Applied" section from `.datarobot/swarm/changes.json` instead of the agent appending it by hand. A new `skip` subcommand closes breaches the user chose not to fix without rerunning them.
+- `datarobot-gap-analysis`: `gap-findings.json` now carries `schema_version` and `generated_at`; older files still load, newer schema versions are rejected. `--fix` also writes `gap-fix-results.json` with the branch, per-fix results, held-back fixes and the `--verify` before/after data.
 
 ### Removed
 

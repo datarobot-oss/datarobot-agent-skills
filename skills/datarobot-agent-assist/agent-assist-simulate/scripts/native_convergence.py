@@ -192,6 +192,54 @@ def advance(
     return _status_payload(state, resolved_convergence_dir)
 
 
+def skip(
+    spec_path: Path,
+    convergence_dir: Path,
+    scenario_ids: list[str],
+) -> dict[str, object]:
+    """Close breaches the user chose not to fix, without rerunning them.
+
+    Each named breach becomes `exhausted` with its iteration count unchanged, so
+    the report shows it as unresolved (and not ready) after 0 fix attempts.
+    """
+    resolved_spec = resolve_spec_path(spec_path).resolve()
+    if not resolved_spec.is_file():
+        raise ValueError(f"agent spec does not exist: {resolved_spec}")
+    project_root = resolved_spec.parent
+    resolved_convergence_dir = resolve_under_root(
+        project_root, convergence_dir, "convergence directory"
+    )
+    state_path = resolved_convergence_dir / STATE_FILENAME
+    state = NativeConvergenceState.model_validate(load_json(state_path))
+    if Path(state.spec_path) != resolved_spec:
+        raise ValueError("convergence state belongs to a different agent spec")
+    if state.status == "complete":
+        raise ValueError("convergence is already complete")
+
+    breached = {
+        scenario_id(r.scenario) for r in state.latest_results if r.status == "breach"
+    }
+    not_breached = sorted(set(scenario_ids) - breached)
+    if not_breached:
+        raise ValueError(f"not an open breach: {', '.join(not_breached)}")
+
+    skipped = set(scenario_ids)
+    state.latest_results = [
+        (
+            r.model_copy(update={"status": "exhausted"})
+            if scenario_id(r.scenario) in skipped
+            else r
+        )
+        for r in state.latest_results
+    ]
+    if not any(r.status == "breach" for r in state.latest_results):
+        state.status = "complete"
+        state.completed_at = datetime.now(UTC).isoformat()
+
+    write_json(state_path, state.model_dump(mode="json"))
+    return _status_payload(state, resolved_convergence_dir)
+
+
 def report(
     spec_path: Path,
     convergence_dir: Path,
@@ -336,6 +384,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="scenario_id:run_dir pair for a completed rerun (repeatable)",
     )
 
+    skip_parser = subparsers.add_parser(
+        "skip", help="close open breaches that will not be fixed, without rerunning"
+    )
+    skip_parser.add_argument("spec", type=Path)
+    skip_parser.add_argument(
+        "--convergence-dir",
+        type=Path,
+        default=resolve_swarm_dir() / "convergence",
+    )
+    skip_parser.add_argument(
+        "--scenario",
+        dest="scenarios",
+        action="append",
+        required=True,
+        metavar="SCENARIO_ID",
+        help="scenario_id of an open breach to close as exhausted (repeatable)",
+    )
+
     report_parser = subparsers.add_parser("report")
     report_parser.add_argument("spec", type=Path)
     report_parser.add_argument(
@@ -386,6 +452,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "advance":
             rerun_pairs = _parse_reruns(args.reruns)
             result = advance(args.spec, args.convergence_dir, rerun_pairs)
+        elif args.command == "skip":
+            result = skip(args.spec, args.convergence_dir, args.scenarios)
         else:
             result = report(
                 args.spec,

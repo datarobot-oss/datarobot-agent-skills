@@ -375,6 +375,99 @@ def test_advance_rejects_unknown_scenario(tmp_path: Path) -> None:
         )
 
 
+# --- skip ---
+
+
+def test_skip_all_breaches_completes_and_report_blocks(tmp_path: Path) -> None:
+    _payload, convergence_dir, scenarios = initialize_project(
+        tmp_path, ("breach", "passed")
+    )
+    sid = scenarios[0].scenario_id
+
+    result = native.skip(tmp_path / "agent_spec.md", convergence_dir, [sid])
+
+    assert result["status"] == "complete"
+    assert result["breaches"] == []
+    assert [e["scenario_id"] for e in result["exhausted"]] == [sid]
+    state = native.NativeConvergenceState.model_validate(
+        artifacts.load_json(convergence_dir / native.STATE_FILENAME)
+    )
+    assert state.iteration_counts[sid] == 0
+
+    summary = native.report(
+        tmp_path / "agent_spec.md", convergence_dir, tmp_path / "eval_report.md"
+    )
+    assert summary.ready is False
+    assert summary.exhausted == 1
+
+
+def test_skip_some_breaches_leaves_the_rest_open(tmp_path: Path) -> None:
+    _payload, convergence_dir, scenarios = initialize_project(
+        tmp_path, ("breach", "breach")
+    )
+    skipped, fixed = scenarios[0].scenario_id, scenarios[1].scenario_id
+
+    result = native.skip(tmp_path / "agent_spec.md", convergence_dir, [skipped])
+
+    assert result["status"] == "open"
+    assert [b["scenario_id"] for b in result["breaches"]] == [fixed]
+
+    run_dir = write_rerun_result(convergence_dir, fixed, "passed")
+    result = native.advance(
+        tmp_path / "agent_spec.md", convergence_dir, [(fixed, run_dir)]
+    )
+    assert result["status"] == "complete"
+    assert fixed in result["passed"]
+    assert [e["scenario_id"] for e in result["exhausted"]] == [skipped]
+
+
+def test_skip_rejects_scenario_that_is_not_an_open_breach(tmp_path: Path) -> None:
+    _payload, convergence_dir, scenarios = initialize_project(
+        tmp_path, ("breach", "passed")
+    )
+
+    with pytest.raises(ValueError, match="not an open breach"):
+        native.skip(
+            tmp_path / "agent_spec.md",
+            convergence_dir,
+            [scenarios[1].scenario_id],
+        )
+
+
+def test_skip_rejects_already_complete(tmp_path: Path) -> None:
+    _payload, convergence_dir, scenarios = initialize_project(tmp_path, ("passed",))
+
+    with pytest.raises(ValueError, match="already complete"):
+        native.skip(
+            tmp_path / "agent_spec.md", convergence_dir, [scenarios[0].scenario_id]
+        )
+
+
+def test_skip_cli(tmp_path: Path) -> None:
+    _payload, _convergence_dir, scenarios = initialize_project(tmp_path, ("breach",))
+    sid = scenarios[0].scenario_id
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "skip",
+            str(tmp_path / "agent_spec.md"),
+            "--scenario",
+            sid,
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "complete"
+    assert [e["scenario_id"] for e in payload["exhausted"]] == [sid]
+
+
 # --- report ---
 
 

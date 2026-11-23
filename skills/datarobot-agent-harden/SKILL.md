@@ -114,6 +114,14 @@ Show one numbered list with the most severe items first. For each item, give its
 
 Then ask **once**: "Apply all, apply some (give numbers), or apply none?"
 
+Close every swarm breach the user did not approve, so it isn't rerun:
+
+```bash
+<python> <sim_scripts>/native_convergence.py skip agent_spec.yaml --scenario <scenario_id> [--scenario <scenario_id> ...]
+```
+
+Skip this if all swarm breaches were approved.
+
 ---
 
 ## Step 4: Apply and retest
@@ -136,7 +144,7 @@ clean. Ask the user to commit that change first.
 2. **Swarm fixes**: apply each approved prompt patch or code guard as simulate Step 4 sub-step
    1 says. Keep `agent_spec.yaml` and the implementation's `SYSTEM_PROMPT` in sync.
 3. **Assisted gap fixes**: carry out each approved agent prompt on the same branch.
-4. **Retest swarm**: run simulate Step 4 sub-steps 2–3 (rerun each breached scenario, then
+4. **Retest swarm**: run simulate Step 4 sub-steps 2–3 (rerun each scenario you fixed, then
    `advance`) until the status is `complete`. Don't propose new fixes inside this loop. If
    a scenario still breaches, it ends as exhausted and goes into the verdict.
 5. **Re-score gaps**: if gap fixes were applied, rerun the gap analysis on the branch with
