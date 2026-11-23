@@ -57,6 +57,7 @@ GENERATED_PATTERNS = (
     "/agent_config.yaml",
     "/evaluation_criteria.md",
     "/eval_report.md",
+    "/eval-results.json",
     "/user_context.txt",
     "/gap-report*.md",
     "/gap-report*.html",

@@ -15,8 +15,8 @@ Runs two existing skills on one implemented agent, then gives one verdict:
 2. **Gap analysis**: `datarobot-gap-analysis`, which checks the code against security,
    governance, reliability and regulatory standards.
 
-This skill does not rewrite either check, and it does not write a merged report. Each
-parent skill writes its own report. The result points to those reports.
+This skill does not rewrite either check. Each parent skill writes its own report, and
+this skill combines them into one report, `harden-report.md`, that links to both.
 
 Read both parent `SKILL.md` files before starting. When this skill says "follow simulate
 Step N" or "follow gap-analysis section N", run that step as written, except where this file
@@ -66,7 +66,8 @@ as its `<skill_scripts_dir>`. Change only these points:
   If `added` is not empty, list those names under "Regression (saved breaches)" in the
   candidate review. They are confirmed together with the new scenarios.
 
-- **Step 4**: run only `native_convergence.py initialize`. Do **not** start the fix loop.
+- **Step 4**: run only `native_convergence.py initialize`, then create
+  `.datarobot/swarm/changes.json` as simulate Step 4 says. Do **not** start the fix loop.
   Fixes are proposed in Step 3 below, together with the gap-analysis fixes.
 
 Keep the opencode server running. Step 4 below reuses it.
@@ -94,6 +95,13 @@ finding's code location, then decide.
 
 - **Same root cause**: show one fix and name both sources.
 - **Different**: keep them as separate items.
+
+Record each decision so the report merges or cross-references the pair. `<n>` is the
+finding's `finding_index` in `fix-candidates.json`:
+
+```bash
+<python> <harden_scripts>/harden.py decide --scenario <scenario_id> --finding <n> --same|--different
+```
 
 Show one numbered list with the most severe items first. For each item, give its source
 (swarm, gap, or both), severity, what is wrong in one sentence, and the proposed fix:
@@ -157,21 +165,27 @@ Follow simulate **Step 5**, but save the `report` output:
 
 ```bash
 <python> <sim_scripts>/native_convergence.py report agent_spec.yaml \
-  --output eval_report.md > .datarobot/harden/eval-summary.json
+  --output eval_report.md \
+  --json-out eval-results.json \
+  --changes .datarobot/swarm/changes.json > .datarobot/harden/eval-summary.json
 ```
 
-Then append "## Changes Applied", stop the opencode server, and clean up `.datarobot/swarm/`
-as simulate Step 5 says. Then:
+Then stop the opencode server and clean up `.datarobot/swarm/` as simulate Step 5 says.
+Then write the merged report:
 
 ```bash
-<python> <harden_scripts>/harden.py verdict \
+<python> <harden_scripts>/harden.py report \
   --eval-summary .datarobot/harden/eval-summary.json \
   --gap-findings gap-findings.json \
   --gap-report gap-report.html --gap-report gap-report.md \
   [--gap-report gap-report-after.md] [--fix-branch <fix_branch>]
 ```
 
-If `gap-report-after.md` exists, pass the `gap-findings.json` written by that run.
+If `gap-report-after.md` exists, pass the `gap-findings.json` written by that run. If the
+gap analysis ran with a custom `--policy` that changes `fail_on`, pass the same severities
+with `--gap-fail-on` (for example `--gap-fail-on critical,high,medium`).
+
+This writes `harden-report.md` and prints the verdict as JSON.
 
 Present the verdict:
 
@@ -180,10 +194,11 @@ Verdict: READY | READY WITH WARNINGS | NOT READY
 Blocking: <each blocking reason, or "none">
 Warnings: <each warning, or "none">
 Swarm: <passed>/<total> passed, <exhausted> unresolved
-Gap analysis: <findings> findings, <critical_high> critical/high, posture <posture>
+Gap analysis: <findings> findings, <open_blocking> open blocking, <fixed> fixed, posture <posture>
 Fix branch: <fix_branch or "no changes">
 
 Reports
+- Harden report: <reports.harden_report>
 - Swarm simulation: <reports.swarm_eval_report>
 - Gap analysis: <each reports.gap_analysis_reports link>
 - Regression suite: <reports.regression_suite>
