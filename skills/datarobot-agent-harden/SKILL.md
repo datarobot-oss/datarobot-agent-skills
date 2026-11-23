@@ -85,26 +85,12 @@ it as in gap-analysis **section 3**. Skip gap-analysis section 4. Fixes are hand
 ## Step 3: One fix list
 
 ```bash
-<python> <harden_scripts>/harden.py match --gap-findings gap-findings.json
+<python> <harden_scripts>/harden.py fix-list --gap-findings gap-findings.json
 ```
 
-Read `.datarobot/harden/fix-candidates.json`. Each swarm breach lists the gap findings that
-may share its root cause (`possibly_same_root_cause_as`). These pairings are guesses based
-on shared tool and function names. For each one, read the breach transcript and the
-finding's code location, then decide.
-
-- **Same root cause**: show one fix and name both sources.
-- **Different**: keep them as separate items.
-
-Record each decision so the report merges or cross-references the pair. `<n>` is the
-finding's `finding_index` in `fix-candidates.json`:
-
-```bash
-<python> <harden_scripts>/harden.py decide --scenario <scenario_id> --finding <n> --same|--different
-```
-
-Show one numbered list with the most severe items first. For each item, give its source
-(swarm, gap, or both), severity, what is wrong in one sentence, and the proposed fix:
+Read `.datarobot/harden/fix-candidates.json`. Show one numbered list with the most severe
+items first. For each item, give its source (swarm or gap), severity, what is wrong in one
+sentence, and the proposed fix:
 
 - **Swarm breach**: a system-prompt addition, or a code guard when the problem is
   structural (as in simulate Step 4, sub-step 1).

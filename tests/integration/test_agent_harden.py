@@ -121,39 +121,22 @@ def test_suite_round_trip(tmp_path: Path) -> None:
     assert "scenario_id" not in json.loads(candidates.read_text())["scenarios"][1]
 
 
-def test_match_links_breach_to_related_finding(tmp_path: Path) -> None:
-    _write_state(tmp_path, [_result("Path traversal", "breach")])
-    findings = tmp_path / "gap-findings.json"
-    findings.write_text(
-        json.dumps(
-            {
-                "findings": [
-                    {
-                        "condition_id": "SEC-012",
-                        "title": "Tool input not validated",
-                        "severity": "high",
-                        "file": "tools.py",
-                        "line": 12,
-                        "evidence": "def load_dataset(path): open(path)",
-                    },
-                    {
-                        "condition_id": "OPS-001",
-                        "title": "No CI",
-                        "severity": "low",
-                        "evidence": "load_dataset",
-                    },
-                ]
-            }
-        )
+def test_fix_list_lists_both_and_snapshots_first_gap_run(tmp_path: Path) -> None:
+    _write_state(
+        tmp_path,
+        [_result("Path traversal", "breach"), _result("Polite refusal", "passed")],
     )
+    findings = tmp_path / "gap-findings.json"
+    findings.write_text(json.dumps({"findings": [_finding("SEC-012", "high", 12)]}))
 
-    result = harden.match(tmp_path, findings)
+    result = harden.fix_list(tmp_path, findings)
 
-    assert result["suggested_overlaps"] == 1
+    assert result["swarm_breaches"] == 1 and result["gap_findings"] == 1
     items = json.loads(Path(result["fix_candidates"]).read_text())["items"]
-    assert items[0]["possibly_same_root_cause_as"][0]["finding_index"] == 0
-    assert items[1]["matched_swarm_breach"] is True
-    assert items[2]["matched_swarm_breach"] is False
+    assert [i["source"] for i in items] == ["swarm", "gap-analysis"]
+    assert items[1]["location"] == "tools.py:12"
+    snapshot = tmp_path / ".datarobot" / "harden" / "gap-findings-before.json"
+    assert json.loads(snapshot.read_text()) == json.loads(findings.read_text())
 
 
 def test_verdict_combines_both_checks(tmp_path: Path) -> None:
@@ -333,83 +316,6 @@ def test_gap_items_mark_fixes_and_new_findings() -> None:
     assert not by_cid["OPS-001"].blocking, "high is not in the custom fail_on"
     assert by_cid["SEC-013"].title.endswith("(new after fixes)")
     assert report_model.gap_items(before)[0].blocking, "default fail_on blocks critical"
-
-
-def test_merge_pairs_combines_same_cause_and_links_different() -> None:
-    items = report_model.swarm_items(
-        _eval_results([_outcome(SCN_A, "Traversal", "breach", "high")])
-    ) + report_model.gap_items(
-        {
-            "findings": [
-                _finding("SEC-012", "medium", 1),
-                _finding("SEC-011", "critical", 2),
-                _finding("OPS-001", "low"),
-            ]
-        }
-    )
-    candidates = {
-        "items": [
-            {
-                "source": "swarm",
-                "scenario_id": SCN_A,
-                "decisions": [
-                    {"finding_index": 0, "same_root_cause": True},
-                    {"finding_index": 1, "same_root_cause": True},
-                    {"finding_index": 2, "same_root_cause": False},
-                ],
-            }
-        ]
-    }
-
-    merged = report_model.merge_pairs(items, candidates)
-
-    assert [i.id for i in merged] == [f"swarm:{SCN_A}+gap:0+gap:1", "gap:2"]
-    both = merged[0]
-    assert both.source == "both" and both.severity == "critical"
-    assert "agent_spec fail_on" in both.rule and "gap policy fail_on" in both.rule
-    assert both.related == ["gap:2"]
-    assert merged[1].related == [f"swarm:{SCN_A}"]
-
-
-def _decide_project(tmp_path: Path) -> Path:
-    _write_state(tmp_path, [_result("Path traversal", "breach")])
-    findings = tmp_path / "gap-findings.json"
-    findings.write_text(json.dumps({"findings": [_finding("SEC-012", "high", 12)]}))
-    harden.match(tmp_path, findings)
-    return findings
-
-
-def test_match_snapshots_first_gap_run(tmp_path: Path) -> None:
-    findings = _decide_project(tmp_path)
-
-    snapshot = tmp_path / ".datarobot" / "harden" / "gap-findings-before.json"
-    assert json.loads(snapshot.read_text()) == json.loads(findings.read_text())
-    candidates = json.loads(
-        (tmp_path / ".datarobot" / "harden" / "fix-candidates.json").read_text()
-    )
-    assert candidates["items"][0]["decisions"] == []
-
-
-def test_decide_records_and_replaces_a_decision(tmp_path: Path) -> None:
-    _decide_project(tmp_path)
-    sid = _scenario("x")["scenario_id"]
-
-    harden.decide(tmp_path, sid, 0, True)
-    result = harden.decide(tmp_path, sid, 0, False)
-
-    assert result["decisions"] == 1
-    candidates = json.loads(
-        (tmp_path / ".datarobot" / "harden" / "fix-candidates.json").read_text()
-    )
-    assert candidates["items"][0]["decisions"] == [
-        {"finding_index": 0, "same_root_cause": False}
-    ]
-    import pytest
-
-    with pytest.raises(ValueError, match="no gap finding"):
-        harden.decide(tmp_path, sid, 5, True)
-    with pytest.raises(ValueError, match="no swarm breach"):
-        harden.decide(tmp_path, "scn_ffffffffffff", 0, True)
 
 
 def _report_project(tmp_path: Path) -> tuple[Path, Path, Path]:

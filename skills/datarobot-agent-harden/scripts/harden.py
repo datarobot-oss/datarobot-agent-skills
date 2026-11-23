@@ -8,8 +8,7 @@ Subcommands:
   preflight   check the project and locate the two parent skills
   suite-load  add saved breach cases from user_datasets/ to the swarm candidates
   suite-save  save this run's swarm breaches to user_datasets/ as regression cases
-  match       build one fix list from swarm breaches and gap-analysis findings
-  decide      record whether a swarm breach and a gap finding share a root cause
+  fix-list    list swarm breaches and gap-analysis findings as fix candidates
   verdict     compute the readiness verdict and list the parent skills' reports
   report      write harden-report.md: verdict, one fix list, both checks' sections
 
@@ -24,7 +23,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -33,10 +31,7 @@ from typing import Any
 
 from report_model import (
     DEFAULT_GAP_FAIL_ON,
-    TRACK_CONDITIONS,
     gap_items,
-    has_gap,
-    merge_pairs,
     sort_items,
     swarm_items,
 )
@@ -290,21 +285,8 @@ def suite_save(root: Path) -> dict[str, Any]:
     }
 
 
-def _words(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z_][a-z0-9_]{3,}", text.lower())}
-
-
-def _breach_terms(result: dict[str, Any]) -> set[str]:
-    scenario = result["scenario"]
-    tools = {
-        call.get("tool_name", "") for call in result.get("attempted_tool_calls", [])
-    }
-    capability = scenario.get("capability_targeted") or ""
-    return {t.lower() for t in tools | {capability} if t}
-
-
-def match(root: Path, gap_findings: Path) -> dict[str, Any]:
-    """Pair swarm breaches with gap findings that likely share a root cause."""
+def fix_list(root: Path, gap_findings: Path) -> dict[str, Any]:
+    """List swarm breaches and gap findings as fix candidates."""
     state = _load_json(_state_path(root))
     breaches = [
         r
@@ -317,103 +299,38 @@ def match(root: Path, gap_findings: Path) -> dict[str, Any]:
     # this first run so the report can tell fixed findings from open ones.
     _write_json(root / HARDEN_DIR / GAP_BEFORE_FILE, gap)
 
-    items: list[dict[str, Any]] = []
-    matched_findings: set[int] = set()
-    for result in breaches:
-        scenario = result["scenario"]
-        prefixes = TRACK_CONDITIONS.get(scenario["track"], ())
-        terms = _breach_terms(result)
-        related = []
-        for index, finding in enumerate(findings):
-            if not finding["condition_id"].startswith(prefixes):
-                continue
-            text = " ".join(
-                str(finding.get(k) or "")
-                for k in ("title", "evidence", "explanation", "file")
-            )
-            shared = terms & _words(text)
-            if shared:
-                related.append({"finding_index": index, "shared_terms": sorted(shared)})
-                matched_findings.add(index)
-        items.append(
-            {
-                "source": "swarm",
-                "scenario_id": scenario.get("scenario_id"),
-                "name": scenario["name"],
-                "track": scenario["track"],
-                "status": result["status"],
-                "severity": result.get("severity"),
-                "reason": result.get("breach_reason")
-                or result.get("evaluation_reason"),
-                "possibly_same_root_cause_as": related,
-                "decisions": [],
-            }
-        )
-
-    for index, finding in enumerate(findings):
-        items.append(
-            {
-                "source": "gap-analysis",
-                "finding_index": index,
-                "condition_id": finding["condition_id"],
-                "title": finding["title"],
-                "severity": finding["severity"],
-                "location": f"{finding.get('file') or ''}"
-                + (f":{finding['line']}" if finding.get("line") else ""),
-                "fix_type": finding.get("fix_type", "advisory"),
-                "structural": finding.get("structural", False),
-                "matched_swarm_breach": index in matched_findings,
-            }
-        )
+    items: list[dict[str, Any]] = [
+        {
+            "source": "swarm",
+            "scenario_id": result["scenario"].get("scenario_id"),
+            "name": result["scenario"]["name"],
+            "track": result["scenario"]["track"],
+            "status": result["status"],
+            "severity": result.get("severity"),
+            "reason": result.get("breach_reason") or result.get("evaluation_reason"),
+        }
+        for result in breaches
+    ]
+    items += [
+        {
+            "source": "gap-analysis",
+            "finding_index": index,
+            "condition_id": finding["condition_id"],
+            "title": finding["title"],
+            "severity": finding["severity"],
+            "location": f"{finding.get('file') or ''}"
+            + (f":{finding['line']}" if finding.get("line") else ""),
+            "fix_type": finding.get("fix_type", "advisory"),
+            "structural": finding.get("structural", False),
+        }
+        for index, finding in enumerate(findings)
+    ]
     output = root / HARDEN_DIR / CANDIDATES_FILE
     _write_json(output, {"items": items})
     return {
         "swarm_breaches": len(breaches),
         "gap_findings": len(findings),
-        "suggested_overlaps": len(matched_findings),
         "fix_candidates": str(output),
-    }
-
-
-def decide(
-    root: Path, scenario_id: str, finding_index: int, same_root_cause: bool
-) -> dict[str, Any]:
-    """Record the agent's judgment on one swarm breach / gap finding pair."""
-    path = root / HARDEN_DIR / CANDIDATES_FILE
-    if not path.is_file():
-        raise ValueError(f"{path} not found; run match first")
-    candidates = _load_json(path)
-    items = candidates.get("items", [])
-    swarm = next(
-        (
-            i
-            for i in items
-            if i.get("source") == "swarm" and i.get("scenario_id") == scenario_id
-        ),
-        None,
-    )
-    if swarm is None:
-        raise ValueError(f"no swarm breach {scenario_id} in {path.name}")
-    if not any(
-        i.get("source") == "gap-analysis" and i.get("finding_index") == finding_index
-        for i in items
-    ):
-        raise ValueError(f"no gap finding {finding_index} in {path.name}")
-    decisions = [
-        d
-        for d in swarm.setdefault("decisions", [])
-        if d.get("finding_index") != finding_index
-    ]
-    decisions.append(
-        {"finding_index": finding_index, "same_root_cause": same_root_cause}
-    )
-    swarm["decisions"] = decisions
-    _write_json(path, candidates)
-    return {
-        "scenario_id": scenario_id,
-        "finding_index": finding_index,
-        "same_root_cause": same_root_cause,
-        "decisions": len(decisions),
     }
 
 
@@ -453,7 +370,6 @@ def _build(
     items = gap_items(before, after, fix_results, gap_fail_on)
     if eval_results is not None:
         items = swarm_items(eval_results) + items
-    items = merge_pairs(items, _load_optional(root / HARDEN_DIR / CANDIDATES_FILE))
     return {
         "swarm": swarm,
         "eval_results": eval_results,
@@ -492,7 +408,7 @@ def _verdict_from(
         reasons.append("gap analysis: remediation posture is Re-platform")
 
     warnings: list[str] = []
-    open_gap = [i for i in items if has_gap(i) and i.status == "open"]
+    open_gap = [i for i in items if i.source == "gap" and i.status == "open"]
     non_blocking_gap = [i for i in open_gap if not i.blocking]
     if non_blocking_gap:
         warnings.append(
@@ -533,7 +449,7 @@ def _verdict_from(
         "gap_analysis": {
             "findings": len(gap.get("findings", [])),
             "open_blocking": sum(1 for i in open_gap if i.blocking),
-            "fixed": sum(1 for i in items if has_gap(i) and i.status == "fixed"),
+            "fixed": sum(1 for i in items if i.source == "gap" and i.status == "fixed"),
             "posture": posture,
         },
         "fix_branch": fix_branch,
@@ -628,8 +544,6 @@ def _fix_list(items: list[Any]) -> list[str]:
         if item.fix:
             label = "Fix applied" if item.status == "fixed" else "Fix"
             lines.append(f"   - **{label}:** {item.fix}")
-        if item.related:
-            lines.append(f"   - **Related:** {', '.join(item.related)}")
     lines.append("")
     return lines
 
@@ -649,7 +563,7 @@ def _changes(built: dict[str, Any], fix_branch: str | None) -> list[str]:
                 f"- Gap `{result['condition_id']}` (codemod): {result['message']}"
             )
     for item in built["items"]:
-        if has_gap(item) and item.fixed_by == "re-score":
+        if item.fixed_by == "re-score":
             lines.append(f"- Gap {item.title}: no longer found on re-score")
     if len(lines) == 2:
         lines.append("No changes applied.")
@@ -769,17 +683,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("preflight")
     sub.add_parser("suite-load")
     sub.add_parser("suite-save")
-    match_parser = sub.add_parser("match")
-    match_parser.add_argument("--gap-findings", type=Path, required=True)
+    fix_list_parser = sub.add_parser("fix-list")
+    fix_list_parser.add_argument("--gap-findings", type=Path, required=True)
     _add_verdict_args(sub.add_parser("verdict"))
-    decide_parser = sub.add_parser("decide")
-    decide_parser.add_argument("--scenario", required=True, help="swarm scenario_id")
-    decide_parser.add_argument(
-        "--finding", type=int, required=True, help="gap finding_index"
-    )
-    same = decide_parser.add_mutually_exclusive_group(required=True)
-    same.add_argument("--same", action="store_true", help="same root cause")
-    same.add_argument("--different", action="store_true", help="different causes")
     report_parser = sub.add_parser("report")
     _add_verdict_args(report_parser)
     report_parser.add_argument("--output", type=Path, default=Path(REPORT_FILE))
@@ -798,10 +704,8 @@ def main(argv: list[str] | None = None) -> int:
             result = suite_load(root)
         elif args.command == "suite-save":
             result = suite_save(root)
-        elif args.command == "match":
-            result = match(root, args.gap_findings)
-        elif args.command == "decide":
-            result = decide(root, args.scenario, args.finding, args.same)
+        elif args.command == "fix-list":
+            result = fix_list(root, args.gap_findings)
         else:
             gap_fail_on = [s.strip() for s in args.gap_fail_on.split(",") if s.strip()]
             common = (
