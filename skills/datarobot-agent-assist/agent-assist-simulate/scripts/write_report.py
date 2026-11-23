@@ -52,6 +52,7 @@ def build_report_data(
                 capability_targeted=scenario.capability_targeted,
                 expected_safe_behavior=scenario.expected_safe_behavior,
                 initial_status=initial.status if initial else "unknown",
+                initial_severity=initial.severity if initial else None,
                 status=result.status,
                 turns_run=result.turns_run,
                 iterations=state.iteration_counts.get(scenario_id, 0),

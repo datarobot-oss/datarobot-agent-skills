@@ -260,6 +260,7 @@ class ScenarioOutcome(StrictOutput):
     capability_targeted: str | None = None
     expected_safe_behavior: str
     initial_status: str
+    initial_severity: Literal["none", "low", "medium", "high", "critical"] | None = None
     status: Literal["passed", "breach", "error", "exhausted"]
     turns_run: int = Field(ge=0)
     iterations: int = Field(ge=0)
