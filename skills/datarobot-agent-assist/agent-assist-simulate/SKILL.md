@@ -1,9 +1,9 @@
 ---
 name: datarobot-agent-assist-simulate
 description: >-
-  Use when the user wants to adversarially test, evaluate, or harden an implemented AI agent before
+  Use when the user wants to adversarially test or evaluate an implemented AI agent before
   deployment; mentions swarm simulation, attack testing, persistence testing, evaluation criteria,
-  or eval_report.md.
+  eval_report.md or eval-results.json.
 ---
 
 # Agent Assist — Simulate
@@ -266,6 +266,9 @@ Parse stdout as JSON: `{"status": "...", "breaches": [...], "exhausted": [...], 
 Each breach entry has `scenario_id`, `scenario_name`, `track`, `breach_reason`, `transcript`,
 `breach_indicators`, `iteration`, and `suggested_rerun_dir`.
 
+Create `.datarobot/swarm/changes.json` with `{"changes": []}`. Every fix you apply in this
+step is recorded there, and Step 5 renders it into the report.
+
 If `status` is `complete`, skip to Step 5.
 
 **Fix loop** — repeat until `advance` returns `complete`:
@@ -287,6 +290,16 @@ For each breach in `breaches`:
    guard in the implementation), say so and read the implementation file at the relevant
    function. Propose a targeted code change and ask for approval. If approved, apply it
    with your Edit tool.
+
+   After each approved fix, add one entry to `changes`:
+
+   - `scenario_id`: the breach's `scenario_id`
+   - `kind`: `prompt` or `code`
+   - `files`: every file you changed. A prompt patch lists `agent_spec.yaml` and the
+     implementation file.
+   - `symbol`: the function you changed (code fixes only)
+   - `summary`: what changed, in one sentence
+   - `reason`: why, in one sentence
 
 2. Before retesting, tell the user:
    > "Breach: [scenario_name]
@@ -359,7 +372,7 @@ For each breach in `breaches`:
 
 For any scenario in `exhausted`: read its `breach_reason` and transcript, identify the
 implementation function responsible, propose a targeted code fix, ask for approval, apply
-with your Edit tool, then rerun it (using the next iteration dir from `suggested_rerun_dir`
+with your Edit tool, record it in `changes.json` as above, then rerun it (using the next iteration dir from `suggested_rerun_dir`
 in the advance output) and call `advance` again.
 
 When `advance` returns `complete`:
@@ -371,17 +384,17 @@ When `advance` returns `complete`:
 
 ```bash
 <python> <skill_scripts_dir>/native_convergence.py report agent_spec.yaml \
-  --output eval_report.md
+  --output eval_report.md \
+  --json-out eval-results.json \
+  --changes .datarobot/swarm/changes.json
 
 kill <opencode_server_pid> 2>/dev/null || true
 rm -rf .datarobot/swarm/
 ```
 
-After the script writes `eval_report.md`, append a **"## Changes Applied"** section to the file
-listing every change made during Step 4 — scenario name, what was changed, and why. For prompt
-patches, list both the addition to `agent_spec.yaml` and the corresponding change to the
-implementation file. For code fixes, list the function and file changed. Use your Edit tool to
-append to `eval_report.md`.
+The script writes `eval_report.md`, including its "Changes Applied" section, and
+`eval-results.json` with the same results for other tools to read. Don't edit either file.
+Use the counts and `ready` from the JSON it prints to stdout.
 
 Present passed/total, unresolved, exhausted, and readiness to the user. If `ready: false`, say so
 explicitly before offering next steps.

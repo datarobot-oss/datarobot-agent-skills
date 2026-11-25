@@ -60,3 +60,6 @@ evaluation_criteria.md
 
 # Generated public Codex plugin packages
 datarobot-agent-skills-public-*.zip
+
+# Node dependencies
+node_modules/

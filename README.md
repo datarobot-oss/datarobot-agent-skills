@@ -192,6 +192,7 @@ Available skills (in datarobot-* folders):
 - datarobot-setup: Local DataRobot development setup (SDK, dr-cli, Agent Assist)
 - datarobot-workload-api: Create, configure, debug, observe, and roll out container workloads on DataRobot's Workload API
 - datarobot-gap-analysis: Enterprise-readiness gap analysis for any agent repository
+- datarobot-agent-harden: One production-readiness verdict from swarm simulation plus gap analysis
 - datarobot-connectivity-datastore-sql: SQL through DataRobot data connections (datastores)
 - datarobot-connectivity-jdbc-sql: SQL through DataRobot with a caller-supplied JDBC URL
 
@@ -287,6 +288,7 @@ This repository contains skills for common DataRobot workflows. You can also con
 | `skills/datarobot-external-agent-monitoring/` | Instrument any external AI agent with OpenTelemetry to send traces, logs, and metrics to DataRobot for monitoring and observability. Supports Google ADK, LangChain, LangGraph, CrewAI, LlamaIndex, PydanticAI, and generic Python agents. | [SKILL.md](skills/datarobot-external-agent-monitoring/SKILL.md) |
 | `skills/datarobot-agent-assist/` | Build AI agents and deploy them to DataRobot. Supports building LangGraph, CrewAI, LlamaIndex, NAT and Base agents. Created agents can be bundled with MCP server, backend APIs & React frontend. | [SKILL.md](skills/datarobot-agent-assist/SKILL.md) |
 | `skills/datarobot-gap-analysis/` | Score any agent repository (DataRobot-built or not) against a 41-factor enterprise-readiness framework across seven risk pillars and four evaluation layers, then patch or guide the fixing of every gap found. | [SKILL.md](skills/datarobot-gap-analysis/SKILL.md) |
+| `skills/datarobot-agent-harden/` | Harden an implemented agent: run swarm simulation and gap analysis in one pass, approve the fixes from both in one step, and get one readiness verdict with links to both reports. | [SKILL.md](skills/datarobot-agent-harden/SKILL.md) |
 | `skills/datarobot-connectivity-datastore-sql/` | Run SQL through DataRobot data connections: list connections, browse tables, preview rows, run queries, and run approved DML/DDL. | [SKILL.md](skills/datarobot-connectivity-datastore-sql/SKILL.md) |
 | `skills/datarobot-connectivity-jdbc-sql/` | Run SQL through DataRobot against a database reached by a caller-supplied JDBC URL: test connectivity, list tables, run queries, and run approved DML/DDL. | [SKILL.md](skills/datarobot-connectivity-jdbc-sql/SKILL.md) |
 

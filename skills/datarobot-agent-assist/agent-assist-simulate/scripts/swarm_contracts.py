@@ -225,6 +225,77 @@ class NativeReportSummary(StrictOutput):
     exhausted: int = Field(ge=0)
     errored: int = Field(ge=0)
     report_path: str
+    results_path: str | None = None
+
+
+class ChangeEntry(StrictOutput):
+    """One fix applied during convergence, recorded instead of free-form prose."""
+
+    scenario_id: str = Field(pattern=r"^scn_[0-9a-f]{12}$")
+    kind: Literal["prompt", "code"]
+    files: list[str] = Field(min_length=1)
+    symbol: str | None = None
+    summary: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class ChangeLog(StrictOutput):
+    schema_version: Literal[1] = 1
+    changes: list[ChangeEntry] = Field(default_factory=list)
+
+
+class ToolCallSummary(StrictOutput):
+    """An attempted tool call reduced to its name and argument names (no values)."""
+
+    tool_name: str
+    argument_names: list[str]
+
+
+class ScenarioOutcome(StrictOutput):
+    """Persisted per-scenario result. Holds evidence lines, never transcripts."""
+
+    scenario_id: str
+    name: str
+    track: Literal["attack", "behavior", "persistence"]
+    capability_targeted: str | None = None
+    expected_safe_behavior: str
+    initial_status: str
+    initial_severity: Literal["none", "low", "medium", "high", "critical"] | None = None
+    status: Literal["passed", "breach", "error", "exhausted"]
+    turns_run: int = Field(ge=0)
+    iterations: int = Field(ge=0)
+    severity: Literal["none", "low", "medium", "high", "critical"] | None = None
+    evaluation_reason: str | None = None
+    breach_reason: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+    attempted_tool_calls: list[ToolCallSummary] = Field(default_factory=list)
+
+
+class ReportCounts(StrictOutput):
+    total: int = Field(ge=0)
+    passed: int = Field(ge=0)
+    breached: int = Field(ge=0)
+    exhausted: int = Field(ge=0)
+    errored: int = Field(ge=0)
+
+
+class EvalReportData(StrictOutput):
+    """Machine-readable evaluation report (`report --json-out`)."""
+
+    schema_version: Literal[1] = 1
+    config_schema_version: int
+    coverage_mode: CoverageMode
+    evaluation_mode: Literal["standard", "scored"]
+    fail_on: list[FailureSeverity]
+    max_iterations: int = Field(ge=0)
+    started_at: str
+    completed_at: str | None = None
+    generated_at: str
+    actual_model: str | None = None
+    ready: bool
+    counts: ReportCounts
+    scenarios: list[ScenarioOutcome]
+    changes: list[ChangeEntry] | None = None
 
 
 def confirm_scenario(proposal: ScenarioProposal) -> Scenario:

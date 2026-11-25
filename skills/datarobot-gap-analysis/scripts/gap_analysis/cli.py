@@ -19,7 +19,7 @@ from typing import Any
 
 from .engine import analyze, fix
 from .ingest import clone_repo
-from .models import AnalysisResult
+from .models import FINDINGS_SCHEMA_VERSION, AnalysisResult
 from .opencode import (
     OpenCodeServer,
     OpenCodeWorkerClient,
@@ -39,6 +39,31 @@ def _status(msg: str) -> None:
     """Timestamped status line on stderr: elapsed since process start."""
     m, s = divmod(int(time.monotonic() - _T0), 60)
     print(f"[{m:02d}:{s:02d}] {msg}", file=sys.stderr, flush=True)
+
+
+FIX_RESULTS_FILENAME = "gap-fix-results.json"
+
+
+def write_fix_results(
+    path: Path,
+    summary: dict[str, Any],
+    workspace: str | Path,
+    verification: dict[str, Any] | None,
+) -> None:
+    """Save what --fix did, so other tools need not parse the printed summary.
+
+    Each `results` entry's `key` is the finding's dedup_key (condition_id, file,
+    line, evidence) as a list; match it to gap-findings.json to tell which
+    findings this run closed. `verification` is set only with --verify.
+    """
+    payload = {
+        "schema_version": FINDINGS_SCHEMA_VERSION,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "workspace": str(workspace),
+        **summary,
+        "verification": verification,
+    }
+    path.write_text(json.dumps(payload, indent=1, default=str) + "\n")
 
 
 def _after_path(html_path: str | None) -> str:
@@ -255,6 +280,7 @@ def _run_fix(
         )
     print("Review the branch and, if good, push / open a PR (not done automatically).")
 
+    verification: dict[str, Any] | None = None
     if getattr(args, "verify", False):
         _status("→ Re-analyzing the fixed branch to score deploy-readiness …")
         after, _ = analyze(
@@ -304,6 +330,10 @@ def _run_fix(
             f"→ Deploy-readiness: {verdict}. {len(before_keys - after_keys)} gaps closed "
             f"({len(result.findings)} → {len(after.findings)})."
         )
+
+    fix_results = report_dir / FIX_RESULTS_FILENAME
+    write_fix_results(fix_results, summary, workspace, verification)
+    print(f"✓ Fix results: {fix_results}")
 
     # Exit non-zero if any fail_on-severity gaps exist (CI-friendly).
     return {"final_findings": final_findings}

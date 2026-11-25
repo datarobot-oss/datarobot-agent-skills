@@ -2868,3 +2868,147 @@ def test_process_teardown_falls_back_where_there_are_no_process_groups(
 )
 def test_pick_model_reads_the_listing(listing, expected):
     assert pick_model(listing.splitlines()) == expected
+
+
+# --- embedding the report and the files other skills read ---
+
+
+def _embed_result() -> AnalysisResult:
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=3,
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+        ),
+        Finding(
+            "SEC-011", "SEC", Severity.HIGH, "Prompt injection", fix_type="assisted"
+        ),
+    ]
+    result.posture = {"recommendation": "PATCH", "score": 0.0}
+    result.notes = ["note"]
+    result.usage = {
+        "total": {
+            "calls": 1,
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "reasoning_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "cost": 0.0,
+        }
+    }
+    return result
+
+
+def test_embedded_report_shifts_headings_and_drops_standalone_parts() -> None:
+    md = render_report(_embed_result(), repo="/r", heading_offset=1, standalone=False)
+
+    assert "Enterprise-Readiness Gap Report" not in md
+    assert "**Repository:**" not in md
+    assert "LLM Gateway Usage" not in md
+    assert "not legal advice" not in md
+    headings = [line for line in md.splitlines() if line.startswith("#")]
+    assert headings[0] == "### Summary"
+    assert "#### Security (SEC)" in headings
+    assert "### Remediation Posture" in headings
+    assert all(not h.startswith("## ") for h in headings)
+
+
+def test_report_without_fix_commands_has_no_fix_cli() -> None:
+    md = render_report(_embed_result(), repo="/r", fix_commands=False)
+
+    assert "--fix" not in md and "gap-fixes/" not in md
+    assert "Agent prompt" not in md
+    assert "1 automatically)." in md
+    assert "**Fix:**" in md, "the remediation text itself stays"
+
+
+def test_default_report_still_carries_fix_commands_and_footer() -> None:
+    from gap_analysis.report import DISCLAIMER
+
+    md = render_report(_embed_result(), repo="/r")
+
+    assert md.startswith("# Enterprise-Readiness Gap Report")
+    assert "--fix --select SEC-002" in md and "Agent prompt" in md
+    assert md.endswith(DISCLAIMER)
+
+
+def test_findings_json_is_versioned_and_keeps_its_timestamp() -> None:
+    import json
+
+    from gap_analysis.models import FINDINGS_SCHEMA_VERSION
+
+    result = _embed_result()
+    data = json.loads(json.dumps(result.to_dict()))
+
+    assert data["schema_version"] == FINDINGS_SCHEMA_VERSION
+    assert data["generated_at"] == result.generated_at
+    assert AnalysisResult.from_dict(data).generated_at == result.generated_at
+    legacy = {
+        k: v for k, v in data.items() if k not in ("schema_version", "generated_at")
+    }
+    assert len(AnalysisResult.from_dict(legacy).findings) == 2, (
+        "files written before versioning still load"
+    )
+    with pytest.raises(ValueError, match="newer"):
+        AnalysisResult.from_dict(
+            {**data, "schema_version": FINDINGS_SCHEMA_VERSION + 1}
+        )
+
+
+def test_cli_fix_writes_fix_results_next_to_the_findings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+    import subprocess
+
+    from gap_analysis import cli
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _write(repo, "app.py", 'API_KEY = "sk-live-abcdefghijklmnopqrstuvwxyz0123456789"\n')
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=repo,
+        check=True,
+    )
+    result = AnalysisResult()
+    result.findings = [
+        Finding(
+            "SEC-002",
+            "SEC",
+            Severity.CRITICAL,
+            "Hardcoded secret",
+            file="app.py",
+            line=1,
+            evidence='API_KEY = "sk-live-…"',
+            fix_type="auto",
+            fix_strategy="secret_to_env_var",
+            fix_risk="plumbing",
+            layer=1,
+        )
+    ]
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    saved = reports / "gap-findings.json"
+    saved.write_text(json.dumps(result.to_dict()))
+    monkeypatch.setattr(cli, "_make_llm_client", lambda settings: None)
+
+    assert cli.main([str(repo), "--fix", "--from", str(saved)]) == 0
+
+    data = json.loads((reports / cli.FIX_RESULTS_FILENAME).read_text())
+    assert data["schema_version"] == 1
+    assert data["branch"].startswith("gap-fixes/")
+    assert data["applied"] == 1 and data["verification"] is None
+    applied = data["results"][0]
+    assert applied["status"] == "applied"
+    assert applied["key"] == list(result.findings[0].dedup_key)

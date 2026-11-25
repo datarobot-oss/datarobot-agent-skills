@@ -54,6 +54,12 @@ def _fix_label(f: Finding) -> str:
     return f"{base} · {risk}" if risk else base
 
 
+DISCLAIMER = (
+    "_Secret values are never shown. DataRobot risk-management "
+    "findings are advisory and not legal advice._"
+)
+
+
 def _loc(f: Finding) -> str:
     if not f.file:
         return "_(repo-wide)_"
@@ -61,17 +67,29 @@ def _loc(f: Finding) -> str:
 
 
 def render_report(
-    result: AnalysisResult,
-    repo: str = "",
-    policy: dict[str, Any] | None = None,
-    findings_path: str = "",
+        result: AnalysisResult,
+        repo: str = "",
+        policy: dict[str, Any] | None = None,
+        findings_path: str = "",
+        heading_offset: int = 0,
+        standalone: bool = True,
+        fix_commands: bool = True,
 ) -> str:
+    """Render the result as Markdown.
+
+    For embedding in another report: `heading_offset` pushes every heading down
+    that many levels; `standalone=False` leaves out the title, repository line,
+    LLM usage and footer (the caller shows `DISCLAIMER` itself); and
+    `fix_commands=False` leaves out the `--fix` commands and agent-prompt hints,
+    for a caller that applies fixes its own way.
+    """
     counts = result.counts()
     total = len(result.findings)
     lines: list[str] = []
-    lines.append("# Enterprise-Readiness Gap Report")
-    if repo:
-        lines.append(f"\n**Repository:** {repo}")
+    if standalone:
+        lines.append("# Enterprise-Readiness Gap Report")
+        if repo:
+            lines.append(f"\n**Repository:** {repo}")
     inv = result.inventory
     if inv:
         langs = ", ".join(
@@ -98,13 +116,13 @@ def render_report(
 
     fixable = sum(1 for f in result.findings if f.fix_type in ("auto", "assisted"))
     auto = sum(1 for f in result.findings if f.fix_type == "auto")
-    lines.append(
-        f"\n{fixable} of {total} are fixable ({auto} automatically). "
-        f"Run with `--fix` to remediate on a `gap-fixes/*` branch."
-    )
+    fix_line = f"\n{fixable} of {total} are fixable ({auto} automatically)."
+    if fix_commands:
+        fix_line += " Run with `--fix` to remediate on a `gap-fixes/*` branch."
+    lines.append(fix_line)
 
     lines.append("\n**Coverage of this run**\n")
-    lines.extend(f"- {c}" for c in coverage_lines(result))
+    lines.extend(f"- {c}" for c in coverage_lines(result, usage_section=standalone))
 
     # Remediation posture — patch in place vs. re-platform onto af-components
     if result.posture:
@@ -134,6 +152,8 @@ def render_report(
             if f.verification:
                 lines.append(f"  - **Verification:** {f.verification}")
             lines.extend(_fix_details(f))
+            if not fix_commands:
+                continue
             if f.fix_type == "auto":
                 lines.append(
                     f"  - **Apply:** `--fix --select {f.condition_id} --from "
@@ -162,14 +182,16 @@ def render_report(
         lines.append("\n## Engine Notes\n")
         for n in result.notes:
             lines.append(f"- {n}")
-    if result.usage.get("total", {}).get("calls"):
-        lines.append("\n## LLM Gateway Usage\n")
-        lines.append(_usage_table(result.usage))
+    if standalone:
+        if result.usage.get("total", {}).get("calls"):
+            lines.append("\n## LLM Gateway Usage\n")
+            lines.append(_usage_table(result.usage))
+        lines.append(f"\n---\n{DISCLAIMER}")
 
-    lines.append(
-        "\n---\n_Secret values are never shown. DataRobot risk-management "
-        "findings are advisory and not legal advice._"
-    )
+    if heading_offset:
+        prefix = "#" * heading_offset
+        lines = [prefix + line if line.startswith("#") else line for line in lines]
+
     return "\n".join(lines)
 
 
@@ -208,9 +230,12 @@ _LAYER4_SKIP_PREFIX = "Layer 4 (DataRobot risk-management) skipped"
 _APPROVAL_CAVEAT = "treated as approved"
 
 
-def coverage_lines(result: AnalysisResult) -> list[str]:
+def coverage_lines(result: AnalysisResult, usage_section: bool = True) -> list[str]:
     """What this run did and did not check, one line per layer, so a reader
-    sees the caveats before the findings rather than after them."""
+    sees the caveats before the findings rather than after them.
+
+    `usage_section=False` drops the pointer to the LLM Gateway Usage section,
+    for a report that leaves that section out."""
     notes = result.notes
     out: list[str] = []
     missing = [
@@ -235,7 +260,7 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
     elif l2:
         out.append(
             "Layer 2 (LLM reasoning): ran; "
-            + l2[len("Layer 2: ") :].split(" (--no-verify")[0]
+            + l2[len("Layer 2: "):].split(" (--no-verify")[0]
         )
     else:
         out.append("Layer 2 (LLM reasoning): ran")
@@ -252,10 +277,14 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
         None,
     )
     if l1:
-        out.append("Layer 1 (secret scan): " + l1[len("Layer 1: ") :])
+        out.append("Layer 1 (secret scan): " + l1[len("Layer 1: "):])
     summary = usage_summary(result.usage)
     if summary:
-        out.append("LLM Gateway usage: " + summary + ", see LLM Gateway Usage")
+        out.append(
+            "LLM Gateway usage: "
+            + summary
+            + (", see LLM Gateway Usage" if usage_section else "")
+        )
     approval = next((n for n in notes if _APPROVAL_CAVEAT in n), None)
     out.append(
         "Layer 3 (conformance): ran"
@@ -275,7 +304,7 @@ def coverage_lines(result: AnalysisResult) -> list[str]:
         out.append(
             "Layer 4 (risk management): NOT ASSESSED; "
             + (
-                skip[len(_LAYER4_SKIP_PREFIX) + 2 :]
+                skip[len(_LAYER4_SKIP_PREFIX) + 2:]
                 if skip
                 else "no policy pack enabled"
             )
@@ -322,8 +351,8 @@ def _usage_table(usage: dict[str, Any]) -> str:
     )
     out = [
         head + ". Tokens are as reported by the DataRobot LLM Gateway per call. Cached "
-        "tokens are already inside Input and reasoning tokens inside Output; those "
-        "columns break the totals down, they do not add to them.",
+               "tokens are already inside Input and reasoning tokens inside Output; those "
+               "columns break the totals down, they do not add to them.",
         "",
         "| Phase | Calls | Input | of which cached | Output | of which reasoning |",
         "|---|---:|---:|---:|---:|---:|",

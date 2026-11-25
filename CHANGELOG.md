@@ -14,6 +14,16 @@ Version bumps, `[Unreleased]` renames, and releases are automated&mdash;see
 
 ## [Unreleased]
 
+### Added
+
+- `datarobot-agent-harden`: New skill. Runs swarm simulation (`agent-assist-simulate`) and then gap analysis (`datarobot-gap-analysis`) on one agent, presents the fixes from both as one list with a single approval step, applies the approved ones on one local branch, saves swarm breaches to `user_datasets/` as regression cases, and gives one readiness verdict with links to each skill's own report.
+
+### Changed
+
+- `datarobot-agent-assist`: "harden my agent" and production-readiness requests now go to `datarobot-agent-harden`, and the after-coding next steps offer it; battle-test requests still run swarm simulation alone.
+- `datarobot-agent-assist`: Swarm simulation's `native_convergence.py report` gains `--json-out`, which writes `eval-results.json` (per-scenario outcomes and evidence, no transcripts), and `--changes`, which renders the "Changes Applied" section from `.datarobot/swarm/changes.json` instead of the agent appending it by hand. A new `skip` subcommand closes breaches the user chose not to fix without rerunning them.
+- `datarobot-gap-analysis`: `gap-findings.json` now carries `schema_version` and `generated_at`; older files still load, newer schema versions are rejected. `--fix` also writes `gap-fix-results.json` with the branch, per-fix results, held-back fixes and the `--verify` before/after data.
+
 ### Removed
 
 - `repo`: Removed the datarobot-agent-tester e2e skill suite: the `Test Skills E2E` workflow, `tests/e2e`, the `e2e` dependency group, the pre-commit hook, `task setup`, `task test:e2e` and `.env.example`.
